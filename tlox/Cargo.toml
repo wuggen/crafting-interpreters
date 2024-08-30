@@ -1,0 +1,8 @@
+[package]
+name = "tlox"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+structopt = "0.3.26"
+thiserror = "1.0.63"
