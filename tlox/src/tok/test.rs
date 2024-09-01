@@ -1,5 +1,7 @@
 use super::*;
 
+use LexerErrorKind::*;
+
 use std::fmt::Debug;
 
 trait TokenTestable {
@@ -32,9 +34,9 @@ impl TokenErrorTestable for (usize, usize) {
     }
 }
 
-impl TokenErrorTestable for &str {
+impl TokenErrorTestable for LexerErrorKind {
     fn check_err(&self, err: &LexerError) -> bool {
-        self == &err.message
+        self == &err.kind
     }
 }
 
@@ -131,14 +133,20 @@ fn num(n: f64) -> TokenType {
     Number(n)
 }
 
+fn unrecognized(token: impl Into<String>) -> LexerErrorKind {
+    UnrecognizedToken {
+        token: token.into(),
+    }
+}
+
 #[test]
 fn keywords() {
     let source = "and or true false if else while for fun print var this super class nil return";
     let expected = [
         (And, (0, 0)),
         (Or, (0, 4)),
-        (True, (0, 7)),
-        (False, (0, 12)),
+        (Boolean(true), (0, 7)),
+        (Boolean(false), (0, 12)),
         (If, (0, 18)),
         (Else, (0, 21)),
         (While, (0, 26)),
@@ -278,10 +286,10 @@ fn string_literal_including_comment() {
 }
 
 #[test]
-fn unrecognized() {
+fn unrecognized_token() {
     let source = "%^&0 lol";
     let expected = [
-        Err(("unrecognized token `%^&`", (0, 0))),
+        Err((unrecognized("%^&"), (0, 0))),
         Ok(num(0.0)),
         Ok(ident("lol")),
     ];
@@ -296,7 +304,7 @@ do(something);"#;
         Ok(Var),
         Ok(ident("s")),
         Ok(Equal),
-        Err("unterminated string literal"),
+        Err(UnterminatedString),
         Ok(ident("do")),
         Ok(LeftParen),
         Ok(ident("something")),
@@ -329,8 +337,8 @@ lmao();"#;
 fn unrecognized_escape() {
     let source = r#""what \even \the \fuck""#;
     let expected = [
-        Err(("unrecognized escape character", (0, 7))),
-        Err(("unrecognized escape character", (0, 18))),
+        Err((UnrecognizedEscapeCharacter, (0, 7))),
+        Err((UnrecognizedEscapeCharacter, (0, 18))),
         Ok((strlit("what ven \the uck"), (0, 0))),
     ];
     assert!(check_scan(source, expected));
@@ -360,13 +368,13 @@ fn nested_block_comments() {
 #[test]
 fn unterminated_block_comment() {
     let source = "ababa /* lmao";
-    let expected = [Ok(ident("ababa")), Err("unterminated block comment")];
+    let expected = [Ok(ident("ababa")), Err(UnterminatedBlockComment)];
     assert!(check_scan(source, expected));
 }
 
 #[test]
 fn unterminated_nested_block_comment() {
     let source = "wee /* hehe /* yay */ wow";
-    let expected = [Ok(ident("wee")), Err("unterminated block comment")];
+    let expected = [Ok(ident("wee")), Err(UnterminatedBlockComment)];
     assert!(check_scan(source, expected));
 }

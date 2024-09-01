@@ -13,6 +13,7 @@
 use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
 use std::iter::Peekable;
+use std::num::ParseFloatError;
 use std::str::Chars;
 
 #[cfg(test)]
@@ -54,10 +55,10 @@ pub enum TokenType {
     Ident(String),
     StringLiteral(String),
     Number(f64),
+    Boolean(bool),
     And,
     Class,
     Else,
-    False,
     Fun,
     For,
     If,
@@ -67,7 +68,6 @@ pub enum TokenType {
     Return,
     Super,
     This,
-    True,
     Var,
     While,
 }
@@ -97,10 +97,10 @@ impl Display for TokenType {
             TokenType::Ident(s) => write!(f, "{s}"),
             TokenType::StringLiteral(s) => write!(f, "{s:?}"),
             TokenType::Number(x) => write!(f, "{x}"),
+            TokenType::Boolean(b) => write!(f, "{b}"),
             TokenType::And => write!(f, "and"),
             TokenType::Class => write!(f, "class"),
             TokenType::Else => write!(f, "else"),
-            TokenType::False => write!(f, "false"),
             TokenType::Fun => write!(f, "fun"),
             TokenType::For => write!(f, "for"),
             TokenType::If => write!(f, "if"),
@@ -110,7 +110,6 @@ impl Display for TokenType {
             TokenType::Return => write!(f, "return"),
             TokenType::Super => write!(f, "super"),
             TokenType::This => write!(f, "this"),
-            TokenType::True => write!(f, "true"),
             TokenType::Var => write!(f, "var"),
             TokenType::While => write!(f, "while"),
         }
@@ -154,10 +153,38 @@ impl<'a> Iterator for Lexer<'a> {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("Error at {location}: {message}")]
+#[error("Error at {location}: {kind}")]
 pub struct LexerError {
-    message: String,
-    location: Location,
+    pub(crate) kind: LexerErrorKind,
+    pub(crate) location: Location,
+}
+
+impl LexerError {
+    pub fn kind(&self) -> &LexerErrorKind {
+        &self.kind
+    }
+
+    pub fn location(&self) -> Location {
+        self.location
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
+pub enum LexerErrorKind {
+    #[error("unterminated block comment")]
+    UnterminatedBlockComment,
+
+    #[error("unterminated string")]
+    UnterminatedString,
+
+    #[error("unrecognized escape character")]
+    UnrecognizedEscapeCharacter,
+
+    #[error("invalid number literal: {source}")]
+    InvalidNumber { source: ParseFloatError },
+
+    #[error("unrecognized token {token:?}")]
+    UnrecognizedToken { token: String },
 }
 
 fn is_ident_start(c: char) -> bool {
@@ -306,7 +333,7 @@ impl Lexer<'_> {
         loop {
             match self.skip() {
                 None => {
-                    self.queue_error_at_cursor("unterminated block comment");
+                    self.queue_error_at_cursor(LexerErrorKind::UnterminatedBlockComment);
                     break;
                 }
 
@@ -355,17 +382,17 @@ impl Lexer<'_> {
     }
 
     /// Create an error with the given message and the current start location.
-    fn error(&self, message: impl Into<String>) -> Option<Result<Token, LexerError>> {
+    fn error(&self, kind: LexerErrorKind) -> Option<Result<Token, LexerError>> {
         Some(Err(LexerError {
-            message: message.into(),
+            kind,
             location: self.location,
         }))
     }
 
     /// Create an error with the given message and the current cursor location.
-    fn error_at_cursor(&self, message: impl Into<String>) -> Option<Result<Token, LexerError>> {
+    fn error_at_cursor(&self, kind: LexerErrorKind) -> Option<Result<Token, LexerError>> {
         Some(Err(LexerError {
-            message: message.into(),
+            kind,
             location: self.cursor(),
         }))
     }
@@ -382,16 +409,16 @@ impl Lexer<'_> {
     /// Queue an error to be yielded before continuing to scan.
     ///
     /// The queued error will have the start location at the time of calling this function.
-    fn queue_error(&mut self, message: impl Into<String>) {
-        let res = self.error(message).unwrap();
+    fn queue_error(&mut self, kind: LexerErrorKind) {
+        let res = self.error(kind).unwrap();
         self.queued.push_back(res);
     }
 
     /// Queue an error to be yielded before continuing to scan.
     ///
     /// The queued error will have the cursor location at the time of calling this function.
-    fn queue_error_at_cursor(&mut self, message: impl Into<String>) {
-        let res = self.error_at_cursor(message).unwrap();
+    fn queue_error_at_cursor(&mut self, kind: LexerErrorKind) {
+        let res = self.error_at_cursor(kind).unwrap();
         self.queued.push_back(res);
     }
 
@@ -403,12 +430,14 @@ impl Lexer<'_> {
     /// Since this function can encounter multiple errors in the course of scanning a single token,
     /// it queues all of its errors and the final string token, rather than simply returning them.
     fn scan_string(&mut self) {
+        use LexerErrorKind::*;
+
         self.clear_buffer();
 
         loop {
             let c = match self.skip() {
                 None => {
-                    self.queue_error("unterminated string literal");
+                    self.queue_error(UnterminatedString);
                     break;
                 }
                 Some(c) => c,
@@ -422,7 +451,7 @@ impl Lexer<'_> {
 
                 '\\' => match self.peek() {
                     None => {
-                        self.queue_error("unterminated string literal");
+                        self.queue_error(UnterminatedString);
                         break;
                     }
 
@@ -435,14 +464,14 @@ impl Lexer<'_> {
                             self.buffer.push(c);
                             self.skip();
                         } else {
-                            self.queue_error_at_cursor("unrecognized escape character");
+                            self.queue_error_at_cursor(UnrecognizedEscapeCharacter);
                             self.skip();
                         }
                     }
                 },
 
                 '\n' => {
-                    self.queue_error("unterminated string literal");
+                    self.queue_error(UnterminatedString);
                     break;
                 }
 
@@ -467,7 +496,8 @@ impl Lexer<'_> {
             "and" => self.token(And),
             "class" => self.token(Class),
             "else" => self.token(Else),
-            "false" => self.token(False),
+            "false" => self.token(Boolean(false)),
+            "true" => self.token(Boolean(true)),
             "fun" => self.token(Fun),
             "for" => self.token(For),
             "if" => self.token(If),
@@ -477,7 +507,6 @@ impl Lexer<'_> {
             "return" => self.token(Return),
             "super" => self.token(Super),
             "this" => self.token(This),
-            "true" => self.token(True),
             "var" => self.token(Var),
             "while" => self.token(While),
             _ => self.token_with_buffer(Ident),
@@ -495,7 +524,7 @@ impl Lexer<'_> {
 
         let n = match self.buffer().parse::<f64>() {
             Ok(n) => n,
-            Err(e) => return self.error(format!("invalid number literal ({e})")),
+            Err(e) => return self.error(LexerErrorKind::InvalidNumber { source: e }),
         };
 
         self.token(TokenType::Number(n))
@@ -591,7 +620,9 @@ impl Lexer<'_> {
 
                 _ => {
                     self.advance_unrecognized();
-                    self.error(format!("unrecognized token `{}`", self.buffer()))
+                    self.error(LexerErrorKind::UnrecognizedToken {
+                        token: self.buffer().into(),
+                    })
                 }
             };
         }
