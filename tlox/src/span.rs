@@ -11,8 +11,9 @@
 use std::cmp::Ordering;
 use std::fmt::{self, Display, Formatter};
 use std::iter::FusedIterator;
-use std::ops::Range;
+use std::ops::{Range, Sub};
 use std::path::PathBuf;
+use std::str::Chars;
 
 #[cfg(test)]
 mod test;
@@ -213,6 +214,16 @@ impl SourceMap {
         self.content.get(span.range())
     }
 
+    /// Get a cursor over the entire source map.
+    pub fn cursor(&self) -> Cursor {
+        Cursor {
+            map: self,
+            offset: 0,
+            char_offset: 0,
+            range: 0..self.content.len(),
+        }
+    }
+
     /// Non-panicking version of [`SourceMap::source`].
     pub fn source_checked(&self, index: usize) -> Option<Source> {
         let (_, range) = self.source_info(index)?;
@@ -383,6 +394,17 @@ impl<'smap> Source<'smap> {
         self.content
     }
 
+    /// Get a cursor over this source.
+    pub fn cursor(&self) -> Cursor<'smap> {
+        let span = self.span();
+        Cursor {
+            map: self.map,
+            offset: span.byte_offset,
+            char_offset: 0,
+            range: span.range(),
+        }
+    }
+
     /// Get the number of lines in this source.
     pub fn num_lines(&self) -> usize {
         self.lines.len()
@@ -498,6 +520,17 @@ impl<'smap> Line<'smap> {
         self.content
     }
 
+    /// Get a cursor over this line.
+    pub fn cursor(&self) -> Cursor<'smap> {
+        let span = self.span();
+        Cursor {
+            map: self.source.map,
+            offset: span.byte_offset,
+            char_offset: 0,
+            range: span.range(),
+        }
+    }
+
     /// Get the [`Span`] covering this line's content.
     pub fn span(&self) -> Span {
         self.source.lines[self.index_in_source]
@@ -533,4 +566,100 @@ pub struct Location {
 
     /// The character index within the line.
     pub column: usize,
+}
+
+/// An advancable cursor over the characters of some range of a source map.
+#[derive(Debug, Clone)]
+pub struct Cursor<'smap> {
+    map: &'smap SourceMap,
+    offset: usize,
+    char_offset: usize,
+    range: Range<usize>,
+}
+
+impl<'smap> Cursor<'smap> {
+    /// Advance the cursor one character.
+    ///
+    /// Returns the advanced-over character, or `None` if the cursor is at the end of its range.
+    pub fn advance(&mut self) -> Option<char> {
+        let c = self.chars_from_current().next()?;
+        self.offset += c.len_utf8();
+        self.char_offset += 1;
+        Some(c)
+    }
+
+    /// Get the next character at the cursor, without advancing the cursor.
+    ///
+    /// Returns `None` if the cursor is at the end of its range.
+    pub fn peek(&self) -> Option<char> {
+        self.chars_from_current().next()
+    }
+
+    /// Get a [`Chars`] iterator from the current cursor offset to the end of its range.
+    pub fn chars_from_current(&self) -> Chars<'smap> {
+        self.remaining().chars()
+    }
+
+    /// Get the current global byte offset of the cursor within the source map.
+    pub fn byte_offset(&self) -> usize {
+        self.offset
+    }
+
+    /// Get the current character offset of the cursor within its range.
+    pub fn char_offset(&self) -> usize {
+        self.char_offset
+    }
+
+    /// Create a span starting from the given cursor and ending at this one.
+    pub fn span_from(&self, other: &Self) -> Option<Span> {
+        if other.offset <= self.offset {
+            Some(Span {
+                byte_offset: other.offset,
+                len: self.offset - other.offset,
+            })
+        } else {
+            None
+        }
+    }
+
+    /// Get the [`Source`] containing the current cursor location.
+    pub fn source(&self) -> Source<'smap> {
+        self.map.source(self.source_index())
+    }
+
+    /// Get the [`Line`] containing the current cursor location.
+    pub fn line(&self) -> Line<'smap> {
+        self.map.global_line(self.global_line_index())
+    }
+
+    /// Get the string slice from the current cursor location to the end of its range.
+    pub fn remaining(&self) -> &'smap str {
+        &self.map.content[self.offset..self.range.end]
+    }
+
+    pub fn location(&self) -> Location {
+        self.map.location_of_offset(self.offset).unwrap()
+    }
+}
+
+impl<'smap> Cursor<'smap> {
+    fn global_line_index(&self) -> usize {
+        self.map
+            .index_of_global_line_containing_offset(self.offset)
+            .unwrap()
+    }
+
+    fn source_index(&self) -> usize {
+        self.map
+            .index_of_source_containing_global_line(self.global_line_index())
+            .unwrap()
+    }
+}
+
+impl<'smap> Sub for &Cursor<'smap> {
+    type Output = Span;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        self.span_from(rhs).unwrap()
+    }
 }

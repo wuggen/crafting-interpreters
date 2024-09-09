@@ -166,6 +166,81 @@ fn line_iterators() {
     );
 }
 
+#[test]
+fn line_cursors() {
+    let mut map = SourceMap::new();
+    map.add_source(0, "hey\nthere");
+    map.add_source(1, "lol\nlmao\neven");
+
+    let mut cursor = map.global_line(0).cursor();
+    assert_eq!(cursor.remaining(), "hey\n");
+    assert_eq!(cursor.line().global_index(), 0);
+    assert_eq!(cursor.source().index(), 0);
+    assert_eq!(cursor.advance(), Some('h'));
+    assert_eq!(cursor.peek(), Some('e'));
+    assert_eq!(cursor.remaining(), "ey\n");
+    assert_eq!(cursor.byte_offset(), 1);
+    assert_eq!(cursor.char_offset(), 1);
+    assert_eq!(cursor.advance(), Some('e'));
+    assert_eq!(cursor.advance(), Some('y'));
+    assert_eq!(cursor.advance(), Some('\n'));
+    assert!(cursor.advance().is_none());
+
+    let mut cursor = map.global_line(2).cursor();
+    assert_eq!(cursor.remaining(), "lol\n");
+    assert_eq!(cursor.line().global_index(), 2);
+    assert_eq!(cursor.source().index(), 1);
+    assert_eq!(cursor.byte_offset(), 10);
+    assert_eq!(cursor.char_offset(), 0);
+    assert_eq!(cursor.advance(), Some('l'));
+    assert_eq!(cursor.peek(), Some('o'));
+}
+
+#[test]
+fn source_cursors() {
+    let mut map = SourceMap::new();
+    map.add_source(0, "line 0\nline 1");
+    map.add_source(1, "line 2\nline 3");
+
+    let mut cursor = map.source(0).cursor();
+    assert_eq!(cursor.remaining(), "line 0\nline 1\n");
+    assert_eq!(cursor.line().global_index(), 0);
+    assert_eq!(cursor.source().index(), 0);
+    for _ in 0..7 {
+        cursor.advance();
+    }
+    assert_eq!(cursor.remaining(), "line 1\n");
+    assert_eq!(cursor.line().global_index(), 1);
+    assert_eq!(cursor.source().index(), 0);
+    assert_eq!(
+        cursor.location(),
+        Location {
+            source: 0,
+            line: 1,
+            column: 0,
+        },
+    );
+
+    let mut cursor = map.source(1).cursor();
+    assert_eq!(cursor.remaining(), "line 2\nline 3\n");
+    assert_eq!(cursor.line().global_index(), 2);
+    assert_eq!(cursor.source().index(), 1);
+    assert_eq!(
+        cursor.location(),
+        Location {
+            source: 1,
+            line: 0,
+            column: 0,
+        },
+    );
+    for _ in 0..7 {
+        cursor.advance();
+    }
+    assert_eq!(cursor.remaining(), "line 3\n");
+    assert_eq!(cursor.line().global_index(), 3);
+    assert_eq!(cursor.source().index(), 1);
+}
+
 impl SourceMap {
     fn assert_lines_contiguous(&self) {
         for (i, pair) in self.lines.windows(2).enumerate() {
