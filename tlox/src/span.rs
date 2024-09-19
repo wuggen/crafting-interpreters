@@ -374,6 +374,10 @@ pub struct Source<'smap> {
 }
 
 impl<'smap> Source<'smap> {
+    pub fn map(&self) -> &'smap SourceMap {
+        self.map
+    }
+
     /// Get the name of this source.
     pub fn name(&self) -> &'smap SourceName {
         &self.map.sources[self.index].0
@@ -503,6 +507,10 @@ pub struct Line<'smap> {
 }
 
 impl<'smap> Line<'smap> {
+    pub fn map(&self) -> &'smap SourceMap {
+        self.source.map
+    }
+
     /// Get the [`Source`] in which this line appears.
     pub fn source(&self) -> Source<'smap> {
         self.source
