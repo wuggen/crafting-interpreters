@@ -2,6 +2,8 @@
 
 use crate::span::{SourceMap, Span};
 
+mod render;
+
 pub trait Diagnostic {
     fn into_diag(self) -> Diag;
 }
