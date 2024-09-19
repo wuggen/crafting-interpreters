@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use structopt::StructOpt;
 
+pub mod diag;
 pub mod span;
 pub mod tok;
 
