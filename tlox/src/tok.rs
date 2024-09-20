@@ -10,6 +10,8 @@
 //! Maybe one day I'll upgrade that to actual spans, and maybe even intern identifier names and
 //! string values.
 
+#![allow(missing_docs)]
+
 use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
 use std::iter::Peekable;
@@ -30,7 +32,6 @@ impl Display for Location {
         write!(f, "{}:{}", self.line + 1, self.column + 1)
     }
 }
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
     LeftParen,

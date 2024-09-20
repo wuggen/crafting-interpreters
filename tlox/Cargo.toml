@@ -4,5 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+codespan-reporting = { version = "0.11.1", features = ["ascii-only"] }
 structopt = "0.3.26"
 thiserror = "1.0.63"
+
+[dev-dependencies]
+indoc = "2.0.5"
+insta = "1.40.0"

@@ -11,9 +11,11 @@
 use std::cmp::Ordering;
 use std::fmt::{self, Display, Formatter};
 use std::iter::FusedIterator;
-use std::ops::{Range, Sub};
+use std::ops::{Bound, Range, RangeBounds, Sub};
 use std::path::PathBuf;
 use std::str::Chars;
+
+use codespan_reporting::files::{self, Files};
 
 #[cfg(test)]
 mod test;
@@ -56,10 +58,51 @@ impl Span {
     pub fn range(&self) -> Range<usize> {
         self.start()..self.end()
     }
+
+    /// Get the range over which `other` is a subspan of `self`.
+    ///
+    /// Returns `None` if `self` is not wholly contained within `other`.
+    pub fn range_within(&self, other: Span) -> Option<Range<usize>> {
+        if other.start() > self.start() || other.end() < self.end() {
+            None
+        } else {
+            Some(self.start() - other.start()..self.end() - other.start())
+        }
+    }
+
+    /// Get the subspan of `self` covering the given span-relative range.
+    pub fn subspan<I: RangeBounds<usize>>(&self, range: I) -> Option<Span> {
+        let start = match range.start_bound() {
+            Bound::Included(&i) => i,
+            Bound::Excluded(&i) => i + 1,
+            Bound::Unbounded => 0,
+        };
+
+        if start >= self.len {
+            return None;
+        }
+
+        let end = match range.end_bound() {
+            Bound::Included(&j) => j + 1,
+            Bound::Excluded(&j) => j,
+            Bound::Unbounded => self.len,
+        };
+
+        let len = end - start;
+        if len > self.end() - start {
+            return None;
+        }
+
+        Some(Span {
+            byte_offset: self.byte_offset + start,
+            len,
+        })
+    }
 }
 
 /// An item with an associated span.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[allow(missing_docs)]
 pub struct Spanned<T> {
     pub node: T,
     pub span: Span,
@@ -92,6 +135,7 @@ pub struct SourceMap {
 ///
 /// A source is either a file with a file system path, or a REPL input with a zero-based index.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[allow(missing_docs)]
 pub enum SourceName {
     File(PathBuf),
     ReplInput(usize),
@@ -210,8 +254,25 @@ impl SourceMap {
     /// map, or if either endpoint of the span splits a multi-byte UTF-8 character. Spans obtained
     /// from methods on this source map, or from [`Source`]s or [`Line`]s of this source map, are
     /// guaranteed to be valid.
-    pub fn span(&self, span: Span) -> Option<&str> {
+    pub fn span_content(&self, span: Span) -> Option<&str> {
         self.content.get(span.range())
+    }
+
+    /// Gets the [`Source`] containing this span.
+    ///
+    /// Returns `None` if the span is not wholly contained within a single source.
+    pub fn span_source(&self, span: Span) -> Option<Source> {
+        let start_line_idx = self.index_of_global_line_containing_offset(span.start())?;
+        let end_line_idx = self.index_of_global_line_containing_offset(span.end() - 1)?;
+
+        let start_line = self.global_line(start_line_idx);
+        let end_line = self.global_line(end_line_idx);
+
+        if start_line.source().index() != end_line.source().index() {
+            None
+        } else {
+            Some(start_line.source())
+        }
     }
 
     /// Get a cursor over the entire source map.
@@ -329,13 +390,13 @@ impl SourceMap {
 ///
 /// Created via [`SourceMap::sources`]; see that method's documentation for more details.
 #[derive(Debug, Clone)]
-pub struct Sources<'smap> {
-    map: &'smap SourceMap,
+pub struct Sources<'sm> {
+    map: &'sm SourceMap,
     range: Range<usize>,
 }
 
-impl<'smap> Iterator for Sources<'smap> {
-    type Item = Source<'smap>;
+impl<'sm> Iterator for Sources<'sm> {
+    type Item = Source<'sm>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let n = self.range.next()?;
@@ -363,23 +424,24 @@ impl FusedIterator for Sources<'_> {}
 /// A source is either a source file or an input on the REPL.
 ///
 /// Methods on [`Source`] that return borrowed data are bound by the lifetime of the owning
-/// [`SourceMap`] (`'smap`), not the lifetime of the [`Source`].
+/// [`SourceMap`] (`'sm`), not the lifetime of the [`Source`].
 #[derive(Debug, Clone, Copy)]
-pub struct Source<'smap> {
-    map: &'smap SourceMap,
+pub struct Source<'sm> {
+    map: &'sm SourceMap,
     index: usize,
-    lines: &'smap [Span],
+    lines: &'sm [Span],
     first_line_index: usize,
-    content: &'smap str,
+    content: &'sm str,
 }
 
-impl<'smap> Source<'smap> {
-    pub fn map(&self) -> &'smap SourceMap {
+impl<'sm> Source<'sm> {
+    /// Get the source map to which this source belongs.
+    pub fn map(&self) -> &'sm SourceMap {
         self.map
     }
 
     /// Get the name of this source.
-    pub fn name(&self) -> &'smap SourceName {
+    pub fn name(&self) -> &'sm SourceName {
         &self.map.sources[self.index].0
     }
 
@@ -389,17 +451,17 @@ impl<'smap> Source<'smap> {
     }
 
     /// Get the slice of [`Span`]s corresponding to each line of this source.
-    pub fn line_spans(&self) -> &'smap [Span] {
+    pub fn line_spans(&self) -> &'sm [Span] {
         self.lines
     }
 
     /// Get the entire contents of this source.
-    pub fn content(&self) -> &'smap str {
+    pub fn content(&self) -> &'sm str {
         self.content
     }
 
     /// Get a cursor over this source.
-    pub fn cursor(&self) -> Cursor<'smap> {
+    pub fn cursor(&self) -> Cursor<'sm> {
         let span = self.span();
         Cursor {
             map: self.map,
@@ -415,7 +477,7 @@ impl<'smap> Source<'smap> {
     }
 
     /// An iterator over the [`Line`]s of this source.
-    pub fn lines(&self) -> SourceLines<'smap> {
+    pub fn lines(&self) -> SourceLines<'sm> {
         SourceLines {
             map: self.map,
             range: self.global_line_range(),
@@ -436,8 +498,11 @@ impl<'smap> Source<'smap> {
     }
 
     /// Non-panicking version of [`Source::line`].
-    pub fn line_checked(&self, n: usize) -> Option<Line<'smap>> {
-        let content = self.lines.get(n).and_then(|span| self.map.span(*span))?;
+    pub fn line_checked(&self, n: usize) -> Option<Line<'sm>> {
+        let content = self
+            .lines
+            .get(n)
+            .and_then(|span| self.map.span_content(*span))?;
         Some(Line {
             source: *self,
             index_in_source: n,
@@ -451,12 +516,25 @@ impl<'smap> Source<'smap> {
     ///
     /// This will panic if `n` is an invalid index into the lines of this source (i.e. if `n >=
     /// self.num_lines()`).
-    pub fn line(&self, n: usize) -> Line<'smap> {
+    pub fn line(&self, n: usize) -> Line<'sm> {
         self.line_checked(n).expect("invalid line index")
+    }
+
+    /// Get the span covering the given range of bytes within this source.
+    ///
+    /// Returns `None` if the given range is outside the bounds of this source, or if it would
+    /// split a multibyte character.
+    pub fn span_within<I: RangeBounds<usize>>(&self, range: I) -> Option<Span> {
+        let span = self.span().subspan(range)?;
+        if self.map.span_content(span).is_some() {
+            Some(span)
+        } else {
+            None
+        }
     }
 }
 
-impl<'smap> AsRef<str> for Source<'smap> {
+impl<'sm> AsRef<str> for Source<'sm> {
     fn as_ref(&self) -> &str {
         self.content
     }
@@ -466,13 +544,13 @@ impl<'smap> AsRef<str> for Source<'smap> {
 ///
 /// Created via the [`Source::lines`] and [`SourceMap::global_lines`].
 #[derive(Debug, Clone)]
-pub struct SourceLines<'smap> {
-    map: &'smap SourceMap,
+pub struct SourceLines<'sm> {
+    map: &'sm SourceMap,
     range: Range<usize>,
 }
 
-impl<'smap> Iterator for SourceLines<'smap> {
-    type Item = Line<'smap>;
+impl<'sm> Iterator for SourceLines<'sm> {
+    type Item = Line<'sm>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let n = self.range.next()?;
@@ -484,35 +562,36 @@ impl<'smap> Iterator for SourceLines<'smap> {
     }
 }
 
-impl<'smap> DoubleEndedIterator for SourceLines<'smap> {
+impl<'sm> DoubleEndedIterator for SourceLines<'sm> {
     fn next_back(&mut self) -> Option<Self::Item> {
         let n = self.range.next_back()?;
         Some(self.map.global_line(n))
     }
 }
 
-impl<'smap> ExactSizeIterator for SourceLines<'smap> {}
+impl<'sm> ExactSizeIterator for SourceLines<'sm> {}
 
-impl<'smap> FusedIterator for SourceLines<'smap> {}
+impl<'sm> FusedIterator for SourceLines<'sm> {}
 
 /// A line of a particular [`Source`].
 ///
 /// Methods on [`Line`] that return borrowed data are bound by the lifetime of the owning
-/// [`SourceMap`] (`'smap`), not the lifetime of the [`Line`].
+/// [`SourceMap`] (`'sm`), not the lifetime of the [`Line`].
 #[derive(Debug, Clone, Copy)]
-pub struct Line<'smap> {
-    source: Source<'smap>,
+pub struct Line<'sm> {
+    source: Source<'sm>,
     index_in_source: usize,
-    content: &'smap str,
+    content: &'sm str,
 }
 
-impl<'smap> Line<'smap> {
-    pub fn map(&self) -> &'smap SourceMap {
+impl<'sm> Line<'sm> {
+    /// Get the source map to which this line belongs.
+    pub fn map(&self) -> &'sm SourceMap {
         self.source.map
     }
 
     /// Get the [`Source`] in which this line appears.
-    pub fn source(&self) -> Source<'smap> {
+    pub fn source(&self) -> Source<'sm> {
         self.source
     }
 
@@ -524,12 +603,12 @@ impl<'smap> Line<'smap> {
     /// Get the full contents of this line.
     ///
     /// Note that lines are always terminated by `'\n'` characters.
-    pub fn content(&self) -> &'smap str {
+    pub fn content(&self) -> &'sm str {
         self.content
     }
 
     /// Get a cursor over this line.
-    pub fn cursor(&self) -> Cursor<'smap> {
+    pub fn cursor(&self) -> Cursor<'sm> {
         let span = self.span();
         Cursor {
             map: self.source.map,
@@ -557,6 +636,19 @@ impl<'smap> Line<'smap> {
     pub fn column(&self, n: usize) -> Option<char> {
         self.content.chars().nth(n)
     }
+
+    /// Get the span covering the given range of bytes within this line.
+    ///
+    /// Returns `None` if the range is outside the bounds of this line, or if it would split a
+    /// multi-byte character.
+    pub fn span_within<I: RangeBounds<usize>>(&self, range: I) -> Option<Span> {
+        let span = self.span().subspan(range)?;
+        if self.map().span_content(span).is_some() {
+            Some(span)
+        } else {
+            None
+        }
+    }
 }
 
 /// A source code location.
@@ -578,14 +670,14 @@ pub struct Location {
 
 /// An advancable cursor over the characters of some range of a source map.
 #[derive(Debug, Clone)]
-pub struct Cursor<'smap> {
-    map: &'smap SourceMap,
+pub struct Cursor<'sm> {
+    map: &'sm SourceMap,
     offset: usize,
     char_offset: usize,
     range: Range<usize>,
 }
 
-impl<'smap> Cursor<'smap> {
+impl<'sm> Cursor<'sm> {
     /// Advance the cursor one character.
     ///
     /// Returns the advanced-over character, or `None` if the cursor is at the end of its range.
@@ -604,7 +696,7 @@ impl<'smap> Cursor<'smap> {
     }
 
     /// Get a [`Chars`] iterator from the current cursor offset to the end of its range.
-    pub fn chars_from_current(&self) -> Chars<'smap> {
+    pub fn chars_from_current(&self) -> Chars<'sm> {
         self.remaining().chars()
     }
 
@@ -631,26 +723,27 @@ impl<'smap> Cursor<'smap> {
     }
 
     /// Get the [`Source`] containing the current cursor location.
-    pub fn source(&self) -> Source<'smap> {
+    pub fn source(&self) -> Source<'sm> {
         self.map.source(self.source_index())
     }
 
     /// Get the [`Line`] containing the current cursor location.
-    pub fn line(&self) -> Line<'smap> {
+    pub fn line(&self) -> Line<'sm> {
         self.map.global_line(self.global_line_index())
     }
 
     /// Get the string slice from the current cursor location to the end of its range.
-    pub fn remaining(&self) -> &'smap str {
+    pub fn remaining(&self) -> &'sm str {
         &self.map.content[self.offset..self.range.end]
     }
 
+    /// Get the current `Location` of the cursor.
     pub fn location(&self) -> Location {
         self.map.location_of_offset(self.offset).unwrap()
     }
 }
 
-impl<'smap> Cursor<'smap> {
+impl<'sm> Cursor<'sm> {
     fn global_line_index(&self) -> usize {
         self.map
             .index_of_global_line_containing_offset(self.offset)
@@ -664,10 +757,65 @@ impl<'smap> Cursor<'smap> {
     }
 }
 
-impl<'smap> Sub for &Cursor<'smap> {
+impl<'sm> Sub for &Cursor<'sm> {
     type Output = Span;
 
     fn sub(self, rhs: Self) -> Self::Output {
         self.span_from(rhs).unwrap()
+    }
+}
+
+impl<'sm> Files<'sm> for SourceMap {
+    type FileId = usize;
+
+    type Name = &'sm SourceName;
+
+    type Source = Source<'sm>;
+
+    fn name(&'sm self, id: Self::FileId) -> Result<Self::Name, files::Error> {
+        Files::source(self, id).map(|s| s.name())
+    }
+
+    fn source(&'sm self, id: Self::FileId) -> Result<Self::Source, files::Error> {
+        self.source_checked(id).ok_or(files::Error::FileMissing)
+    }
+
+    fn line_index(&'sm self, id: Self::FileId, byte_index: usize) -> Result<usize, files::Error> {
+        let source = Files::source(self, id)?;
+        let source_offset = source.span().byte_offset;
+        let global_line_idx = if let Some(idx) =
+            self.index_of_global_line_containing_offset(source_offset + byte_index)
+        {
+            idx
+        } else {
+            return Ok(source.num_lines() - 1);
+        };
+
+        let line = self.global_line(global_line_idx);
+        if line.source().index() != id {
+            Ok(source.num_lines() - 1)
+        } else {
+            Ok(line.index_in_source())
+        }
+    }
+
+    fn line_range(
+        &'sm self,
+        id: Self::FileId,
+        line_index: usize,
+    ) -> Result<Range<usize>, files::Error> {
+        Files::source(self, id)
+            .and_then(|s| {
+                s.line_checked(line_index)
+                    .ok_or_else(|| files::Error::LineTooLarge {
+                        given: line_index,
+                        max: s.num_lines() - 1,
+                    })
+            })
+            .map(|line| {
+                let mut span = line.span();
+                span.byte_offset -= line.source().span().byte_offset;
+                span.range()
+            })
     }
 }
