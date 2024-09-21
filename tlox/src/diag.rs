@@ -1,5 +1,7 @@
 //! Errors and diagnostics.
 
+use std::sync::Mutex;
+
 use crate::span::{SourceMap, Span};
 
 /// Warning and error types.
@@ -79,9 +81,9 @@ impl Diag {
 /// Diagnostic context.
 ///
 /// This is used throughout the interpreter to report errors and warnings.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub struct DiagContext {
-    pending: Vec<Diag>,
+    pending: Mutex<Vec<Diag>>,
 }
 
 impl DiagContext {
@@ -91,12 +93,16 @@ impl DiagContext {
 
     /// Does the current context contain any errors?
     pub fn has_errors(&self) -> bool {
-        self.pending.iter().any(|d| d.kind == DiagKind::Error)
+        self.pending
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|d| d.kind == DiagKind::Error)
     }
 
     /// Add a diagnostic to the context.
-    pub fn emit<D: Diagnostic>(&mut self, diag: D) {
-        self.pending.push(diag.into_diag());
+    pub fn emit<D: Diagnostic>(&self, diag: D) {
+        self.pending.lock().unwrap().push(diag.into_diag());
     }
 }
 
@@ -107,6 +113,15 @@ pub mod render {
 
     use codespan_reporting::term::termcolor::{ColorChoice, WriteColor};
     use codespan_reporting::{diagnostic, term};
+
+    #[cfg(test)]
+    pub fn render_dcx(sm: SourceMap, dcx: DiagContext) -> String {
+        use codespan_reporting::term::termcolor::NoColor;
+
+        let mut buf = NoColor::new(Vec::<u8>::new());
+        dcx.report_to(&sm, &mut buf);
+        String::from_utf8(buf.into_inner()).unwrap()
+    }
 
     pub(crate) fn render_config() -> term::Config {
         term::Config {
@@ -167,15 +182,15 @@ pub mod render {
 
     impl DiagContext {
         /// Render all collected diagnostics to standard error.
-        pub fn report(&mut self, source_map: &SourceMap) {
+        pub fn report(&self, source_map: &SourceMap) {
             let writer = term::termcolor::StandardStream::stderr(ColorChoice::Auto);
             self.report_to(source_map, &mut writer.lock());
         }
 
-        pub fn report_to(&mut self, source_map: &SourceMap, writer: &mut dyn WriteColor) {
+        pub fn report_to(&self, source_map: &SourceMap, writer: &mut dyn WriteColor) {
             let config = render_config();
 
-            for diag in self.pending.drain(..) {
+            for diag in self.pending.lock().unwrap().drain(..) {
                 let report = diag.into_codespan_diagnostic(source_map);
                 term::emit(writer, &config, source_map, &report).unwrap();
             }

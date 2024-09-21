@@ -32,6 +32,7 @@ pub enum TokenKind {
     Semicolon,
     Slash,
     Star,
+    Percent,
     Bang,
     BangEqual,
     Equal,
@@ -74,6 +75,7 @@ impl Display for TokenKind {
             TokenKind::Semicolon => write!(f, ";"),
             TokenKind::Slash => write!(f, "/"),
             TokenKind::Star => write!(f, "*"),
+            TokenKind::Percent => write!(f, "%"),
             TokenKind::Bang => write!(f, "!"),
             TokenKind::BangEqual => write!(f, "!="),
             TokenKind::Equal => write!(f, "="),
@@ -106,21 +108,30 @@ impl Display for TokenKind {
 
 pub type Token = Spanned<TokenKind>;
 
+#[derive(Debug, Clone)]
 pub struct Lexer<'sm, 'dcx> {
     cursor: Cursor<'sm>,
     span_start: Cursor<'sm>,
-    dcx: &'dcx mut DiagContext,
+    dcx: &'dcx DiagContext,
     buffer: String,
 }
 
 impl<'sm, 'dcx> Lexer<'sm, 'dcx> {
-    pub fn new(source: Source<'sm>, dcx: &'dcx mut DiagContext) -> Self {
+    pub fn new(source: Source<'sm>, dcx: &'dcx DiagContext) -> Self {
         Self {
             cursor: source.cursor(),
             span_start: source.cursor(),
             dcx,
             buffer: String::new(),
         }
+    }
+
+    pub fn diag_context(&self) -> &'dcx DiagContext {
+        self.dcx
+    }
+
+    pub fn source(&self) -> Source<'sm> {
+        self.cursor.source()
     }
 }
 
@@ -171,7 +182,7 @@ impl Diagnostic for LexerError {
             LexerErrorKind::UnrecognizedEscapeCharacter { c } => (
                 "unrecognized escape sequence".into(),
                 "this escape sequence is invalid".into(),
-                vec![format!("sequence replaced with the character {c:?}")],
+                vec![format!("note: sequence replaced with the character {c:?}")],
             ),
 
             LexerErrorKind::InvalidNumber { source } => (
@@ -203,7 +214,7 @@ fn is_ident_continue(c: char) -> bool {
 }
 
 fn is_token_start(c: char) -> bool {
-    const NON_IDENT_STARTS: &str = "(){},.-+;/*!=<>\"";
+    const NON_IDENT_STARTS: &str = "(){},.-+;/*%!=<>\"";
     is_ident_start(c) || c.is_ascii_digit() || NON_IDENT_STARTS.contains(c)
 }
 
@@ -388,12 +399,12 @@ impl<'sm> Lexer<'sm, '_> {
     }
 
     /// Emit an error with the given kind, using the current span.
-    fn emit_error(&mut self, kind: LexerErrorKind) {
+    fn emit_error(&self, kind: LexerErrorKind) {
         self.emit_error_with_span(kind, self.span());
     }
 
     /// Emit an error with the given kind and the given span.
-    fn emit_error_with_span(&mut self, kind: LexerErrorKind, span: Span) {
+    fn emit_error_with_span(&self, kind: LexerErrorKind, span: Span) {
         self.dcx.emit(LexerError { kind, span });
     }
 
@@ -538,6 +549,7 @@ impl<'sm> Lexer<'sm, '_> {
                 '+' => self.token(Plus),
                 ';' => self.token(Semicolon),
                 '*' => self.token(Star),
+                '%' => self.token(Percent),
 
                 '/' => match self.peek() {
                     Some('/') => {

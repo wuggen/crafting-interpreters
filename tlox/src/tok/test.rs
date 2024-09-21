@@ -1,8 +1,8 @@
+use crate::diag::render::render_dcx;
 use crate::span::{Location, SourceMap};
 
 use super::*;
 
-use codespan_reporting::term::termcolor::NoColor;
 use indoc::indoc;
 
 use std::fmt::Debug;
@@ -95,12 +95,6 @@ where
     (sm, dcx)
 }
 
-fn render_dcx(sm: SourceMap, mut dcx: DiagContext) -> String {
-    let mut buf = NoColor::new(Vec::<u8>::new());
-    dcx.report_to(&sm, &mut buf);
-    String::from_utf8(buf.into_inner()).unwrap()
-}
-
 fn check_and_render<I, T>(source: &str, expected: I) -> String
 where
     I: IntoIterator<Item = T>,
@@ -150,7 +144,7 @@ fn keywords() {
 
 #[test]
 fn one_char_punctuation() {
-    let source = "(){},.-+;*";
+    let source = "(){},.-+;*%";
     let expected = [
         (LeftParen, 0..1),
         (RightParen, 1..2),
@@ -162,6 +156,7 @@ fn one_char_punctuation() {
         (Plus, 7..8),
         (Semicolon, 8..9),
         (Star, 9..10),
+        (Percent, 10..11),
     ];
     assert!(check_and_render(source, expected).is_empty());
 }
@@ -270,13 +265,13 @@ fn string_literal_including_comment() {
 
 #[test]
 fn unrecognized_token() {
-    let source = "%^&0 lol";
+    let source = "$^&0 lol";
     let expected = [num(0.0), ident("lol")];
     insta::assert_snapshot!(check_and_render(source, expected), @r#"
     error: unrecognized token
       --> %i0:1:1
       |
-    1 | %^&0 lol
+    1 | $^&0 lol
       | ^^^ this character sequence is not a valid token
 
     "#);
@@ -337,7 +332,7 @@ fn unrecognized_escape() {
     1 | "what \even \the \fuck"
       |       ^^ this escape sequence is invalid
       |
-      = sequence replaced with the character 'e'
+      = note: sequence replaced with the character 'e'
 
     error: unrecognized escape sequence
       --> %i0:1:18
@@ -345,7 +340,7 @@ fn unrecognized_escape() {
     1 | "what \even \the \fuck"
       |                  ^^ this escape sequence is invalid
       |
-      = sequence replaced with the character 'f'
+      = note: sequence replaced with the character 'f'
 
     "#);
 }

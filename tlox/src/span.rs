@@ -98,6 +98,16 @@ impl Span {
             len,
         })
     }
+
+    /// Join two spans into one.
+    ///
+    /// This returns the smallest span that covers both of the given spans.
+    pub fn join(self, other: Span) -> Span {
+        let byte_offset = self.start().min(other.start());
+        let end = self.end().max(other.end());
+        let len = end - byte_offset;
+        Span { byte_offset, len }
+    }
 }
 
 /// An item with an associated span.
@@ -106,6 +116,12 @@ impl Span {
 pub struct Spanned<T> {
     pub node: T,
     pub span: Span,
+}
+
+impl<T: Display> Display for Spanned<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{{{:?}}}", self.node, self.span.range())
+    }
 }
 
 /// Types to which a [`Span`] can be attached.
