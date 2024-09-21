@@ -48,6 +48,12 @@ impl DiagLabel {
     }
 }
 
+impl Diagnostic for Diag {
+    fn into_diag(self) -> Diag {
+        self
+    }
+}
+
 impl Diag {
     #[allow(missing_docs)]
     pub fn new(

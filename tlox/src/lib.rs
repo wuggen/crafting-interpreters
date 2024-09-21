@@ -4,6 +4,17 @@ use std::path::PathBuf;
 
 use structopt::StructOpt;
 
+macro_rules! debug_println {
+    (@ $($tt:tt)*) => { };
+
+    ($($tt:tt)*) => {
+        #[cfg(debug_assertions)]
+        {
+            eprintln!($($tt)*);
+        }
+    };
+}
+
 pub mod diag;
 pub mod parse;
 pub mod span;

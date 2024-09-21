@@ -43,6 +43,12 @@ impl<'sm, 'dcx> Parser<'sm, 'dcx> {
         }
     }
 
+    pub fn parse(mut self) -> Option<Spanned<Expr>> {
+        let res = self.expr();
+        debug_assert!(self.lexer.next().is_none(), "input was not exhausted");
+        res
+    }
+
     fn emit_error(
         &self,
         kind: ParserErrorKind,
@@ -84,7 +90,7 @@ impl<'sm, 'dcx> Parser<'sm, 'dcx> {
 
     fn advance(&mut self) -> Option<Token> {
         let res = self.peeked.take().unwrap_or_else(|| self.lexer.next());
-        //eprintln!("--> Advanced over {res:?}");
+        debug_println!("--> Advanced over {res:?}");
         res
     }
 
@@ -107,21 +113,52 @@ impl<'sm, 'dcx> Parser<'sm, 'dcx> {
         expected: &'static str,
         desc: impl Into<Option<&'static str>>,
     ) -> Option<Token> {
-        //eprintln!("--> Advancing, expecting {expected}");
+        debug_println!("--> Advancing, expecting {expected}");
         if let Some(tok) = self.advance() {
             if tok.node != expected_tok {
-                //eprintln!("!! Token did not match {expected}, emitting error and returning None");
+                debug_println!(
+                    "!! Token did not match {expected}, emitting error and returning None"
+                );
                 self.emit_unexpected(tok.span, Some(expected), desc);
                 None
             } else {
                 Some(tok)
             }
         } else {
-            //eprintln!(
-            //    "!! No further tokens, expecting {expected}, emitting error and returning None"
-            //);
+            debug_println!(
+                "!! No further tokens, expecting {expected}, emitting error and returning None"
+            );
             self.emit_eof(Some(expected), desc);
             None
+        }
+    }
+
+    fn advance_until(&mut self, test: impl Fn(&TokenKind) -> bool) -> Vec<Token> {
+        let mut res = vec![];
+        while let Some(tok) = self.advance_if(&test) {
+            res.push(tok);
+        }
+        res
+    }
+
+    fn recovery_advance_to_sync(
+        &mut self,
+        test: impl Fn(&TokenKind) -> bool,
+        message: impl Into<String>,
+        label: impl FnOnce(&[Token]) -> Option<String>,
+        notes: impl FnOnce(&[Token]) -> Vec<String>,
+    ) {
+        let toks = self.advance_until(test);
+        if !toks.is_empty() {
+            let span = toks.first().unwrap().span.join(toks.last().unwrap().span);
+            let message = message.into();
+            let label = label(&toks).unwrap_or("".into());
+            let notes = notes(&toks);
+            let diag = notes.into_iter().fold(
+                Diag::new(DiagKind::Warning, message, span, label),
+                Diag::with_note,
+            );
+            self.lexer.diag_context().emit(diag);
         }
     }
 
@@ -130,26 +167,26 @@ impl<'sm, 'dcx> Parser<'sm, 'dcx> {
         opnd: impl Fn(&mut Self) -> Option<Spanned<Expr>>,
         op: impl Fn(&TokenKind) -> Option<BinopSym>,
     ) -> Option<Spanned<Expr>> {
-        //eprintln!("== Initial recurse on operand");
+        debug_println!("== Initial recurse on operand");
         let mut res = opnd(self)?;
-        //eprintln!("== Initial operand {res}");
+        debug_println!("== Initial operand {res}");
 
         while let Some(tok) = self.peek() {
             if let Some(sym) = op(&tok.node) {
                 let sym = sym.spanned(tok.span);
                 self.advance();
-                //eprintln!("== Recurse on operand");
+                debug_println!("== Recurse on operand");
                 if let Some(rhs) = opnd(self) {
-                    //eprintln!("== Operand {rhs}");
+                    debug_println!("== Operand {rhs}");
                     let span = res.span.join(rhs.span);
                     res = Expr::binop(sym, res, rhs).spanned(span);
-                    //eprintln!("== Current chain: {res}");
+                    debug_println!("== Current chain: {res}");
                 } else {
-                    //eprintln!("!! RHS missing, should have emitted error");
+                    debug_println!("!! RHS missing, should have emitted error");
                     break;
                 }
             } else {
-                //eprintln!("== No further binops");
+                debug_println!("== No further binops");
                 break;
             }
         }
@@ -158,12 +195,12 @@ impl<'sm, 'dcx> Parser<'sm, 'dcx> {
     }
 
     fn expr(&mut self) -> Option<Spanned<Expr>> {
-        //eprintln!("= Parsing expression");
+        debug_println!("= Parsing expression");
         self.equal()
     }
 
     fn equal(&mut self) -> Option<Spanned<Expr>> {
-        //eprintln!("= Parsing equality chain");
+        debug_println!("= Parsing equality chain");
         self.binop_chain_left(Self::comp, |tok| match tok {
             TokenKind::EqualEqual => Some(BinopSym::Eq),
             TokenKind::BangEqual => Some(BinopSym::Ne),
@@ -172,7 +209,7 @@ impl<'sm, 'dcx> Parser<'sm, 'dcx> {
     }
 
     fn comp(&mut self) -> Option<Spanned<Expr>> {
-        //eprintln!("= Parsing comparison chain");
+        debug_println!("= Parsing comparison chain");
         self.binop_chain_left(Self::term, |tok| match tok {
             TokenKind::Less => Some(BinopSym::Lt),
             TokenKind::LessEqual => Some(BinopSym::Le),
@@ -183,7 +220,7 @@ impl<'sm, 'dcx> Parser<'sm, 'dcx> {
     }
 
     fn term(&mut self) -> Option<Spanned<Expr>> {
-        //eprintln!("= Parsing term chain");
+        debug_println!("= Parsing term chain");
         self.binop_chain_left(Self::factor, |tok| match tok {
             TokenKind::Plus => Some(BinopSym::Add),
             TokenKind::Minus => Some(BinopSym::Sub),
@@ -192,7 +229,7 @@ impl<'sm, 'dcx> Parser<'sm, 'dcx> {
     }
 
     fn factor(&mut self) -> Option<Spanned<Expr>> {
-        //eprintln!("= Parsing factor chain");
+        debug_println!("= Parsing factor chain");
         self.binop_chain_left(Self::unary, |tok| match tok {
             TokenKind::Star => Some(BinopSym::Mul),
             TokenKind::Slash => Some(BinopSym::Div),
@@ -202,28 +239,28 @@ impl<'sm, 'dcx> Parser<'sm, 'dcx> {
     }
 
     fn unary(&mut self) -> Option<Spanned<Expr>> {
-        //eprintln!("= Parsing unary expression");
+        debug_println!("= Parsing unary expression");
         let tok = self.peek()?;
         let sym = match tok.node {
             TokenKind::Bang => UnopSym::Not,
             TokenKind::Minus => UnopSym::Neg,
             _ => {
-                //eprintln!("== No unary operator, continuing down");
+                debug_println!("== No unary operator, continuing down");
                 return self.atom();
             }
         }
         .spanned(tok.span);
         self.advance();
 
-        //eprintln!("== Recursing on unary operand");
+        debug_println!("== Recursing on unary operand");
         let opnd = self.unary()?;
-        //eprintln!("== Unary operand {opnd}");
+        debug_println!("== Unary operand {opnd}");
         let span = sym.span.join(opnd.span);
         Some(Expr::unop(sym, opnd).spanned(span))
     }
 
     fn atom(&mut self) -> Option<Spanned<Expr>> {
-        //eprintln!("= Parsing atom");
+        debug_println!("= Parsing atom");
         const EXPECTED: [&'static str; 7] = [
             "`true`",
             "`false`",
@@ -242,24 +279,29 @@ impl<'sm, 'dcx> Parser<'sm, 'dcx> {
                 TokenKind::StringLiteral(s) => Expr::literal(Lit::Str(s)),
                 TokenKind::Ident(_id) => todo!(),
                 TokenKind::LeftParen => {
-                    //eprintln!("== Parenthesized expr, recursing from top");
+                    debug_println!("== Parenthesized expr, recursing from top");
                     let res = self.expr();
+
                     if let Some(res) = res.as_ref() {
-                        //eprintln!("== Parenthesized expr {res}");
+                        debug_println!("== Parenthesized expr {res}");
                     } else {
-                        //eprintln!("!! Parenthesized expression returned None; should have emitted error, looking for closing paren and continuing");
+                        debug_println!("!! Parenthesized expression returned None; should have emitted error, looking for closing paren and continuing");
                     }
-                    let close =
-                        if let Some(close) = self.advance_match(TokenKind::RightParen, ")", None) {
-                            close
-                        } else {
-                            //eprintln!("!! No closing paren, returning None");
-                            return None;
-                        };
+
+                    let close = if let Some(close) =
+                        self.advance_match(TokenKind::RightParen, "`)`", None)
+                    {
+                        close
+                    } else {
+                        debug_println!("!! No closing paren, returning None");
+                        return None;
+                    };
                     return res.map(|e| e.node.spanned(tok.span.join(close.span)));
                 }
                 _ => {
-                    //eprintln!("!! No valid atom starting token, emitting error and returning None");
+                    debug_println!(
+                        "!! No valid atom starting token, emitting error and returning None"
+                    );
                     self.emit_error(
                         ParserErrorKind::Unexpected,
                         tok.span,
@@ -272,7 +314,7 @@ impl<'sm, 'dcx> Parser<'sm, 'dcx> {
 
             Some(expr.spanned(tok.span))
         } else {
-            //eprintln!("!! EOF before atom token, emitting error and returning None");
+            debug_println!("!! EOF before atom token, emitting error and returning None");
             self.emit_eof(EXPECTED, "an expression");
             None
         }
@@ -303,13 +345,13 @@ impl Diagnostic for ParserError {
         let label = if self.expected.is_empty() {
             String::new()
         } else if self.expected.len() == 1 {
-            format!("expected `{}` here", self.expected[0])
+            format!("expected {} here", self.expected[0])
         } else {
             let mut s = String::from("expected ");
             for tok in &self.expected[..self.expected.len() - 1] {
-                write!(&mut s, "`{tok}`, ").unwrap();
+                write!(&mut s, "{tok}, ").unwrap();
             }
-            write!(&mut s, "or `{}` here", self.expected.last().unwrap()).unwrap();
+            write!(&mut s, "or {} here", self.expected.last().unwrap()).unwrap();
 
             s
         };
@@ -342,6 +384,11 @@ mod test {
         let lexer = Lexer::new(sm.source(0), &dcx);
         let mut parser = Parser::new(lexer);
         let res = parser.expr();
+        if let Some(res) = res.as_ref() {
+            debug_println!("PARSED: {res}\n");
+        } else {
+            debug_println!("PARSED: None\n");
+        }
 
         (sm, dcx, res)
     }
@@ -385,5 +432,40 @@ mod test {
         "#});
         assert_snapshot!(res.unwrap().node, @r#"(+ (% (>= (- (+ true "false") (/ nil nil)) (* 0 "hey")) "what") 0)"#);
         assert!(render_dcx(sm, dcx).is_empty());
+    }
+
+    #[test]
+    fn err_missing_lhs() {
+        let (sm, dcx, res) = parse_source("+ 4");
+        assert!(res.is_none());
+        assert_snapshot!(render_dcx(sm, dcx), @r#"
+        error: unexpected token
+          --> %i0:1:1
+          |
+        1 | + 4
+          | ^ expected `true`, `false`, `nil`, `(`, number, string, or identifier here
+          |
+          = note: expecting to parse an expression
+
+        "#);
+
+        let (sm, dcx, res) = parse_source("4 + (* nil) - 5");
+        assert_snapshot!(res.unwrap().node, @"4");
+        assert_snapshot!(render_dcx(sm, dcx), @r#"
+        error: unexpected token
+          --> %i0:1:6
+          |
+        1 | 4 + (* nil) - 5
+          |      ^ expected `true`, `false`, `nil`, `(`, number, string, or identifier here
+          |
+          = note: expecting to parse an expression
+
+        error: unexpected token
+          --> %i0:1:8
+          |
+        1 | 4 + (* nil) - 5
+          |        ^^^ expected `)` here
+
+        "#);
     }
 }
