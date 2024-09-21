@@ -1,7 +1,5 @@
 //! The Lox treewalking interpreter.
 
-#![warn(missing_docs)]
-
 use std::path::PathBuf;
 
 use structopt::StructOpt;

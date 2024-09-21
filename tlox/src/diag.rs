@@ -1,13 +1,17 @@
 //! Errors and diagnostics.
 
-#![allow(missing_docs)]
-
 use crate::span::{SourceMap, Span};
 
+/// Warning and error types.
 pub trait Diagnostic {
+    #[allow(missing_docs)]
     fn into_diag(self) -> Diag;
 }
 
+/// A diagnostic message.
+///
+/// Diagnostics contain a message, a primary span and label, optional secondary spans and labels,
+/// and optional notes.
 #[derive(Debug, Clone)]
 pub struct Diag {
     kind: DiagKind,
@@ -17,12 +21,15 @@ pub struct Diag {
     notes: Vec<String>,
 }
 
+/// Diagnostic kind; warning or error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(missing_docs)]
 pub enum DiagKind {
     Warning,
     Error,
 }
 
+/// A label on a [`Span`].
 #[derive(Debug, Clone)]
 pub struct DiagLabel {
     span: Span,
@@ -30,6 +37,7 @@ pub struct DiagLabel {
 }
 
 impl DiagLabel {
+    #[allow(missing_docs)]
     pub fn new(span: Span, label: impl Into<String>) -> Self {
         Self {
             span,
@@ -39,6 +47,7 @@ impl DiagLabel {
 }
 
 impl Diag {
+    #[allow(missing_docs)]
     pub fn new(
         kind: DiagKind,
         message: impl Into<String>,
@@ -54,33 +63,42 @@ impl Diag {
         }
     }
 
+    /// Builder method that adds a secondary label to the diagnostic.
     pub fn with_secondary(mut self, span: Span, label: impl Into<String>) -> Self {
         self.secondary.push(DiagLabel::new(span, label));
         self
     }
 
+    /// Builder method that adds a note to the diagnostic.
     pub fn with_note(mut self, note: impl Into<String>) -> Self {
         self.notes.push(note.into());
         self
     }
 }
 
+/// Diagnostic context.
+///
+/// This is used throughout the interpreter to report errors and warnings.
 #[derive(Debug, Clone)]
 pub struct DiagContext {
     pending: Vec<Diag>,
 }
 
 impl DiagContext {
+    /// Does the current context contain any errors?
     pub fn has_errors(&self) -> bool {
         self.pending.iter().any(|d| d.kind == DiagKind::Error)
     }
 
+    /// Add a diagnostic to the context.
     pub fn emit<D: Diagnostic>(&mut self, diag: D) {
         self.pending.push(diag.into_diag());
     }
 }
 
 pub mod render {
+    //! Diagnostic rendering.
+
     use super::*;
 
     use codespan_reporting::term::termcolor::ColorChoice;
@@ -144,6 +162,7 @@ pub mod render {
     }
 
     impl DiagContext {
+        /// Render all collected diagnostics to standard error.
         pub fn report(&mut self, source_map: &SourceMap) {
             let writer = term::termcolor::StandardStream::stderr(ColorChoice::Auto);
             let config = render_config();

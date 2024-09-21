@@ -10,8 +10,6 @@
 //! Maybe one day I'll upgrade that to actual spans, and maybe even intern identifier names and
 //! string values.
 
-#![allow(missing_docs)]
-
 use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
 use std::iter::Peekable;
