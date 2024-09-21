@@ -79,12 +79,16 @@ impl Diag {
 /// Diagnostic context.
 ///
 /// This is used throughout the interpreter to report errors and warnings.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DiagContext {
     pending: Vec<Diag>,
 }
 
 impl DiagContext {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     /// Does the current context contain any errors?
     pub fn has_errors(&self) -> bool {
         self.pending.iter().any(|d| d.kind == DiagKind::Error)
@@ -101,7 +105,7 @@ pub mod render {
 
     use super::*;
 
-    use codespan_reporting::term::termcolor::ColorChoice;
+    use codespan_reporting::term::termcolor::{ColorChoice, WriteColor};
     use codespan_reporting::{diagnostic, term};
 
     pub(crate) fn render_config() -> term::Config {
@@ -165,11 +169,15 @@ pub mod render {
         /// Render all collected diagnostics to standard error.
         pub fn report(&mut self, source_map: &SourceMap) {
             let writer = term::termcolor::StandardStream::stderr(ColorChoice::Auto);
+            self.report_to(source_map, &mut writer.lock());
+        }
+
+        pub fn report_to(&mut self, source_map: &SourceMap, writer: &mut dyn WriteColor) {
             let config = render_config();
 
             for diag in self.pending.drain(..) {
                 let report = diag.into_codespan_diagnostic(source_map);
-                term::emit(&mut writer.lock(), &config, source_map, &report).unwrap();
+                term::emit(writer, &config, source_map, &report).unwrap();
             }
         }
     }
@@ -182,10 +190,10 @@ mod test {
 
     use super::*;
 
-    fn render_diag<'a>(diag: Diag, map: &SourceMap) -> String {
+    fn render_diag(diag: Diag, map: &SourceMap) -> String {
         let mut writer = term::termcolor::NoColor::new(Vec::<u8>::new());
         let config = render::render_config();
-        let report = diag.into_codespan_diagnostic(&map);
+        let report = diag.into_codespan_diagnostic(map);
         term::emit(&mut writer, &config, map, &report).unwrap();
         String::from_utf8(writer.into_inner()).unwrap()
     }
@@ -297,7 +305,10 @@ mod test {
             "this one's reserved",
         )
         .with_secondary(map.source(0).line(3).span_within(7..9).unwrap(), "empty???")
-        .with_secondary(map.source(1).line(0).span_within(9..10).unwrap(), "wtf is this");
+        .with_secondary(
+            map.source(1).line(0).span_within(9..10).unwrap(),
+            "wtf is this",
+        );
 
         insta::assert_snapshot!(render_diag(diag, &map), @r#"
         warning: huh?

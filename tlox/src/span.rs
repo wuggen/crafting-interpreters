@@ -688,6 +688,23 @@ impl<'sm> Cursor<'sm> {
         Some(c)
     }
 
+    /// Retract the cursor one character.
+    ///
+    /// Returns the retracted character, or `None` if the cursor is at the beginning of its range.
+    pub fn retract(&mut self) -> Option<char> {
+        if self.offset == self.range.start {
+            None
+        } else {
+            while self.offset > self.range.start {
+                self.offset -= 1;
+                if self.map.content().is_char_boundary(self.offset) {
+                    break;
+                }
+            }
+            self.peek()
+        }
+    }
+
     /// Get the next character at the cursor, without advancing the cursor.
     ///
     /// Returns `None` if the cursor is at the end of its range.

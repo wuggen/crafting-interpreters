@@ -3,35 +3,24 @@
 //! [`Lexer`] is an iterator over a borrowed string, yielding `Result`s of [`Token`] and
 //! [`LexerError`].
 //!
-//! A [`Token`] consists of a [`TokenType`] (which includes content in the case of identifier,
+//! A [`Token`] consists of a [`TokenKind`] (which includes content in the case of identifier,
 //! string literal, and number tokens) and the [`Location`] (0-based line and column numbers) of
 //! the first character of its occurrence in the source.
 //!
 //! Maybe one day I'll upgrade that to actual spans, and maybe even intern identifier names and
 //! string values.
 
-use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
-use std::iter::Peekable;
 use std::num::ParseFloatError;
-use std::str::Chars;
+
+use crate::diag::{Diag, DiagContext, DiagKind, Diagnostic};
+use crate::span::{Cursor, Source, Span, Spannable, Spanned};
 
 #[cfg(test)]
 mod test;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Location {
-    pub line: usize,
-    pub column: usize,
-}
-
-impl Display for Location {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}:{}", self.line + 1, self.column + 1)
-    }
-}
 #[derive(Debug, Clone, PartialEq)]
-pub enum TokenType {
+pub enum TokenKind {
     LeftParen,
     RightParen,
     LeftBrace,
@@ -71,119 +60,138 @@ pub enum TokenType {
     While,
 }
 
-impl Display for TokenType {
+impl Display for TokenKind {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            TokenType::LeftParen => write!(f, "("),
-            TokenType::RightParen => write!(f, ")"),
-            TokenType::LeftBrace => write!(f, "{{"),
-            TokenType::RightBrace => write!(f, "}}"),
-            TokenType::Comma => write!(f, ","),
-            TokenType::Dot => write!(f, "."),
-            TokenType::Minus => write!(f, "-"),
-            TokenType::Plus => write!(f, "+"),
-            TokenType::Semicolon => write!(f, ";"),
-            TokenType::Slash => write!(f, "/"),
-            TokenType::Star => write!(f, "*"),
-            TokenType::Bang => write!(f, "!"),
-            TokenType::BangEqual => write!(f, "!="),
-            TokenType::Equal => write!(f, "="),
-            TokenType::EqualEqual => write!(f, "=="),
-            TokenType::Greater => write!(f, ">"),
-            TokenType::GreaterEqual => write!(f, ">="),
-            TokenType::Less => write!(f, "<"),
-            TokenType::LessEqual => write!(f, "<="),
-            TokenType::Ident(s) => write!(f, "{s}"),
-            TokenType::StringLiteral(s) => write!(f, "{s:?}"),
-            TokenType::Number(x) => write!(f, "{x}"),
-            TokenType::Boolean(b) => write!(f, "{b}"),
-            TokenType::And => write!(f, "and"),
-            TokenType::Class => write!(f, "class"),
-            TokenType::Else => write!(f, "else"),
-            TokenType::Fun => write!(f, "fun"),
-            TokenType::For => write!(f, "for"),
-            TokenType::If => write!(f, "if"),
-            TokenType::Nil => write!(f, "nil"),
-            TokenType::Or => write!(f, "or"),
-            TokenType::Print => write!(f, "print"),
-            TokenType::Return => write!(f, "return"),
-            TokenType::Super => write!(f, "super"),
-            TokenType::This => write!(f, "this"),
-            TokenType::Var => write!(f, "var"),
-            TokenType::While => write!(f, "while"),
+            TokenKind::LeftParen => write!(f, "("),
+            TokenKind::RightParen => write!(f, ")"),
+            TokenKind::LeftBrace => write!(f, "{{"),
+            TokenKind::RightBrace => write!(f, "}}"),
+            TokenKind::Comma => write!(f, ","),
+            TokenKind::Dot => write!(f, "."),
+            TokenKind::Minus => write!(f, "-"),
+            TokenKind::Plus => write!(f, "+"),
+            TokenKind::Semicolon => write!(f, ";"),
+            TokenKind::Slash => write!(f, "/"),
+            TokenKind::Star => write!(f, "*"),
+            TokenKind::Bang => write!(f, "!"),
+            TokenKind::BangEqual => write!(f, "!="),
+            TokenKind::Equal => write!(f, "="),
+            TokenKind::EqualEqual => write!(f, "=="),
+            TokenKind::Greater => write!(f, ">"),
+            TokenKind::GreaterEqual => write!(f, ">="),
+            TokenKind::Less => write!(f, "<"),
+            TokenKind::LessEqual => write!(f, "<="),
+            TokenKind::Ident(s) => write!(f, "{s}"),
+            TokenKind::StringLiteral(s) => write!(f, "{s:?}"),
+            TokenKind::Number(x) => write!(f, "{x}"),
+            TokenKind::Boolean(b) => write!(f, "{b}"),
+            TokenKind::And => write!(f, "and"),
+            TokenKind::Class => write!(f, "class"),
+            TokenKind::Else => write!(f, "else"),
+            TokenKind::Fun => write!(f, "fun"),
+            TokenKind::For => write!(f, "for"),
+            TokenKind::If => write!(f, "if"),
+            TokenKind::Nil => write!(f, "nil"),
+            TokenKind::Or => write!(f, "or"),
+            TokenKind::Print => write!(f, "print"),
+            TokenKind::Return => write!(f, "return"),
+            TokenKind::Super => write!(f, "super"),
+            TokenKind::This => write!(f, "this"),
+            TokenKind::Var => write!(f, "var"),
+            TokenKind::While => write!(f, "while"),
         }
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Token {
-    pub ty: TokenType,
-    pub location: Location,
-}
+pub type Token = Spanned<TokenKind>;
 
-pub struct Lexer<'a> {
-    source: Peekable<Chars<'a>>,
+pub struct Lexer<'sm, 'dcx> {
+    cursor: Cursor<'sm>,
+    span_start: Cursor<'sm>,
+    dcx: &'dcx mut DiagContext,
     buffer: String,
-    location: Location,
-    line: usize,
-    column: usize,
-    queued: VecDeque<Result<Token, LexerError>>,
 }
 
-impl<'a> Lexer<'a> {
-    pub fn new(source: &'a str) -> Self {
+impl<'sm, 'dcx> Lexer<'sm, 'dcx> {
+    pub fn new(source: Source<'sm>, dcx: &'dcx mut DiagContext) -> Self {
         Self {
-            source: source.chars().peekable(),
+            cursor: source.cursor(),
+            span_start: source.cursor(),
+            dcx,
             buffer: String::new(),
-            location: Location { line: 0, column: 0 },
-            line: 0,
-            column: 0,
-            queued: VecDeque::new(),
         }
     }
 }
 
-impl<'a> Iterator for Lexer<'a> {
-    type Item = Result<Token, LexerError>;
+impl<'sm, 'dcx> Iterator for Lexer<'sm, 'dcx> {
+    type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.scan()
     }
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("Error at {location}: {kind}")]
+#[derive(Debug)]
 pub struct LexerError {
     pub(crate) kind: LexerErrorKind,
-    pub(crate) location: Location,
+    pub(crate) span: Span,
 }
 
 impl LexerError {
     pub fn kind(&self) -> &LexerErrorKind {
         &self.kind
     }
-
-    pub fn location(&self) -> Location {
-        self.location
-    }
 }
 
-#[derive(Debug, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum LexerErrorKind {
-    #[error("unterminated block comment")]
     UnterminatedBlockComment,
-
-    #[error("unterminated string")]
     UnterminatedString,
-
-    #[error("unrecognized escape character")]
-    UnrecognizedEscapeCharacter,
-
-    #[error("invalid number literal: {source}")]
+    UnrecognizedEscapeCharacter { c: char },
     InvalidNumber { source: ParseFloatError },
+    UnrecognizedToken,
+}
 
-    #[error("unrecognized token {token:?}")]
-    UnrecognizedToken { token: String },
+impl Diagnostic for LexerError {
+    fn into_diag(self) -> crate::diag::Diag {
+        let (message, label, notes): (String, String, Vec<String>) = match self.kind {
+            LexerErrorKind::UnterminatedBlockComment => (
+                "unterminated block comment".into(),
+                "this comment is missing a closing `*/`".into(),
+                vec![],
+            ),
+
+            LexerErrorKind::UnterminatedString => (
+                "unterminated string literal".into(),
+                "this string is missing a closing `\"`".into(),
+                vec![],
+            ),
+
+            LexerErrorKind::UnrecognizedEscapeCharacter { c } => (
+                "unrecognized escape sequence".into(),
+                "this escape sequence is invalid".into(),
+                vec![format!("sequence replaced with the character {c:?}")],
+            ),
+
+            LexerErrorKind::InvalidNumber { source } => (
+                "invalid number literal".into(),
+                format!("failed to parse this number: {source}"),
+                vec![],
+            ),
+
+            LexerErrorKind::UnrecognizedToken => (
+                "unrecognized token".into(),
+                "this character sequence is not a valid token".into(),
+                vec![],
+            ),
+        };
+
+        notes.into_iter().fold(
+            Diag::new(DiagKind::Error, message, self.span, label),
+            |diag, note| diag.with_note(note),
+        )
+    }
 }
 
 fn is_ident_start(c: char) -> bool {
@@ -210,13 +218,15 @@ fn unescape(c: char) -> Option<char> {
     }
 }
 
-impl Lexer<'_> {
-    /// The `Location` of the character that will be next advanced over.
-    fn cursor(&self) -> Location {
-        Location {
-            line: self.line,
-            column: self.column,
-        }
+impl<'sm> Lexer<'sm, '_> {
+    /// The current cursor.
+    fn cursor(&self) -> Cursor<'sm> {
+        self.cursor.clone()
+    }
+
+    /// The current span, from the span start to the current cursor.
+    fn span(&self) -> Span {
+        self.cursor.span_from(&self.span_start).unwrap()
     }
 
     /// The current contents of the buffer.
@@ -229,39 +239,36 @@ impl Lexer<'_> {
         self.buffer.clear();
     }
 
-    /// Set the token start location to the current value of [`cursor()`].
-    fn reset_token_start(&mut self) {
-        self.location = self.cursor();
+    /// Set the span start to the given cursor.
+    fn set_span_start(&mut self, start: Cursor<'sm>) {
+        self.span_start = start;
+    }
+
+    /// Set the token start location to the current cursor.
+    fn reset_span_start(&mut self) {
+        self.set_span_start(self.cursor.clone());
     }
 
     /// Advance over a character, but do not add it to the buffer.
     ///
     /// Returns the skipped character, or `None` if at the end of the input.
     fn skip(&mut self) -> Option<char> {
-        let c = self.source.next()?;
-        if c == '\n' {
-            self.line += 1;
-            self.column = 0;
-        } else {
-            self.column += 1;
-        }
-        Some(c)
+        self.cursor.advance()
     }
 
     /// Advance the cursor and add the advanced-over character to the buffer.
     ///
     /// Returns the advanced-over character, or `None` if at the end of the input.
     fn advance(&mut self) -> Option<char> {
-        self.skip().map(|c| {
-            self.buffer.push(c);
-            c
+        self.skip().inspect(|c| {
+            self.buffer.push(*c);
         })
     }
 
     /// Peek at the next character in the input, but do not advance the cursor or modify the
     /// buffer.
     fn peek(&mut self) -> Option<char> {
-        self.source.peek().copied()
+        self.cursor.peek()
     }
 
     /// Advance over the next character if it is exactly `expected`.
@@ -332,14 +339,21 @@ impl Lexer<'_> {
         loop {
             match self.skip() {
                 None => {
-                    self.queue_error_at_cursor(LexerErrorKind::UnterminatedBlockComment);
+                    self.emit_error(LexerErrorKind::UnterminatedBlockComment);
                     break;
                 }
 
                 Some('/') => {
                     if self.peek() == Some('*') {
+                        let outer_comment_start = self.span_start.clone();
+                        let mut inner_comment_start = self.cursor();
+                        inner_comment_start.retract();
+                        self.set_span_start(inner_comment_start);
+
                         self.skip();
                         self.skip_block_comment();
+
+                        self.set_span_start(outer_comment_start);
                     }
                 }
 
@@ -350,7 +364,7 @@ impl Lexer<'_> {
                     }
                 }
 
-                _ => (),
+                _ => {}
             }
         }
     }
@@ -363,72 +377,32 @@ impl Lexer<'_> {
         self.advance_until(|c| is_token_start(c) || c.is_whitespace());
     }
 
-    /// Create a token of the given type with the current token start location.
-    fn token(&self, ty: TokenType) -> Option<Result<Token, LexerError>> {
-        Some(Ok(Token {
-            ty,
-            location: self.location,
-        }))
+    /// Create a token of the given type with the current span.
+    fn token(&self, ty: TokenKind) -> Option<Token> {
+        Some(ty.spanned(self.span()))
     }
 
-    /// Create a token with the current start location, constructing the token type from the
-    /// current buffer.
-    fn token_with_buffer(
-        &self,
-        f: impl FnOnce(String) -> TokenType,
-    ) -> Option<Result<Token, LexerError>> {
+    /// Create a token with the current span, constructing the token type from the current buffer.
+    fn token_with_buffer(&self, f: impl FnOnce(String) -> TokenKind) -> Option<Token> {
         self.token(f(self.buffer().into()))
     }
 
-    /// Create an error with the given message and the current start location.
-    fn error(&self, kind: LexerErrorKind) -> Option<Result<Token, LexerError>> {
-        Some(Err(LexerError {
-            kind,
-            location: self.location,
-        }))
+    /// Emit an error with the given kind, using the current span.
+    fn emit_error(&mut self, kind: LexerErrorKind) {
+        self.emit_error_with_span(kind, self.span());
     }
 
-    /// Create an error with the given message and the current cursor location.
-    fn error_at_cursor(&self, kind: LexerErrorKind) -> Option<Result<Token, LexerError>> {
-        Some(Err(LexerError {
-            kind,
-            location: self.cursor(),
-        }))
-    }
-
-    /// Queue a token to be yielded before continuing to scan.
-    ///
-    /// The queued token will have the start location at the time of calling this function, and a
-    /// type constructed from the buffer at the time of calling this function.
-    fn queue_token_with_buffer(&mut self, f: impl FnOnce(String) -> TokenType) {
-        let tok = self.token_with_buffer(f).unwrap();
-        self.queued.push_back(tok);
-    }
-
-    /// Queue an error to be yielded before continuing to scan.
-    ///
-    /// The queued error will have the start location at the time of calling this function.
-    fn queue_error(&mut self, kind: LexerErrorKind) {
-        let res = self.error(kind).unwrap();
-        self.queued.push_back(res);
-    }
-
-    /// Queue an error to be yielded before continuing to scan.
-    ///
-    /// The queued error will have the cursor location at the time of calling this function.
-    fn queue_error_at_cursor(&mut self, kind: LexerErrorKind) {
-        let res = self.error_at_cursor(kind).unwrap();
-        self.queued.push_back(res);
+    /// Emit an error with the given kind and the given span.
+    fn emit_error_with_span(&mut self, kind: LexerErrorKind, span: Span) {
+        self.dcx.emit(LexerError { kind, span });
     }
 
     /// Scan and de-escape a string literal.
     ///
     /// This assumes that the cursor is at the first character of the string body, i.e. after the
-    /// opening `"`. When it returns, the cursor will be at the character after the closing `"`.
-    ///
-    /// Since this function can encounter multiple errors in the course of scanning a single token,
-    /// it queues all of its errors and the final string token, rather than simply returning them.
-    fn scan_string(&mut self) {
+    /// opening `"`, and that the span start is exactly the opening `"`. When it returns, the
+    /// cursor will be at the character after the closing `"`.
+    fn scan_string(&mut self) -> Option<Token> {
         use LexerErrorKind::*;
 
         self.clear_buffer();
@@ -436,22 +410,21 @@ impl Lexer<'_> {
         loop {
             let c = match self.skip() {
                 None => {
-                    self.queue_error(UnterminatedString);
-                    break;
+                    self.emit_error(UnterminatedString);
+                    break None;
                 }
                 Some(c) => c,
             };
 
             match c {
                 '"' => {
-                    self.queue_token_with_buffer(TokenType::StringLiteral);
-                    break;
+                    break self.token_with_buffer(TokenKind::StringLiteral);
                 }
 
                 '\\' => match self.peek() {
                     None => {
-                        self.queue_error(UnterminatedString);
-                        break;
+                        self.emit_error(UnterminatedString);
+                        break None;
                     }
 
                     Some('\n') => {
@@ -463,15 +436,23 @@ impl Lexer<'_> {
                             self.buffer.push(c);
                             self.skip();
                         } else {
-                            self.queue_error_at_cursor(UnrecognizedEscapeCharacter);
+                            let mut start = self.cursor();
+                            start.retract();
                             self.skip();
+
+                            let span = self.cursor().span_from(&start).unwrap();
+                            self.emit_error_with_span(UnrecognizedEscapeCharacter { c }, span);
                         }
                     }
                 },
 
                 '\n' => {
-                    self.queue_error(UnterminatedString);
-                    break;
+                    let mut end = self.cursor();
+                    end.retract();
+                    let span = end.span_from(&self.span_start).unwrap();
+
+                    self.emit_error_with_span(UnterminatedString, span);
+                    break None;
                 }
 
                 c => {
@@ -487,8 +468,8 @@ impl Lexer<'_> {
     /// It will scan until a non-identifier character is encountered. If the resulting buffer
     /// matches a keyword, the appropriate token will be returned; otherwise, returns an identifier
     /// token.
-    fn scan_ident(&mut self) -> Option<Result<Token, LexerError>> {
-        use TokenType::*;
+    fn scan_ident(&mut self) -> Option<Token> {
+        use TokenKind::*;
 
         self.advance_while(is_ident_continue);
         match self.buffer() {
@@ -513,7 +494,7 @@ impl Lexer<'_> {
     }
 
     /// Scan a number token.
-    fn scan_number(&mut self) -> Option<Result<Token, LexerError>> {
+    fn scan_number(&mut self) -> Option<Token> {
         self.advance_while(|c| c.is_ascii_digit());
 
         if self.peek() == Some('.') {
@@ -521,28 +502,25 @@ impl Lexer<'_> {
             self.advance_while(|c| c.is_ascii_digit());
         }
 
-        let n = match self.buffer().parse::<f64>() {
-            Ok(n) => n,
-            Err(e) => return self.error(LexerErrorKind::InvalidNumber { source: e }),
-        };
-
-        self.token(TokenType::Number(n))
+        match self.buffer().parse::<f64>() {
+            Ok(n) => self.token(TokenKind::Number(n)),
+            Err(e) => {
+                self.emit_error(LexerErrorKind::InvalidNumber { source: e });
+                None
+            }
+        }
     }
 
     /// Scan from the current cursor, yielding a single token or error.
     ///
     /// Returns `None` if the end of the input has been reached.
-    fn scan(&mut self) -> Option<Result<Token, LexerError>> {
-        use TokenType::*;
+    fn scan(&mut self) -> Option<Token> {
+        use TokenKind::*;
 
         loop {
-            if let Some(res) = self.queued.pop_front() {
-                break Some(res);
-            }
-
             self.skip_whitespace();
             self.clear_buffer();
-            self.reset_token_start();
+            self.reset_span_start();
 
             let c = match self.advance() {
                 None => break None,
@@ -609,19 +587,27 @@ impl Lexer<'_> {
                 }
 
                 '"' => {
-                    self.scan_string();
-                    continue;
+                    if let tok @ Some(_) = self.scan_string() {
+                        tok
+                    } else {
+                        continue;
+                    }
                 }
 
                 c if is_ident_start(c) => self.scan_ident(),
 
-                c if c.is_ascii_digit() => self.scan_number(),
+                c if c.is_ascii_digit() => {
+                    if let tok @ Some(_) = self.scan_number() {
+                        tok
+                    } else {
+                        continue;
+                    }
+                }
 
                 _ => {
                     self.advance_unrecognized();
-                    self.error(LexerErrorKind::UnrecognizedToken {
-                        token: self.buffer().into(),
-                    })
+                    self.emit_error(LexerErrorKind::UnrecognizedToken);
+                    continue;
                 }
             };
         }
