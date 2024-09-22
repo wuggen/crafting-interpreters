@@ -1,5 +1,6 @@
+use crate::context::{with_new_interpreter, with_source_map, with_source_map_mut};
 use crate::diag::render::render_dcx;
-use crate::span::{Location, SourceMap};
+use crate::span::Location;
 
 use super::*;
 
@@ -9,37 +10,39 @@ use std::fmt::Debug;
 use std::ops::{Range, RangeInclusive};
 
 trait TokenTestable<'sm> {
-    fn check(&self, tok: &Token, sm: &'sm SourceMap) -> bool;
+    fn check(&self, tok: &Token) -> bool;
 }
 
 impl<'sm> TokenTestable<'sm> for TokenKind {
-    fn check(&self, tok: &Token, _: &'sm SourceMap) -> bool {
+    fn check(&self, tok: &Token) -> bool {
         self == &tok.node
     }
 }
 
 impl<'sm> TokenTestable<'sm> for Span {
-    fn check(&self, tok: &Token, _: &'sm SourceMap) -> bool {
+    fn check(&self, tok: &Token) -> bool {
         *self == tok.span
     }
 }
 
 impl<'sm> TokenTestable<'sm> for Range<usize> {
-    fn check(&self, tok: &Token, _: &'sm SourceMap) -> bool {
+    fn check(&self, tok: &Token) -> bool {
         &tok.span.range() == self
     }
 }
 
 impl<'sm> TokenTestable<'sm> for (Location, Location) {
-    fn check(&self, tok: &Token, sm: &'sm SourceMap) -> bool {
-        *self == sm.span_extents(tok.span).unwrap()
+    fn check(&self, tok: &Token) -> bool {
+        with_source_map(|sm| *self == sm.span_extents(tok.span).unwrap())
     }
 }
 
 impl<'sm> TokenTestable<'sm> for RangeInclusive<(usize, usize)> {
-    fn check(&self, tok: &Token, sm: &'sm SourceMap) -> bool {
-        let (start, end) = sm.span_extents(tok.span).unwrap();
-        ((start.line, start.column), (end.line, end.column)) == self.clone().into_inner()
+    fn check(&self, tok: &Token) -> bool {
+        with_source_map(|sm| {
+            let (start, end) = sm.span_extents(tok.span).unwrap();
+            ((start.line, start.column), (end.line, end.column)) == self.clone().into_inner()
+        })
     }
 }
 
@@ -48,60 +51,66 @@ where
     A: TokenTestable<'sm>,
     B: TokenTestable<'sm>,
 {
-    fn check(&self, tok: &Token, sm: &'sm SourceMap) -> bool {
-        self.0.check(tok, sm) && self.1.check(tok, sm)
+    fn check(&self, tok: &Token) -> bool {
+        self.0.check(tok) && self.1.check(tok)
     }
 }
 
-fn check_scan<I, T>(source: &str, expected: I) -> (SourceMap, DiagContext)
+fn check_scan<I, T>(source: &str, expected: I)
 where
     I: IntoIterator<Item = T>,
     T: for<'sm> TokenTestable<'sm> + Debug,
 {
-    let mut dcx = DiagContext::new();
-    let mut sm = SourceMap::new();
-    sm.add_source(0, source);
+    let source_idx = with_source_map_mut(|sm| sm.add_source(0, source));
+    with_source_map(|sm| {
+        let mut success = true;
+        let mut lexer = Lexer::new(sm.source(source_idx));
 
-    let mut success = true;
-    let mut lexer = Lexer::new(sm.source(0), &mut dcx);
+        let mut expected = expected.into_iter();
 
-    let mut expected = expected.into_iter();
-
-    loop {
-        match (lexer.next(), expected.next()) {
-            (None, None) => break,
-            (None, Some(expected)) => {
-                eprintln!("Reached end of scan earlier than expected (next expected {expected:?})");
-                success = false;
-                break;
-            }
-
-            (Some(tok), None) => {
-                eprintln!("Scanned more tokens than expected (next scanned {tok:?})");
-                success = false;
-                break;
-            }
-
-            (Some(tok), Some(expected)) => {
-                if !expected.check(&tok, &sm) {
-                    eprintln!("Token mismatch: expected {expected:?}, got {tok:?}");
+        loop {
+            match (lexer.next(), expected.next()) {
+                (None, None) => break,
+                (None, Some(expected)) => {
+                    eprintln!(
+                        "Reached end of scan earlier than expected (next expected {expected:?})"
+                    );
                     success = false;
+                    break;
+                }
+
+                (Some(tok), None) => {
+                    eprintln!("Scanned more tokens than expected (next scanned {tok:?})");
+                    success = false;
+                    break;
+                }
+
+                (Some(tok), Some(expected)) => {
+                    if !expected.check(&tok) {
+                        eprintln!("Token mismatch: expected {expected:?}, got {tok:?}");
+                        success = false;
+                    }
                 }
             }
         }
-    }
 
-    assert!(success);
-    (sm, dcx)
+        assert!(success);
+    });
 }
 
+/// Lex the given source in the context of a new, ephemeral interpreter.
+///
+/// Checks the resulting token stream against the given expected stream, panicking if there are any
+/// mismatches. Renders and returns any resulting diagnostics.
 fn check_and_render<I, T>(source: &str, expected: I) -> String
 where
     I: IntoIterator<Item = T>,
     T: for<'sm> TokenTestable<'sm> + Debug,
 {
-    let (sm, dcx) = check_scan(source, expected);
-    render_dcx(sm, dcx)
+    with_new_interpreter(|_| {
+        check_scan(source, expected);
+        render_dcx()
+    })
 }
 
 use TokenKind::*;

@@ -13,7 +13,7 @@
 use std::fmt::{self, Display, Formatter};
 use std::num::ParseFloatError;
 
-use crate::diag::{Diag, DiagContext, DiagKind, Diagnostic};
+use crate::diag::{Diag, DiagKind, Diagnostic};
 use crate::span::{Cursor, Source, Span, Spannable, Spanned};
 
 #[cfg(test)]
@@ -109,25 +109,19 @@ impl Display for TokenKind {
 pub type Token = Spanned<TokenKind>;
 
 #[derive(Debug, Clone)]
-pub struct Lexer<'sm, 'dcx> {
+pub struct Lexer<'sm> {
     cursor: Cursor<'sm>,
     span_start: Cursor<'sm>,
-    dcx: &'dcx DiagContext,
     buffer: String,
 }
 
-impl<'sm, 'dcx> Lexer<'sm, 'dcx> {
-    pub fn new(source: Source<'sm>, dcx: &'dcx DiagContext) -> Self {
+impl<'sm> Lexer<'sm> {
+    pub fn new(source: Source<'sm>) -> Self {
         Self {
             cursor: source.cursor(),
             span_start: source.cursor(),
-            dcx,
             buffer: String::new(),
         }
-    }
-
-    pub fn diag_context(&self) -> &'dcx DiagContext {
-        self.dcx
     }
 
     pub fn source(&self) -> Source<'sm> {
@@ -135,7 +129,7 @@ impl<'sm, 'dcx> Lexer<'sm, 'dcx> {
     }
 }
 
-impl<'sm, 'dcx> Iterator for Lexer<'sm, 'dcx> {
+impl<'sm> Iterator for Lexer<'sm> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -229,7 +223,7 @@ fn unescape(c: char) -> Option<char> {
     }
 }
 
-impl<'sm> Lexer<'sm, '_> {
+impl<'sm> Lexer<'sm> {
     /// The current cursor.
     fn cursor(&self) -> Cursor<'sm> {
         self.cursor.clone()
@@ -405,7 +399,7 @@ impl<'sm> Lexer<'sm, '_> {
 
     /// Emit an error with the given kind and the given span.
     fn emit_error_with_span(&self, kind: LexerErrorKind, span: Span) {
-        self.dcx.emit(LexerError { kind, span });
+        LexerError { kind, span }.emit();
     }
 
     /// Scan and de-escape a string literal.

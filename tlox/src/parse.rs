@@ -8,8 +8,8 @@ use crate::syn::*;
 use crate::tok::{Lexer, Token, TokenKind};
 
 #[derive(Debug, Clone)]
-pub struct Parser<'sm, 'dcx> {
-    lexer: Lexer<'sm, 'dcx>,
+pub struct Parser<'sm> {
+    lexer: Lexer<'sm>,
     peeked: Option<Option<Token>>,
 }
 
@@ -35,8 +35,8 @@ pub struct Parser<'sm, 'dcx> {
 // atom -> NUMBER | STRING | 'true' | 'false' | 'nil'
 //       | '(' expr ')'
 
-impl<'sm, 'dcx> Parser<'sm, 'dcx> {
-    pub fn new(lexer: Lexer<'sm, 'dcx>) -> Self {
+impl<'sm> Parser<'sm> {
+    pub fn new(lexer: Lexer<'sm>) -> Self {
         Self {
             lexer,
             peeked: None,
@@ -63,7 +63,7 @@ impl<'sm, 'dcx> Parser<'sm, 'dcx> {
             desc: desc.into(),
         };
 
-        self.lexer.diag_context().emit(diag);
+        diag.emit();
     }
 
     fn emit_unexpected(
@@ -158,7 +158,7 @@ impl<'sm, 'dcx> Parser<'sm, 'dcx> {
                 Diag::new(DiagKind::Warning, message, span, label),
                 Diag::with_note,
             );
-            self.lexer.diag_context().emit(diag);
+            diag.emit();
         }
     }
 
@@ -261,7 +261,7 @@ impl<'sm, 'dcx> Parser<'sm, 'dcx> {
 
     fn atom(&mut self) -> Option<Spanned<Expr>> {
         debug_println!("= Parsing atom");
-        const EXPECTED: [&'static str; 7] = [
+        const EXPECTED: [&str; 7] = [
             "`true`",
             "`false`",
             "`nil`",
@@ -369,103 +369,113 @@ impl Diagnostic for ParserError {
 #[cfg(test)]
 mod test {
     use indoc::indoc;
-    use insta::{assert_debug_snapshot, assert_snapshot};
+    use insta::assert_snapshot;
 
+    use crate::context::{with_new_interpreter, with_source_map, with_source_map_mut};
     use crate::diag::render::render_dcx;
-    use crate::diag::DiagContext;
-    use crate::span::SourceMap;
 
     use super::*;
 
-    fn parse_source(source: &str) -> (SourceMap, DiagContext, Option<Spanned<Expr>>) {
-        let mut sm = SourceMap::new();
-        sm.add_source(0, source);
-        let dcx = DiagContext::new();
-        let lexer = Lexer::new(sm.source(0), &dcx);
-        let mut parser = Parser::new(lexer);
-        let res = parser.expr();
-        if let Some(res) = res.as_ref() {
-            debug_println!("PARSED: {res}\n");
-        } else {
-            debug_println!("PARSED: None\n");
-        }
+    fn parse_source(source: &str) -> Option<Spanned<Expr>> {
+        let source_idx = with_source_map_mut(|sm| sm.add_source(0, source));
 
-        (sm, dcx, res)
+        with_source_map(|sm| {
+            let lexer = Lexer::new(sm.source(source_idx));
+            let mut parser = Parser::new(lexer);
+            let res = parser.expr();
+            if let Some(res) = res.as_ref() {
+                debug_println!("PARSED: {res}\n");
+            } else {
+                debug_println!("PARSED: None\n");
+            }
+
+            res
+        })
     }
 
     #[test]
     fn literals() {
-        let (sm, dcx, res) = parse_source("true");
-        assert_snapshot!(res.unwrap(), @"true{0..4}");
-        assert!(render_dcx(sm, dcx).is_empty());
+        with_new_interpreter(|_| {
+            let res = parse_source("true");
+            assert_snapshot!(res.unwrap(), @"true{1:1..1:4}");
+            assert!(render_dcx().is_empty());
 
-        let (sm, dcx, res) = parse_source("134");
-        assert_snapshot!(res.unwrap(), @"134{0..3}");
-        assert!(render_dcx(sm, dcx).is_empty());
+            let res = parse_source("134");
+            assert_snapshot!(res.unwrap(), @"134{1:1..1:3}");
+            assert!(render_dcx().is_empty());
 
-        let (sm, dcx, res) = parse_source(r#""lol hey\ndude""#);
-        assert_snapshot!(res.unwrap(), @r#""lol hey\ndude"{0..15}"#);
-        assert!(render_dcx(sm, dcx).is_empty());
+            let res = parse_source(r#""lol hey\ndude""#);
+            assert_snapshot!(res.unwrap(), @r#""lol hey\ndude"{1:1..1:15}"#);
+            assert!(render_dcx().is_empty());
+        });
     }
 
     #[test]
     fn comp_chain() {
-        let (sm, dcx, res) = parse_source(indoc! {r#"
-        45 < nil >= false
-            <= "wow" > 003.32
-        "#});
-        assert_snapshot!(res.unwrap().node, @r#"(> (<= (>= (< 45 nil) false) "wow") 3.32)"#);
-        assert!(render_dcx(sm, dcx).is_empty());
+        with_new_interpreter(|_| {
+            let res = parse_source(indoc! {r#"
+            45 < nil >= false
+                <= "wow" > 003.32
+            "#});
+            assert_snapshot!(res.unwrap().node, @r#"(> (<= (>= (< 45 nil) false) "wow") 3.32)"#);
+            assert!(render_dcx().is_empty());
+        });
     }
 
     #[test]
     fn comp_chain_with_parens() {
-        let (sm, dcx, res) = parse_source(r#"45 < ("wow" >= nil)"#);
-        assert_snapshot!(res.unwrap().node, @r#"(< 45 (>= "wow" nil))"#);
-        assert!(render_dcx(sm, dcx).is_empty());
+        with_new_interpreter(|_| {
+            let res = parse_source(r#"45 < ("wow" >= nil)"#);
+            assert_snapshot!(res.unwrap().node, @r#"(< 45 (>= "wow" nil))"#);
+            assert!(render_dcx().is_empty());
+        });
     }
 
     #[test]
     fn lotsa_parens() {
-        let (sm, dcx, res) = parse_source(indoc! {r#"
-        (((true + "false") - (nil / nil) >= 0 * "hey") % ("what")) + (0)
-        "#});
-        assert_snapshot!(res.unwrap().node, @r#"(+ (% (>= (- (+ true "false") (/ nil nil)) (* 0 "hey")) "what") 0)"#);
-        assert!(render_dcx(sm, dcx).is_empty());
+        with_new_interpreter(|_| {
+            let res = parse_source(indoc! {r#"
+            (((true + "false") - (nil / nil) >= 0 * "hey") % ("what")) + (0)
+            "#});
+            assert_snapshot!(res.unwrap().node, @r#"(+ (% (>= (- (+ true "false") (/ nil nil)) (* 0 "hey")) "what") 0)"#);
+            assert!(render_dcx().is_empty());
+        });
     }
 
     #[test]
     fn err_missing_lhs() {
-        let (sm, dcx, res) = parse_source("+ 4");
-        assert!(res.is_none());
-        assert_snapshot!(render_dcx(sm, dcx), @r#"
-        error: unexpected token
-          --> %i0:1:1
-          |
-        1 | + 4
-          | ^ expected `true`, `false`, `nil`, `(`, number, string, or identifier here
-          |
-          = note: expecting to parse an expression
+        with_new_interpreter(|_| {
+            let res = parse_source("+ 4");
+            assert!(res.is_none());
+            assert_snapshot!(render_dcx(), @r#"
+            error: unexpected token
+              --> %i0:1:1
+              |
+            1 | + 4
+              | ^ expected `true`, `false`, `nil`, `(`, number, string, or identifier here
+              |
+              = note: expecting to parse an expression
 
-        "#);
+            "#);
 
-        let (sm, dcx, res) = parse_source("4 + (* nil) - 5");
-        assert_snapshot!(res.unwrap().node, @"4");
-        assert_snapshot!(render_dcx(sm, dcx), @r#"
-        error: unexpected token
-          --> %i0:1:6
-          |
-        1 | 4 + (* nil) - 5
-          |      ^ expected `true`, `false`, `nil`, `(`, number, string, or identifier here
-          |
-          = note: expecting to parse an expression
+            let res = parse_source("4 + (* nil) - 5");
+            assert_snapshot!(res.unwrap().node, @"4");
+            assert_snapshot!(render_dcx(), @r#"
+            error: unexpected token
+              --> %i0:1:6
+              |
+            1 | 4 + (* nil) - 5
+              |      ^ expected `true`, `false`, `nil`, `(`, number, string, or identifier here
+              |
+              = note: expecting to parse an expression
 
-        error: unexpected token
-          --> %i0:1:8
-          |
-        1 | 4 + (* nil) - 5
-          |        ^^^ expected `)` here
+            error: unexpected token
+              --> %i0:1:8
+              |
+            1 | 4 + (* nil) - 5
+              |        ^^^ expected `)` here
 
-        "#);
+            "#);
+        });
     }
 }

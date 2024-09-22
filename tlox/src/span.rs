@@ -17,6 +17,8 @@ use std::str::Chars;
 
 use codespan_reporting::files::{self, Files};
 
+use crate::context::{in_context, with_source_map};
+
 #[cfg(test)]
 mod test;
 
@@ -120,7 +122,25 @@ pub struct Spanned<T> {
 
 impl<T: Display> Display for Spanned<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{{{:?}}}", self.node, self.span.range())
+        if in_context() {
+            with_source_map(|sm| {
+                if let Some((start, end)) = sm.span_extents(self.span) {
+                    write!(
+                        f,
+                        "{}{{{}:{}..{}:{}}}",
+                        self.node,
+                        start.line + 1,
+                        start.column + 1,
+                        end.line + 1,
+                        end.column + 1,
+                    )
+                } else {
+                    write!(f, "{}{{!!}}", self.node)
+                }
+            })
+        } else {
+            write!(f, "{}{{{:?}}}", self.node, self.span.range())
+        }
     }
 }
 
@@ -140,7 +160,7 @@ impl<T: Sized> Spannable for T {}
 ///
 /// A source map stores the complete contents of every source, including files and REPL inputs, and
 /// allows source code locations and spans to be treated uniformly across all sources.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SourceMap {
     content: String,
     lines: Vec<Span>,
@@ -223,8 +243,12 @@ impl SourceMap {
 
 impl SourceMap {
     /// Create a new, empty source map.
-    pub fn new() -> Self {
-        Self::default()
+    pub(crate) fn new() -> Self {
+        Self {
+            content: String::new(),
+            lines: vec![],
+            sources: vec![],
+        }
     }
 
     /// Append a source to the source map.

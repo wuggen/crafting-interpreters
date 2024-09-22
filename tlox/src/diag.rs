@@ -2,12 +2,24 @@
 
 use std::sync::Mutex;
 
-use crate::span::{SourceMap, Span};
+use crate::context::with_context;
+use crate::span::Span;
 
 /// Warning and error types.
-pub trait Diagnostic {
-    #[allow(missing_docs)]
+pub trait Diagnostic: Sized {
+    /// Create a [`Diag`] from `self`.
+    ///
+    /// [`Diag`] is the unified diagnostic type that is ultimately used to report diagnostic
+    /// messages to the user.
     fn into_diag(self) -> Diag;
+
+    /// Emit this diagnostic to the global context.
+    ///
+    /// This method will panic if called from a thread that is not currently in the context of an
+    /// [`Interpreter`](crate::context::Interpreter).
+    fn emit(self) {
+        with_context(move |cx| cx.with_diag_context(move |dcx| dcx.emit(self)));
+    }
 }
 
 /// A diagnostic message.
@@ -87,14 +99,16 @@ impl Diag {
 /// Diagnostic context.
 ///
 /// This is used throughout the interpreter to report errors and warnings.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct DiagContext {
     pending: Mutex<Vec<Diag>>,
 }
 
 impl DiagContext {
-    pub fn new() -> Self {
-        Self::default()
+    pub(crate) fn new() -> Self {
+        Self {
+            pending: Mutex::new(vec![]),
+        }
     }
 
     /// Does the current context contain any errors?
@@ -115,18 +129,24 @@ impl DiagContext {
 pub mod render {
     //! Diagnostic rendering.
 
+    use crate::context::with_source_map;
+
     use super::*;
 
     use codespan_reporting::term::termcolor::{ColorChoice, WriteColor};
     use codespan_reporting::{diagnostic, term};
 
     #[cfg(test)]
-    pub fn render_dcx(sm: SourceMap, dcx: DiagContext) -> String {
+    pub fn render_dcx() -> String {
         use codespan_reporting::term::termcolor::NoColor;
 
-        let mut buf = NoColor::new(Vec::<u8>::new());
-        dcx.report_to(&sm, &mut buf);
-        String::from_utf8(buf.into_inner()).unwrap()
+        use crate::context::with_diag_context;
+
+        with_diag_context(|dcx| {
+            let mut buf = NoColor::new(Vec::<u8>::new());
+            dcx.report_to(&mut buf);
+            String::from_utf8(buf.into_inner()).unwrap()
+        })
     }
 
     pub(crate) fn render_config() -> term::Config {
@@ -144,20 +164,18 @@ pub mod render {
         pub(crate) fn into_codespan_label(
             self,
             kind: diagnostic::LabelStyle,
-            map: &SourceMap,
         ) -> diagnostic::Label<usize> {
-            let DiagLabel { span, label } = self;
-            let source = map.span_source(span).unwrap();
-            let range = span.range_within(source.span()).unwrap();
-            diagnostic::Label::new(kind, source.index(), range).with_message(label)
+            with_source_map(|sm| {
+                let DiagLabel { span, label } = self;
+                let source = sm.span_source(span).unwrap();
+                let range = span.range_within(source.span()).unwrap();
+                diagnostic::Label::new(kind, source.index(), range).with_message(label)
+            })
         }
     }
 
     impl Diag {
-        pub(crate) fn into_codespan_diagnostic(
-            self,
-            map: &SourceMap,
-        ) -> diagnostic::Diagnostic<usize> {
+        pub(crate) fn into_codespan_diagnostic(self) -> diagnostic::Diagnostic<usize> {
             let Diag {
                 kind,
                 message,
@@ -171,12 +189,11 @@ pub mod render {
                 DiagKind::Error => diagnostic::Severity::Error,
             };
 
-            let mut labels =
-                vec![primary.into_codespan_label(diagnostic::LabelStyle::Primary, map)];
+            let mut labels = vec![primary.into_codespan_label(diagnostic::LabelStyle::Primary)];
             labels.extend(
                 secondary
                     .into_iter()
-                    .map(|label| label.into_codespan_label(diagnostic::LabelStyle::Secondary, map)),
+                    .map(|label| label.into_codespan_label(diagnostic::LabelStyle::Secondary)),
             );
 
             diagnostic::Diagnostic::new(severity)
@@ -188,17 +205,19 @@ pub mod render {
 
     impl DiagContext {
         /// Render all collected diagnostics to standard error.
-        pub fn report(&self, source_map: &SourceMap) {
+        pub fn report(&self) {
             let writer = term::termcolor::StandardStream::stderr(ColorChoice::Auto);
-            self.report_to(source_map, &mut writer.lock());
+            self.report_to(&mut writer.lock());
         }
 
-        pub fn report_to(&self, source_map: &SourceMap, writer: &mut dyn WriteColor) {
+        pub fn report_to(&self, writer: &mut dyn WriteColor) {
             let config = render_config();
 
             for diag in self.pending.lock().unwrap().drain(..) {
-                let report = diag.into_codespan_diagnostic(source_map);
-                term::emit(writer, &config, source_map, &report).unwrap();
+                let report = diag.into_codespan_diagnostic();
+                with_source_map(|sm| {
+                    term::emit(writer, &config, sm, &report).unwrap();
+                });
             }
         }
     }
@@ -209,143 +228,158 @@ mod test {
     use codespan_reporting::term;
     use indoc::indoc;
 
+    use crate::context::{with_new_interpreter, with_source_map, with_source_map_mut};
+
     use super::*;
 
-    fn render_diag(diag: Diag, map: &SourceMap) -> String {
+    fn render_diag(diag: Diag) -> String {
         let mut writer = term::termcolor::NoColor::new(Vec::<u8>::new());
         let config = render::render_config();
-        let report = diag.into_codespan_diagnostic(map);
-        term::emit(&mut writer, &config, map, &report).unwrap();
+        let report = diag.into_codespan_diagnostic();
+        with_source_map(|sm| {
+            term::emit(&mut writer, &config, sm, &report).unwrap();
+        });
         String::from_utf8(writer.into_inner()).unwrap()
     }
 
-    fn mkmap<'a>(sources: impl IntoIterator<Item = &'a str>) -> SourceMap {
-        let mut map = SourceMap::new();
-        for (i, source) in sources.into_iter().enumerate() {
-            map.add_source(i, source);
-        }
-        map
+    fn mkmap<'a>(sources: impl IntoIterator<Item = &'a str>) {
+        with_source_map_mut(|sm| {
+            for (i, source) in sources.into_iter().enumerate() {
+                sm.add_source(i, source);
+            }
+        });
     }
 
     #[test]
     fn single_label_single_source() {
-        let source = indoc! {"
-        lmao hey() {
-            what's() up;
-        }"};
-        let map = mkmap(Some(source));
+        with_new_interpreter(|_| {
+            let source = indoc! {"
+            lmao hey() {
+                what's() up;
+            }"};
+            mkmap(Some(source));
 
-        let primary_span = map.global_line(1).span_within(4..8).unwrap();
-        let diag = Diag::new(
-            DiagKind::Error,
-            "You messed up",
-            primary_span,
-            "what's up with this",
-        );
+            let primary_span = with_source_map(|sm| sm.global_line(1).span_within(4..8).unwrap());
 
-        insta::assert_snapshot!(render_diag(diag, &map), @r#"
-        error: You messed up
-          --> %i0:2:5
-          |
-        2 |     what's() up;
-          |     ^^^^ what's up with this
+            let diag = Diag::new(
+                DiagKind::Error,
+                "You messed up",
+                primary_span,
+                "what's up with this",
+            );
 
-        "#);
+            insta::assert_snapshot!(render_diag(diag), @r#"
+            error: You messed up
+              --> %i0:2:5
+              |
+            2 |     what's() up;
+              |     ^^^^ what's up with this
+
+            "#);
+        });
     }
 
     #[test]
     fn several_labels_single_source() {
-        let source = indoc! {r#"
-        fun hey(here, is, some, stuff) {
-            things = stuff + 3;
-            how("why", some) + oops;
-            lol
-        }"#};
-        let map = mkmap(Some(source));
+        with_new_interpreter(|_| {
+            let source = indoc! {r#"
+            fun hey(here, is, some, stuff) {
+                things = stuff + 3;
+                how("why", some) + oops;
+                lol
+            }"#};
+            mkmap(Some(source));
 
-        let primary_span = map.global_line(2).span_within(23..27).unwrap();
-        let primary_label = "identifier `oops` is not in scope";
+            let diag = with_source_map(|sm| {
+                let primary_span = sm.global_line(2).span_within(23..27).unwrap();
+                let primary_label = "identifier `oops` is not in scope";
 
-        let diag = Diag::new(
-            DiagKind::Error,
-            "unrecognized identifier `oops`",
-            primary_span,
-            primary_label,
-        )
-        .with_secondary(
-            map.global_line(0).span_within(14..16).unwrap(),
-            "there's this thing here, did you mean that?",
-        )
-        .with_secondary(
-            map.global_line(3).span_within(6..7).unwrap(),
-            "forgot something here too lol",
-        )
-        .with_note("can't use undeclared identifiers bud!")
-        .with_note("also lol forgot a semicolon lmao");
+                Diag::new(
+                    DiagKind::Error,
+                    "unrecognized identifier `oops`",
+                    primary_span,
+                    primary_label,
+                )
+                .with_secondary(
+                    sm.global_line(0).span_within(14..16).unwrap(),
+                    "there's this thing here, did you mean that?",
+                )
+                .with_secondary(
+                    sm.global_line(3).span_within(6..7).unwrap(),
+                    "forgot something here too lol",
+                )
+                .with_note("can't use undeclared identifiers bud!")
+                .with_note("also lol forgot a semicolon lmao")
+            });
 
-        insta::assert_snapshot!(render_diag(diag, &map), @r#"
-        error: unrecognized identifier `oops`
-          --> %i0:3:24
-          |
-        1 | fun hey(here, is, some, stuff) {
-          |               -- there's this thing here, did you mean that?
-        2 |     things = stuff + 3;
-        3 |     how("why", some) + oops;
-          |                        ^^^^ identifier `oops` is not in scope
-        4 |     lol
-          |       - forgot something here too lol
-          |
-          = can't use undeclared identifiers bud!
-          = also lol forgot a semicolon lmao
+            insta::assert_snapshot!(render_diag(diag), @r#"
+            error: unrecognized identifier `oops`
+              --> %i0:3:24
+              |
+            1 | fun hey(here, is, some, stuff) {
+              |               -- there's this thing here, did you mean that?
+            2 |     things = stuff + 3;
+            3 |     how("why", some) + oops;
+              |                        ^^^^ identifier `oops` is not in scope
+            4 |     lol
+              |       - forgot something here too lol
+              |
+              = can't use undeclared identifiers bud!
+              = also lol forgot a semicolon lmao
 
-        "#);
+            "#);
+        });
     }
 
     #[test]
     fn multiple_sources() {
-        let map = mkmap([
-            indoc! {"
-            a = 4;
-            b = 6;
+        with_new_interpreter(|_| {
+            mkmap([
+                indoc! {"
+                a = 4;
+                b = 6;
 
-            fun lol() {
-                what even?
-            }
-            "},
-            indoc! {"
-            const HEY!;
+                fun lol() {
+                    what even?
+                }
+                "},
+                indoc! {"
+                const HEY!;
 
-            foo bar and so forth;
-            "},
-        ]);
+                foo bar and so forth;
+                "},
+            ]);
 
-        let diag = Diag::new(
-            DiagKind::Warning,
-            "huh?",
-            map.source(1).line(2).span_within(8..11).unwrap(),
-            "this one's reserved",
-        )
-        .with_secondary(map.source(0).line(3).span_within(7..9).unwrap(), "empty???")
-        .with_secondary(
-            map.source(1).line(0).span_within(9..10).unwrap(),
-            "wtf is this",
-        );
+            let diag = with_source_map(|sm| {
+                Diag::new(
+                    DiagKind::Warning,
+                    "huh?",
+                    sm.source(1).line(2).span_within(8..11).unwrap(),
+                    "this one's reserved",
+                )
+                .with_secondary(sm.source(0).line(3).span_within(7..9).unwrap(), "empty???")
+                .with_secondary(
+                    sm.source(1).line(0).span_within(9..10).unwrap(),
+                    "wtf is this",
+                )
+            });
 
-        insta::assert_snapshot!(render_diag(diag, &map), @r#"
-        warning: huh?
-          --> %i1:3:9
-          |
-        1 | const HEY!;
-          |          - wtf is this
-        2 | 
-        3 | foo bar and so forth;
-          |         ^^^ this one's reserved
-          |
-          --> %i0:4:8
-          |
-        4 | fun lol() {
-          |        -- empty???
+            insta::assert_snapshot!(render_diag(diag), @r#"
+            warning: huh?
+              --> %i1:3:9
+              |
+            1 | const HEY!;
+              |          - wtf is this
+            2 | 
+            3 | foo bar and so forth;
+              |         ^^^ this one's reserved
+              |
+              --> %i0:4:8
+              |
+            4 | fun lol() {
+              |        -- empty???
 
-        "#);
+            "#);
+        });
     }
 }

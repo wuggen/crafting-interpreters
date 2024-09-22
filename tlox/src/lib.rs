@@ -15,6 +15,7 @@ macro_rules! debug_println {
     };
 }
 
+pub mod context;
 pub mod diag;
 pub mod parse;
 pub mod span;
