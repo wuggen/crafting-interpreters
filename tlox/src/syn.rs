@@ -2,7 +2,7 @@
 
 use std::fmt::{self, Display, Formatter};
 
-use crate::span::Spanned;
+use crate::span::{Spannable, Spanned};
 
 /// Unary operator symbols.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -118,7 +118,7 @@ pub enum Expr {
         sym: Spanned<UnopSym>,
 
         /// Operand
-        opnd: Box<Spanned<Expr>>,
+        operand: Box<Spanned<Expr>>,
     },
 
     /// A binary operator expression
@@ -139,19 +139,23 @@ impl Expr {
         Self::Literal(value)
     }
 
-    pub fn unop(sym: Spanned<UnopSym>, opnd: Spanned<Expr>) -> Self {
+    pub fn unop(sym: Spanned<UnopSym>, operand: Spanned<Expr>) -> Spanned<Self> {
+        let span = sym.span.join(operand.span);
         Self::Unop {
             sym,
-            opnd: Box::new(opnd),
+            operand: Box::new(operand),
         }
+        .spanned(span)
     }
 
-    pub fn binop(sym: Spanned<BinopSym>, lhs: Spanned<Expr>, rhs: Spanned<Expr>) -> Self {
+    pub fn binop(sym: Spanned<BinopSym>, lhs: Spanned<Expr>, rhs: Spanned<Expr>) -> Spanned<Self> {
+        let span = lhs.span.join(rhs.span);
         Self::Binop {
             sym,
             lhs: Box::new(lhs),
             rhs: Box::new(rhs),
         }
+        .spanned(span)
     }
 }
 
@@ -159,7 +163,7 @@ impl Display for Expr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Expr::Literal(lit) => write!(f, "{lit}"),
-            Expr::Unop { sym, opnd } => write!(f, "({} {})", sym.node, opnd.node),
+            Expr::Unop { sym, operand } => write!(f, "({} {})", sym.node, operand.node),
             Expr::Binop { sym, lhs, rhs } => write!(f, "({} {} {})", sym.node, lhs.node, rhs.node),
         }
     }

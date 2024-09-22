@@ -1,6 +1,6 @@
-use crate::context::{with_new_interpreter, with_source_map, with_source_map_mut};
+use crate::context::with_new_interpreter;
 use crate::diag::render::render_dcx;
-use crate::span::Location;
+use crate::span::{Location, SourceMap};
 
 use super::*;
 
@@ -10,36 +10,36 @@ use std::fmt::Debug;
 use std::ops::{Range, RangeInclusive};
 
 trait TokenTestable<'sm> {
-    fn check(&self, tok: &Token) -> bool;
+    fn check(&self, tok: &Spanned<Token>) -> bool;
 }
 
-impl<'sm> TokenTestable<'sm> for TokenKind {
-    fn check(&self, tok: &Token) -> bool {
+impl<'sm> TokenTestable<'sm> for Token {
+    fn check(&self, tok: &Spanned<Token>) -> bool {
         self == &tok.node
     }
 }
 
 impl<'sm> TokenTestable<'sm> for Span {
-    fn check(&self, tok: &Token) -> bool {
+    fn check(&self, tok: &Spanned<Token>) -> bool {
         *self == tok.span
     }
 }
 
 impl<'sm> TokenTestable<'sm> for Range<usize> {
-    fn check(&self, tok: &Token) -> bool {
+    fn check(&self, tok: &Spanned<Token>) -> bool {
         &tok.span.range() == self
     }
 }
 
 impl<'sm> TokenTestable<'sm> for (Location, Location) {
-    fn check(&self, tok: &Token) -> bool {
-        with_source_map(|sm| *self == sm.span_extents(tok.span).unwrap())
+    fn check(&self, tok: &Spanned<Token>) -> bool {
+        SourceMap::with_current(|sm| *self == sm.span_extents(tok.span).unwrap())
     }
 }
 
 impl<'sm> TokenTestable<'sm> for RangeInclusive<(usize, usize)> {
-    fn check(&self, tok: &Token) -> bool {
-        with_source_map(|sm| {
+    fn check(&self, tok: &Spanned<Token>) -> bool {
+        SourceMap::with_current(|sm| {
             let (start, end) = sm.span_extents(tok.span).unwrap();
             ((start.line, start.column), (end.line, end.column)) == self.clone().into_inner()
         })
@@ -51,7 +51,7 @@ where
     A: TokenTestable<'sm>,
     B: TokenTestable<'sm>,
 {
-    fn check(&self, tok: &Token) -> bool {
+    fn check(&self, tok: &Spanned<Token>) -> bool {
         self.0.check(tok) && self.1.check(tok)
     }
 }
@@ -61,8 +61,8 @@ where
     I: IntoIterator<Item = T>,
     T: for<'sm> TokenTestable<'sm> + Debug,
 {
-    let source_idx = with_source_map_mut(|sm| sm.add_source(0, source));
-    with_source_map(|sm| {
+    let source_idx = SourceMap::with_current_mut(|sm| sm.add_source(0, source));
+    SourceMap::with_current(|sm| {
         let mut success = true;
         let mut lexer = Lexer::new(sm.source(source_idx));
 
@@ -87,7 +87,7 @@ where
 
                 (Some(tok), Some(expected)) => {
                     if !expected.check(&tok) {
-                        eprintln!("Token mismatch: expected {expected:?}, got {tok:?}");
+                        eprintln!("Spanned<Token> mismatch: expected {expected:?}, got {tok:?}");
                         success = false;
                     }
                 }
@@ -113,17 +113,17 @@ where
     })
 }
 
-use TokenKind::*;
+use Token::*;
 
-fn ident(s: impl Into<String>) -> TokenKind {
+fn ident(s: impl Into<String>) -> Token {
     Ident(s.into())
 }
 
-fn strlit(s: impl Into<String>) -> TokenKind {
+fn strlit(s: impl Into<String>) -> Token {
     StringLiteral(s.into())
 }
 
-fn num(n: f64) -> TokenKind {
+fn num(n: f64) -> Token {
     Number(n)
 }
 

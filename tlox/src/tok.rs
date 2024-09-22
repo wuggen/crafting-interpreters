@@ -1,16 +1,5 @@
 //! Lexical definitions and lexer implementation for Lox.
-//!
-//! [`Lexer`] is an iterator over a borrowed string, yielding `Result`s of [`Token`] and
-//! [`LexerError`].
-//!
-//! A [`Token`] consists of a [`TokenKind`] (which includes content in the case of identifier,
-//! string literal, and number tokens) and the [`Location`] (0-based line and column numbers) of
-//! the first character of its occurrence in the source.
-//!
-//! Maybe one day I'll upgrade that to actual spans, and maybe even intern identifier names and
-//! string values.
 
-use std::fmt::{self, Display, Formatter};
 use std::num::ParseFloatError;
 
 use crate::diag::{Diag, DiagKind, Diagnostic};
@@ -20,7 +9,7 @@ use crate::span::{Cursor, Source, Span, Spannable, Spanned};
 mod test;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum TokenKind {
+pub enum Token {
     LeftParen,
     RightParen,
     LeftBrace,
@@ -61,53 +50,6 @@ pub enum TokenKind {
     While,
 }
 
-impl Display for TokenKind {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match self {
-            TokenKind::LeftParen => write!(f, "("),
-            TokenKind::RightParen => write!(f, ")"),
-            TokenKind::LeftBrace => write!(f, "{{"),
-            TokenKind::RightBrace => write!(f, "}}"),
-            TokenKind::Comma => write!(f, ","),
-            TokenKind::Dot => write!(f, "."),
-            TokenKind::Minus => write!(f, "-"),
-            TokenKind::Plus => write!(f, "+"),
-            TokenKind::Semicolon => write!(f, ";"),
-            TokenKind::Slash => write!(f, "/"),
-            TokenKind::Star => write!(f, "*"),
-            TokenKind::Percent => write!(f, "%"),
-            TokenKind::Bang => write!(f, "!"),
-            TokenKind::BangEqual => write!(f, "!="),
-            TokenKind::Equal => write!(f, "="),
-            TokenKind::EqualEqual => write!(f, "=="),
-            TokenKind::Greater => write!(f, ">"),
-            TokenKind::GreaterEqual => write!(f, ">="),
-            TokenKind::Less => write!(f, "<"),
-            TokenKind::LessEqual => write!(f, "<="),
-            TokenKind::Ident(s) => write!(f, "{s}"),
-            TokenKind::StringLiteral(s) => write!(f, "{s:?}"),
-            TokenKind::Number(x) => write!(f, "{x}"),
-            TokenKind::Boolean(b) => write!(f, "{b}"),
-            TokenKind::And => write!(f, "and"),
-            TokenKind::Class => write!(f, "class"),
-            TokenKind::Else => write!(f, "else"),
-            TokenKind::Fun => write!(f, "fun"),
-            TokenKind::For => write!(f, "for"),
-            TokenKind::If => write!(f, "if"),
-            TokenKind::Nil => write!(f, "nil"),
-            TokenKind::Or => write!(f, "or"),
-            TokenKind::Print => write!(f, "print"),
-            TokenKind::Return => write!(f, "return"),
-            TokenKind::Super => write!(f, "super"),
-            TokenKind::This => write!(f, "this"),
-            TokenKind::Var => write!(f, "var"),
-            TokenKind::While => write!(f, "while"),
-        }
-    }
-}
-
-pub type Token = Spanned<TokenKind>;
-
 #[derive(Debug, Clone)]
 pub struct Lexer<'sm> {
     cursor: Cursor<'sm>,
@@ -130,7 +72,7 @@ impl<'sm> Lexer<'sm> {
 }
 
 impl<'sm> Iterator for Lexer<'sm> {
-    type Item = Token;
+    type Item = Spanned<Token>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.scan()
@@ -383,12 +325,12 @@ impl<'sm> Lexer<'sm> {
     }
 
     /// Create a token of the given type with the current span.
-    fn token(&self, ty: TokenKind) -> Option<Token> {
-        Some(ty.spanned(self.span()))
+    fn token(&self, tok: Token) -> Option<Spanned<Token>> {
+        Some(tok.spanned(self.span()))
     }
 
     /// Create a token with the current span, constructing the token type from the current buffer.
-    fn token_with_buffer(&self, f: impl FnOnce(String) -> TokenKind) -> Option<Token> {
+    fn token_with_buffer(&self, f: impl FnOnce(String) -> Token) -> Option<Spanned<Token>> {
         self.token(f(self.buffer().into()))
     }
 
@@ -407,7 +349,7 @@ impl<'sm> Lexer<'sm> {
     /// This assumes that the cursor is at the first character of the string body, i.e. after the
     /// opening `"`, and that the span start is exactly the opening `"`. When it returns, the
     /// cursor will be at the character after the closing `"`.
-    fn scan_string(&mut self) -> Option<Token> {
+    fn scan_string(&mut self) -> Option<Spanned<Token>> {
         use LexerErrorKind::*;
 
         self.clear_buffer();
@@ -423,7 +365,7 @@ impl<'sm> Lexer<'sm> {
 
             match c {
                 '"' => {
-                    break self.token_with_buffer(TokenKind::StringLiteral);
+                    break self.token_with_buffer(Token::StringLiteral);
                 }
 
                 '\\' => match self.peek() {
@@ -473,8 +415,8 @@ impl<'sm> Lexer<'sm> {
     /// It will scan until a non-identifier character is encountered. If the resulting buffer
     /// matches a keyword, the appropriate token will be returned; otherwise, returns an identifier
     /// token.
-    fn scan_ident(&mut self) -> Option<Token> {
-        use TokenKind::*;
+    fn scan_ident(&mut self) -> Option<Spanned<Token>> {
+        use Token::*;
 
         self.advance_while(is_ident_continue);
         match self.buffer() {
@@ -499,7 +441,7 @@ impl<'sm> Lexer<'sm> {
     }
 
     /// Scan a number token.
-    fn scan_number(&mut self) -> Option<Token> {
+    fn scan_number(&mut self) -> Option<Spanned<Token>> {
         self.advance_while(|c| c.is_ascii_digit());
 
         if self.peek() == Some('.') {
@@ -508,7 +450,7 @@ impl<'sm> Lexer<'sm> {
         }
 
         match self.buffer().parse::<f64>() {
-            Ok(n) => self.token(TokenKind::Number(n)),
+            Ok(n) => self.token(Token::Number(n)),
             Err(e) => {
                 self.emit_error(LexerErrorKind::InvalidNumber { source: e });
                 None
@@ -519,8 +461,8 @@ impl<'sm> Lexer<'sm> {
     /// Scan from the current cursor, yielding a single token or error.
     ///
     /// Returns `None` if the end of the input has been reached.
-    fn scan(&mut self) -> Option<Token> {
-        use TokenKind::*;
+    fn scan(&mut self) -> Option<Spanned<Token>> {
+        use Token::*;
 
         loop {
             self.skip_whitespace();

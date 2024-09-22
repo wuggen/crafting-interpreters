@@ -14,6 +14,7 @@ thread_local! {
     static CONTEXT: RefCell<Weak<Context>> = const { RefCell::new(Weak::new()) };
 }
 
+/// An interpreter instance.
 #[derive(Debug, Default)]
 pub struct Interpreter {
     context: Arc<Context>,
@@ -24,6 +25,12 @@ impl Interpreter {
         Self::default()
     }
 
+    /// Enter this interpreter's context on the current thread.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if the current thread is already in the context of some interpreter,
+    /// including this one.
     pub fn enter(&self) {
         CONTEXT.with_borrow_mut(|cx| {
             if cx.upgrade().is_some() {
@@ -34,6 +41,13 @@ impl Interpreter {
         });
     }
 
+    /// Exit this interpreter's context on the current thread.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if the current thread is not in this interpreter's context. This can
+    /// happen if the thread is in a different interpreter's context, or if it is under no
+    /// interpreter's context at all.
     pub fn exit(&self) {
         CONTEXT.with_borrow_mut(|cx| {
             if cx.as_ptr() != Arc::as_ptr(&self.context) {
@@ -43,8 +57,23 @@ impl Interpreter {
             *cx = Weak::new();
         });
     }
+
+    /// Is the current thread in the context of this interpreter?
+    ///
+    /// This method will only return true if the calling thread is in the context of _this
+    /// particular_ interpeter instance. To check whether the current thread is in the context of
+    /// _any_ interpreter, use the non-method [`in_context`] function.
+    pub fn in_context(&self) -> bool {
+        CONTEXT.with_borrow(|cx| cx.as_ptr() == Arc::as_ptr(&self.context))
+    }
 }
 
+/// Global interpreter context.
+///
+/// Each context belongs to a particular interpreter instance. A thread may
+/// [`enter`](Interpreter::enter) the context of an interpreter to make that interpreter's
+/// `Context` available to all code running on that thread, via [`with_context`]. A thread may be
+/// in the context of no more than one interpreter at a time. #[derive(Debug)]
 #[derive(Debug)]
 pub struct Context {
     source_map: RwLock<SourceMap>,
@@ -91,18 +120,6 @@ pub fn with_context<T>(f: impl FnOnce(&Context) -> T) -> T {
     })
 }
 
-pub fn with_source_map<T>(f: impl FnOnce(&SourceMap) -> T) -> T {
-    with_context(|cx| cx.with_source_map(f))
-}
-
-pub fn with_source_map_mut<T>(f: impl FnOnce(&mut SourceMap) -> T) -> T {
-    with_context(|cx| cx.with_source_map_mut(f))
-}
-
-pub fn with_diag_context<T>(f: impl FnOnce(&DiagContext) -> T) -> T {
-    with_context(|cx| cx.with_diag_context(f))
-}
-
 /// Perform an action in the context of a new [`Interpreter`].
 ///
 /// This will create a new [`Interpreter`], enter its context, and execute the given closure. When
@@ -112,13 +129,10 @@ pub fn with_new_interpreter<T>(f: impl FnOnce(&Interpreter) -> T) -> T {
     let interpreter = Interpreter::new();
     interpreter.enter();
 
-    let res = f(&interpreter);
-
-    interpreter.exit();
-    res
+    f(&interpreter)
 }
 
-/// Is the current thread in an interpreter context?
+/// Is the current thread in the context of an interpreter?
 pub fn in_context() -> bool {
     CONTEXT.with_borrow(|cx| cx.upgrade().is_some())
 }

@@ -111,6 +111,10 @@ impl DiagContext {
         }
     }
 
+    pub fn with_current<T>(f: impl FnOnce(&Self) -> T) -> T {
+        with_context(|cx| cx.with_diag_context(f))
+    }
+
     /// Does the current context contain any errors?
     pub fn has_errors(&self) -> bool {
         self.pending
@@ -129,7 +133,7 @@ impl DiagContext {
 pub mod render {
     //! Diagnostic rendering.
 
-    use crate::context::with_source_map;
+    use crate::span::SourceMap;
 
     use super::*;
 
@@ -140,9 +144,7 @@ pub mod render {
     pub fn render_dcx() -> String {
         use codespan_reporting::term::termcolor::NoColor;
 
-        use crate::context::with_diag_context;
-
-        with_diag_context(|dcx| {
+        DiagContext::with_current(|dcx| {
             let mut buf = NoColor::new(Vec::<u8>::new());
             dcx.report_to(&mut buf);
             String::from_utf8(buf.into_inner()).unwrap()
@@ -165,7 +167,7 @@ pub mod render {
             self,
             kind: diagnostic::LabelStyle,
         ) -> diagnostic::Label<usize> {
-            with_source_map(|sm| {
+            SourceMap::with_current(|sm| {
                 let DiagLabel { span, label } = self;
                 let source = sm.span_source(span).unwrap();
                 let range = span.range_within(source.span()).unwrap();
@@ -215,7 +217,7 @@ pub mod render {
 
             for diag in self.pending.lock().unwrap().drain(..) {
                 let report = diag.into_codespan_diagnostic();
-                with_source_map(|sm| {
+                SourceMap::with_current(|sm| {
                     term::emit(writer, &config, sm, &report).unwrap();
                 });
             }
@@ -228,7 +230,8 @@ mod test {
     use codespan_reporting::term;
     use indoc::indoc;
 
-    use crate::context::{with_new_interpreter, with_source_map, with_source_map_mut};
+    use crate::context::with_new_interpreter;
+    use crate::span::SourceMap;
 
     use super::*;
 
@@ -236,14 +239,14 @@ mod test {
         let mut writer = term::termcolor::NoColor::new(Vec::<u8>::new());
         let config = render::render_config();
         let report = diag.into_codespan_diagnostic();
-        with_source_map(|sm| {
+        SourceMap::with_current(|sm| {
             term::emit(&mut writer, &config, sm, &report).unwrap();
         });
         String::from_utf8(writer.into_inner()).unwrap()
     }
 
     fn mkmap<'a>(sources: impl IntoIterator<Item = &'a str>) {
-        with_source_map_mut(|sm| {
+        SourceMap::with_current_mut(|sm| {
             for (i, source) in sources.into_iter().enumerate() {
                 sm.add_source(i, source);
             }
@@ -259,7 +262,8 @@ mod test {
             }"};
             mkmap(Some(source));
 
-            let primary_span = with_source_map(|sm| sm.global_line(1).span_within(4..8).unwrap());
+            let primary_span =
+                SourceMap::with_current(|sm| sm.global_line(1).span_within(4..8).unwrap());
 
             let diag = Diag::new(
                 DiagKind::Error,
@@ -290,7 +294,7 @@ mod test {
             }"#};
             mkmap(Some(source));
 
-            let diag = with_source_map(|sm| {
+            let diag = SourceMap::with_current(|sm| {
                 let primary_span = sm.global_line(2).span_within(23..27).unwrap();
                 let primary_label = "identifier `oops` is not in scope";
 
@@ -350,7 +354,7 @@ mod test {
                 "},
             ]);
 
-            let diag = with_source_map(|sm| {
+            let diag = SourceMap::with_current(|sm| {
                 Diag::new(
                     DiagKind::Warning,
                     "huh?",

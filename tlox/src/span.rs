@@ -17,7 +17,7 @@ use std::str::Chars;
 
 use codespan_reporting::files::{self, Files};
 
-use crate::context::{in_context, with_source_map};
+use crate::context::{in_context, with_context};
 
 #[cfg(test)]
 mod test;
@@ -123,7 +123,7 @@ pub struct Spanned<T> {
 impl<T: Display> Display for Spanned<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if in_context() {
-            with_source_map(|sm| {
+            SourceMap::with_current(|sm| {
                 if let Some((start, end)) = sm.span_extents(self.span) {
                     write!(
                         f,
@@ -249,6 +249,14 @@ impl SourceMap {
             lines: vec![],
             sources: vec![],
         }
+    }
+
+    pub fn with_current<T>(f: impl FnOnce(&Self) -> T) -> T {
+        with_context(|cx| cx.with_source_map(f))
+    }
+
+    pub fn with_current_mut<T>(f: impl FnOnce(&mut Self) -> T) -> T {
+        with_context(|cx| cx.with_source_map_mut(f))
     }
 
     /// Append a source to the source map.
