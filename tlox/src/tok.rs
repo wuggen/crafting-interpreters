@@ -51,6 +51,25 @@ pub enum Token {
 }
 
 impl Token {
+    pub fn is_binop(&self) -> bool {
+        matches!(
+            self,
+            Token::Minus
+            | Token::Plus
+            | Token::Slash
+            | Token::Star
+            | Token::Percent
+            | Token::EqualEqual
+            | Token::BangEqual
+            | Token::Greater
+            | Token::GreaterEqual
+            | Token::Less
+            | Token::LessEqual
+            | Token::And
+            | Token::Or
+        )
+    }
+
     /// Is this a token that could start a method receiver expression?
     ///
     /// - Identifiers

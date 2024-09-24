@@ -60,25 +60,72 @@ type ParserRes<T> = Result<T, ParserError>;
 
 #[derive(Debug, Clone, Copy)]
 enum ParserError {
-    /// Thrown when encountering an unexpected close paren. Diagnostic should not be immediately
+    /// Raised when encountering an unexpected close paren. Diagnostic should not be immediately
     /// emitted in this case, but rather left to the code catching it, to allow for more precise
     /// diagnostics.
     ///
     /// For instance, the cases where a close paren appears appropos of nothing should get a
     /// different diagnostic than the case where an otherwise-correct set of parentheses is closed
-    /// too early.
+    /// before its contained expression is complete.
     ///
-    /// Carries the span of the close paren to enable accurate emission of diagnostics. Code that
-    /// catches this and emits the relevant diagnostic should, if it propagates the error instead
-    /// of recovering, propagate it without the span so as to suppress redundant diagnostics.
-    SpuriousCloseParen(Option<Span>),
+    /// This error should usually be propagated up to the nearest containing atom node of the parse
+    /// tree in order to enable accurate error recovery, but intervening nodes may be able to
+    /// report more precise diagnostics; hence, this error carries a flag indicating whether the
+    /// spurious paren has already been reported.
+    SpuriousCloseParen {
+        close: Span,
+        reported: bool,
+    },
+
+    /// Thrown when encountering an unexpected binary operator.
+    ///
+    /// Carries the binding level of the operator, to allow catching and recovering at the
+    /// appropriate level of the parse tree.
+    LoneBinop {
+        location: Span,
+        level: BinopLevel,
+    },
+
     Eof,
     Other,
+}
+
+/// Binary operator precedence levels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BinopLevel {
+    Logic,
+    Eq,
+    Comp,
+    Add,
+    Mul,
+}
+
+impl BinopLevel {
+    fn from_tok(tok: &Token) -> Self {
+        match tok {
+            Token::And | Token::Or => Self::Logic,
+            Token::EqualEqual | Token::BangEqual => Self::Eq,
+            Token::Less | Token::LessEqual | Token::Greater | Token::GreaterEqual => Self::Comp,
+            Token::Plus | Token::Minus => Self::Add,
+            Token::Star | Token::Slash | Token::Percent => Self::Mul,
+            _ => panic!("not a binop token"),
+        }
+    }
 }
 
 impl Parser<'_> {
     const ATOM_STARTS: [&'static str; 6] =
         ["number", "string", "`true`", "`false`", "`nil`", "`(`"];
+
+    /// Get the span associated with the given error, if any.
+    fn err_span(&self, err: &ParserError) -> Option<Span> {
+        match err {
+            ParserError::SpuriousCloseParen { close, .. } => Some(*close),
+            ParserError::LoneBinop { location, .. } => Some(*location),
+            ParserError::Eof => Some(self.end_of_source()),
+            ParserError::Other => None,
+        }
+    }
 
     /// Get the one-character span representing the end of the source being parsed.
     fn end_of_source(&self) -> Span {
@@ -206,17 +253,50 @@ impl Parser<'_> {
     ///   returned.
     fn binop_chain_left_assoc(
         &mut self,
+        level: BinopLevel,
         operand: impl Fn(&mut Self) -> ParserRes<Spanned<Expr>>,
         sym_test: impl Fn(&Token) -> bool,
         sym_map: impl Fn(Token) -> BinopSym,
     ) -> ParserRes<Spanned<Expr>> {
-        let mut lhs = operand(self)?;
+        let mut lhs = match operand(self) {
+            Ok(expr) => expr,
+
+            // Missing LHS: attempt to parse RHS, emit error, return dummy expr
+            Err(ParserError::LoneBinop {
+                level: lv,
+                location,
+            }) if lv == level => {
+                let rhs = operand(self)
+                    .map(|expr| expr.span)
+                    .or_else(|err| self.err_span(&err).ok_or(()))
+                    .ok();
+
+                ParserDiag::missing_lhs(location, rhs).emit();
+
+                let dummy_span = if let Some(rhs) = rhs {
+                    location.join(rhs)
+                } else {
+                    location
+                };
+
+                Expr::literal(Lit::Nil).spanned(dummy_span)
+            }
+            other => return other,
+        };
 
         while self.check_next(&sym_test) {
             let sym = self.advance_map(&sym_map).unwrap();
             match operand(self) {
                 Ok(rhs) => {
                     lhs = Expr::binop(sym, lhs, rhs);
+                }
+
+                Err(ParserError::SpuriousCloseParen { close, .. }) => {
+                    ParserDiag::missing_rhs(lhs.span, sym.span, close).emit();
+                    return Err(ParserError::SpuriousCloseParen {
+                        close,
+                        reported: true,
+                    });
                 }
 
                 Err(ParserError::Eof) => {
@@ -237,6 +317,7 @@ impl Parser<'_> {
     /// Corresponds to the `equal` grammar production.
     fn equal(&mut self) -> ParserRes<Spanned<Expr>> {
         self.binop_chain_left_assoc(
+            BinopLevel::Eq,
             Self::comp,
             |tok| matches!(tok, Token::EqualEqual | Token::BangEqual),
             |tok| match tok {
@@ -252,6 +333,7 @@ impl Parser<'_> {
     /// Corresponds to the `comp` grammar production.
     fn comp(&mut self) -> ParserRes<Spanned<Expr>> {
         self.binop_chain_left_assoc(
+            BinopLevel::Comp,
             Self::terms,
             |tok| {
                 matches!(
@@ -274,6 +356,7 @@ impl Parser<'_> {
     /// Corresponds to the `terms` grammar production.
     fn terms(&mut self) -> ParserRes<Spanned<Expr>> {
         self.binop_chain_left_assoc(
+            BinopLevel::Add,
             Self::factors,
             |tok| matches!(tok, Token::Plus | Token::Minus),
             |tok| match tok {
@@ -289,6 +372,7 @@ impl Parser<'_> {
     /// Corresponds to the `factors` grammar production.
     fn factors(&mut self) -> ParserRes<Spanned<Expr>> {
         self.binop_chain_left_assoc(
+            BinopLevel::Mul,
             Self::unary,
             |tok| matches!(tok, Token::Star | Token::Slash | Token::Percent),
             |tok| match tok {
@@ -334,7 +418,19 @@ impl Parser<'_> {
                 Token::LeftParen => self.group(span),
 
                 // Error productions
-                Token::RightParen => Err(ParserError::SpuriousCloseParen(Some(span))),
+                Token::RightParen => Err(ParserError::SpuriousCloseParen {
+                    close: span,
+                    reported: false,
+                }),
+
+                tok if tok.is_binop() => {
+                    let level = BinopLevel::from_tok(&tok);
+                    Err(ParserError::LoneBinop {
+                        level,
+                        location: span,
+                    })
+                }
+
                 _ => {
                     ParserDiag::unexpected_tok(span, Self::ATOM_STARTS).emit();
                     Err(ParserError::Other)
@@ -355,9 +451,14 @@ impl Parser<'_> {
     fn group(&mut self, oparen_span: Span) -> ParserRes<Spanned<Expr>> {
         let expr = match self.expr() {
             Ok(expr) => expr,
-            Err(ParserError::SpuriousCloseParen(Some(close_span))) => {
-                ParserDiag::early_close_paren(oparen_span, close_span, Self::ATOM_STARTS).emit();
-                return Err(ParserError::SpuriousCloseParen(None));
+            Err(ParserError::SpuriousCloseParen { close, reported }) => {
+                if !reported {
+                    ParserDiag::early_close_paren(oparen_span, close, Self::ATOM_STARTS).emit();
+                }
+                // Close the group and return a dummy expression to allow checking for further
+                // errors in this expression
+                let dummy_span = oparen_span.join(close);
+                return Ok(Expr::literal(Lit::Nil).spanned(dummy_span));
             }
             other => return other,
         };
@@ -377,21 +478,50 @@ impl Parser<'_> {
     }
 }
 
-struct ParserDiag {
-    primary_span: Span,
-    info: ParserDiagInfo,
-    expected: Vec<&'static str>,
+enum ParserDiag {
+    Unexpected {
+        kind: UnexpectedKind,
+        location: Span,
+        expected: Vec<&'static str>,
+    },
+
+    EarlyCloseParen {
+        open: Span,
+        close: Span,
+        expected: Vec<&'static str>,
+    },
+
+    UnclosedParen {
+        open: Span,
+        expected_close: Span,
+    },
+
+    MissingLhs {
+        operator: Span,
+        rhs: Option<Span>,
+    },
+
+    MissingRhs {
+        lhs: Span,
+        operator: Span,
+        expected_rhs: Span,
+    },
 }
 
-enum ParserDiagInfo {
-    Unexpected { kind: UnexpectedKind },
-
-    EarlyCloseParen { open: Span },
-
-    UnclosedParen { open: Span },
+fn mk_expected(expected: &[&'static str]) -> String {
+    if expected.len() == 1 {
+        format!("expected {}", expected[0])
+    } else {
+        let mut note = format!("expected {}", expected[0]);
+        for expected in &expected[1..expected.len() - 1] {
+            write!(note, ", {}", expected).unwrap();
+        }
+        write!(note, " or {}", expected.last().unwrap()).unwrap();
+        note
+    }
 }
 
-impl ParserDiagInfo {
+impl ParserDiag {
     fn message(&self) -> &'static str {
         match self {
             Self::Unexpected {
@@ -404,23 +534,72 @@ impl ParserDiagInfo {
             } => "unexpected end of input",
             Self::EarlyCloseParen { .. } => "parentheses closed prematurely",
             Self::UnclosedParen { .. } => "unclosed parentheses",
+            Self::MissingLhs { .. } => "binary operator without left-hand operand",
+            Self::MissingRhs { .. } => "binary operator without right-hand operand",
         }
     }
 
-    fn elaborate(self, primary_span: Span, diag: Diag) -> Diag {
+    fn elaborate(self, mut diag: Diag) -> Diag {
         match self {
-            ParserDiagInfo::Unexpected { .. } => {
-                diag.with_primary(primary_span, "unexpected token")
+            Self::Unexpected {
+                location, expected, ..
+            } => {
+                if !expected.is_empty() {
+                    diag = diag.with_note(mk_expected(&expected));
+                }
+
+                diag.with_primary(location, "unexpected token")
             }
 
-            ParserDiagInfo::EarlyCloseParen { open } => diag
-                .with_primary(primary_span, "")
-                .with_secondary(open, "parentheses opened here"),
+            Self::EarlyCloseParen {
+                open,
+                close,
+                expected,
+            } => {
+                if !expected.is_empty() {
+                    diag = diag.with_note(mk_expected(&expected));
+                }
+                diag.with_secondary(open, "parentheses opened here")
+                    .with_primary(close, "parentheses closed here, prematurely")
+            }
 
-            ParserDiagInfo::UnclosedParen { open } => diag
-                .with_primary(primary_span, "parentheses should have been closed")
-                .with_secondary(open, "parentheses opened here"),
+            Self::UnclosedParen {
+                open,
+                expected_close,
+            } => diag
+                .with_primary(expected_close, "parentheses should have been closed")
+                .with_secondary(open, "parentheses opened here")
+                .with_note("expected `)`"),
+
+            Self::MissingLhs { rhs, operator } => if let Some(rhs) = rhs {
+                diag.with_primary(
+                    operator.join(rhs),
+                    "this expression is missing the left-hand operand",
+                )
+            } else {
+                diag.with_primary(operator, "expected left-hand operand for this operator")
+            }
+            .with_note(mk_expected(&Parser::ATOM_STARTS)),
+
+            Self::MissingRhs {
+                operator,
+                lhs,
+                expected_rhs,
+            } => diag
+                .with_primary(expected_rhs, "expected right-hand operand here")
+                .with_secondary(
+                    operator.join(lhs),
+                    "this expression is missing the right-hand operand",
+                )
+                .with_note(mk_expected(&Parser::ATOM_STARTS)),
         }
+    }
+}
+
+impl Diagnostic for ParserDiag {
+    fn into_diag(self) -> Diag {
+        let message = self.message();
+        self.elaborate(Diag::new(DiagKind::Error, message))
     }
 }
 
@@ -429,38 +608,16 @@ enum UnexpectedKind {
     Eof,
 }
 
-impl Diagnostic for ParserDiag {
-    fn into_diag(self) -> Diag {
-        let mut diag = Diag::new(DiagKind::Error, self.info.message());
-
-        if !self.expected.is_empty() {
-            let note = if self.expected.len() == 1 {
-                format!("expected {}", self.expected[0])
-            } else {
-                let mut label = format!("expected {}", self.expected[0]);
-                for expected in &self.expected[1..self.expected.len() - 1] {
-                    write!(label, ", {}", expected).unwrap();
-                }
-                write!(label, " or {}", self.expected.last().unwrap()).unwrap();
-                label
-            };
-            diag = diag.with_note(note);
-        }
-
-        self.info.elaborate(self.primary_span, diag)
-    }
-}
-
 impl ParserDiag {
     fn unexpected(
         kind: UnexpectedKind,
-        primary_span: Span,
+        location: Span,
         expected: impl IntoIterator<Item = &'static str>,
     ) -> Self {
-        Self {
-            primary_span,
+        Self::Unexpected {
+            kind,
+            location,
             expected: expected.into_iter().collect(),
-            info: ParserDiagInfo::Unexpected { kind },
         }
     }
 
@@ -483,18 +640,29 @@ impl ParserDiag {
         close_span: Span,
         expected: impl IntoIterator<Item = &'static str>,
     ) -> Self {
-        Self {
-            primary_span: close_span,
+        Self::EarlyCloseParen {
+            open: open_span,
+            close: close_span,
             expected: expected.into_iter().collect(),
-            info: ParserDiagInfo::EarlyCloseParen { open: open_span },
         }
     }
 
     fn unclosed_paren(open_span: Span, expected_close: Span) -> Self {
-        Self {
-            primary_span: expected_close,
-            expected: vec![],
-            info: ParserDiagInfo::UnclosedParen { open: open_span },
+        Self::UnclosedParen {
+            open: open_span,
+            expected_close,
+        }
+    }
+
+    fn missing_lhs(operator: Span, rhs: Option<Span>) -> Self {
+        Self::MissingLhs { operator, rhs }
+    }
+
+    fn missing_rhs(lhs: Span, operator: Span, expected_rhs: Span) -> Self {
+        Self::MissingRhs {
+            operator,
+            lhs,
+            expected_rhs,
         }
     }
 }

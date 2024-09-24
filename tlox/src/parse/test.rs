@@ -78,11 +78,11 @@ fn err_missing_lhs() {
     with_new_interpreter(|_| {
         parse_source("+ 4");
         assert_snapshot!(render_dcx(), @r#"
-        error: unexpected token in input
+        error: binary operator without left-hand operand
           --> %i0:1:1
           |
         1 | + 4
-          | ^ unexpected token
+          | ^^^ this expression is missing the left-hand operand
           |
           = note: expected number, string, `true`, `false`, `nil` or `(`
 
@@ -90,11 +90,11 @@ fn err_missing_lhs() {
 
         parse_source("4 + (* nil) - 5");
         assert_snapshot!(render_dcx(), @r#"
-        error: unexpected token in input
+        error: binary operator without left-hand operand
           --> %i0:1:6
           |
         1 | 4 + (* nil) - 5
-          |      ^ unexpected token
+          |      ^^^^^ this expression is missing the left-hand operand
           |
           = note: expected number, string, `true`, `false`, `nil` or `(`
 
@@ -124,13 +124,13 @@ fn err_early_close_paren() {
     with_new_interpreter(|_| {
         parse_source("4 + (nil *) - 5");
         assert_snapshot!(render_dcx(), @r#"
-        error: parentheses closed prematurely
+        error: binary operator without right-hand operand
           --> %i0:1:11
           |
         1 | 4 + (nil *) - 5
-          |     -     ^
-          |     |      
-          |     parentheses opened here
+          |      -----^ expected right-hand operand here
+          |      |     
+          |      this expression is missing the right-hand operand
           |
           = note: expected number, string, `true`, `false`, `nil` or `(`
 
@@ -150,6 +150,8 @@ fn err_unclosed_paren() {
           |         -       ^ parentheses should have been closed
           |         |       
           |         parentheses opened here
+          |
+          = note: expected `)`
 
         "#);
 
@@ -168,6 +170,81 @@ fn err_unclosed_paren() {
           .
         5 | "whoops"
           | ^^^^^^^^ parentheses should have been closed
+          |
+          = note: expected `)`
+
+        "#);
+    });
+}
+
+#[test]
+fn err_multiple() {
+    with_new_interpreter(|_| {
+        parse_source("8 * + (4 - ) / (  ) + 5");
+        assert_snapshot!(render_dcx(), @r#"
+        error: binary operator without right-hand operand
+          --> %i0:1:12
+          |
+        1 | 8 * + (4 - ) / (  ) + 5
+          |        --- ^ expected right-hand operand here
+          |        |    
+          |        this expression is missing the right-hand operand
+          |
+          = note: expected number, string, `true`, `false`, `nil` or `(`
+
+        error: parentheses closed prematurely
+          --> %i0:1:19
+          |
+        1 | 8 * + (4 - ) / (  ) + 5
+          |                -  ^ parentheses closed here, prematurely
+          |                |   
+          |                parentheses opened here
+          |
+          = note: expected number, string, `true`, `false`, `nil` or `(`
+
+        error: binary operator without left-hand operand
+          --> %i0:1:5
+          |
+        1 | 8 * + (4 - ) / (  ) + 5
+          |     ^^^^^^^^^^^^^^^ this expression is missing the left-hand operand
+          |
+          = note: expected number, string, `true`, `false`, `nil` or `(`
+
+        "#);
+
+        parse_source(indoc! {r#"
+        / false * (nil
+            - ) == ()
+        "#});
+        assert_snapshot!(render_dcx(), @r#"
+        error: binary operator without left-hand operand
+          --> %i0:1:1
+          |
+        1 | / false * (nil
+          | ^^^^^^^ this expression is missing the left-hand operand
+          |
+          = note: expected number, string, `true`, `false`, `nil` or `(`
+
+        error: binary operator without right-hand operand
+          --> %i0:2:7
+          |  
+        1 |   / false * (nil
+          | /------------'
+        2 | |     - ) == ()
+          | |       ^ expected right-hand operand here
+          | \-----' this expression is missing the right-hand operand
+          |  
+          = note: expected number, string, `true`, `false`, `nil` or `(`
+
+        error: parentheses closed prematurely
+          --> %i0:2:13
+          |
+        2 |     - ) == ()
+          |            -^ parentheses closed here, prematurely
+          |            | 
+          |            parentheses opened here
+          |
+          = note: expected number, string, `true`, `false`, `nil` or `(`
 
         "#);
     });
