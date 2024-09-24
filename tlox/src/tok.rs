@@ -55,18 +55,18 @@ impl Token {
         matches!(
             self,
             Token::Minus
-            | Token::Plus
-            | Token::Slash
-            | Token::Star
-            | Token::Percent
-            | Token::EqualEqual
-            | Token::BangEqual
-            | Token::Greater
-            | Token::GreaterEqual
-            | Token::Less
-            | Token::LessEqual
-            | Token::And
-            | Token::Or
+                | Token::Plus
+                | Token::Slash
+                | Token::Star
+                | Token::Percent
+                | Token::EqualEqual
+                | Token::BangEqual
+                | Token::Greater
+                | Token::GreaterEqual
+                | Token::Less
+                | Token::LessEqual
+                | Token::And
+                | Token::Or
         )
     }
 
@@ -80,13 +80,13 @@ impl Token {
         matches!(
             self,
             Token::LeftParen
-            | Token::Ident(_)
-            | Token::Str(_)
-            | Token::Number(_)
-            | Token::Boolean(_)
-            | Token::Nil
-            | Token::Super
-            | Token::This
+                | Token::Ident(_)
+                | Token::Str(_)
+                | Token::Number(_)
+                | Token::Boolean(_)
+                | Token::Nil
+                | Token::Super
+                | Token::This
         )
     }
 
@@ -95,19 +95,19 @@ impl Token {
     /// These are tokens that are non-operator keywords, and those that can start a receiver
     /// expression.
     pub fn is_stmt_start(&self) -> bool {
-        self.is_receiver_expr_start() ||
-        matches!(
-            self,
-            | Token::Class
-            | Token::Fun
-            | Token::For
-            | Token::If
-            | Token::Print
-            | Token::Return
-            | Token::Super
-            | Token::Var
-            | Token::While
-        )
+        self.is_receiver_expr_start()
+            || matches!(
+                self,
+                Token::Class
+                    | Token::Fun
+                    | Token::For
+                    | Token::If
+                    | Token::Print
+                    | Token::Return
+                    | Token::Super
+                    | Token::Var
+                    | Token::While
+            )
     }
 }
 
