@@ -120,7 +120,7 @@ fn ident(s: impl Into<String>) -> Token {
 }
 
 fn strlit(s: impl Into<String>) -> Token {
-    StringLiteral(s.into())
+    Str(s.into())
 }
 
 fn num(n: f64) -> Token {

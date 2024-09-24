@@ -114,7 +114,6 @@ impl Span {
 
 /// An item with an associated span.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[allow(missing_docs)]
 pub struct Spanned<T> {
     pub node: T,
     pub span: Span,
@@ -171,7 +170,6 @@ pub struct SourceMap {
 ///
 /// A source is either a file with a file system path, or a REPL input with a zero-based index.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[allow(missing_docs)]
 pub enum SourceName {
     File(PathBuf),
     ReplInput(usize),

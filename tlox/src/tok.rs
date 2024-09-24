@@ -31,7 +31,7 @@ pub enum Token {
     Less,
     LessEqual,
     Ident(String),
-    StringLiteral(String),
+    Str(String),
     Number(f64),
     Boolean(bool),
     And,
@@ -48,6 +48,48 @@ pub enum Token {
     This,
     Var,
     While,
+}
+
+impl Token {
+    /// Is this a token that could start a method receiver expression?
+    ///
+    /// - Identifiers
+    /// - Literal values (string, numbers, booleans, nil)
+    /// - Keywords `this` and `super`
+    /// - Left paren
+    pub fn is_receiver_expr_start(&self) -> bool {
+        matches!(
+            self,
+            Token::LeftParen
+            | Token::Ident(_)
+            | Token::Str(_)
+            | Token::Number(_)
+            | Token::Boolean(_)
+            | Token::Nil
+            | Token::Super
+            | Token::This
+        )
+    }
+
+    /// Is this a token that could start a statement?
+    ///
+    /// These are tokens that are non-operator keywords, and those that can start a receiver
+    /// expression.
+    pub fn is_stmt_start(&self) -> bool {
+        self.is_receiver_expr_start() ||
+        matches!(
+            self,
+            | Token::Class
+            | Token::Fun
+            | Token::For
+            | Token::If
+            | Token::Print
+            | Token::Return
+            | Token::Super
+            | Token::Var
+            | Token::While
+        )
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -118,7 +160,7 @@ impl Diagnostic for LexerError {
             LexerErrorKind::UnrecognizedEscapeCharacter { c } => (
                 "unrecognized escape sequence".into(),
                 "this escape sequence is invalid".into(),
-                vec![format!("note: sequence replaced with the character {c:?}")],
+                vec![format!("sequence replaced with the character {c:?}")],
             ),
 
             LexerErrorKind::InvalidNumber { source } => (
@@ -135,7 +177,7 @@ impl Diagnostic for LexerError {
         };
 
         notes.into_iter().fold(
-            Diag::new(DiagKind::Error, message, self.span, label),
+            Diag::new(DiagKind::Error, message).with_primary(self.span, label),
             |diag, note| diag.with_note(note),
         )
     }
@@ -365,7 +407,7 @@ impl<'sm> Lexer<'sm> {
 
             match c {
                 '"' => {
-                    break self.token_with_buffer(Token::StringLiteral);
+                    break self.token_with_buffer(Token::Str);
                 }
 
                 '\\' => match self.peek() {

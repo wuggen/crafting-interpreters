@@ -30,33 +30,46 @@ pub trait Diagnostic: Sized {
 pub struct Diag {
     kind: DiagKind,
     message: String,
-    primary: DiagLabel,
-    secondary: Vec<DiagLabel>,
+    labels: Vec<DiagLabel>,
     notes: Vec<String>,
 }
 
 /// Diagnostic kind; warning or error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(missing_docs)]
 pub enum DiagKind {
     Warning,
     Error,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LabelKind {
+    Primary,
+    Secondary,
+}
+
 /// A label on a [`Span`].
 #[derive(Debug, Clone)]
 pub struct DiagLabel {
+    kind: LabelKind,
     span: Span,
     label: String,
 }
 
 impl DiagLabel {
-    #[allow(missing_docs)]
-    pub fn new(span: Span, label: impl Into<String>) -> Self {
+    pub fn new(kind: LabelKind, span: Span, label: impl Into<String>) -> Self {
         Self {
+            kind,
             span,
             label: label.into(),
         }
+    }
+
+    pub fn primary(span: Span, label: impl Into<String>) -> Self {
+        Self::new(LabelKind::Primary, span, label)
+    }
+
+    pub fn secondary(span: Span, label: impl Into<String>) -> Self {
+        Self::new(LabelKind::Secondary, span, label)
     }
 }
 
@@ -67,31 +80,29 @@ impl Diagnostic for Diag {
 }
 
 impl Diag {
-    #[allow(missing_docs)]
-    pub fn new(
-        kind: DiagKind,
-        message: impl Into<String>,
-        primary_span: Span,
-        primary_label: impl Into<String>,
-    ) -> Self {
+    pub fn new(kind: DiagKind, message: impl Into<String>) -> Self {
         Self {
             kind,
             message: message.into(),
-            primary: DiagLabel::new(primary_span, primary_label),
-            secondary: Vec::new(),
+            labels: Vec::new(),
             notes: Vec::new(),
         }
     }
 
+    pub fn with_primary(mut self, span: Span, label: impl Into<String>) -> Self {
+        self.labels.push(DiagLabel::primary(span, label));
+        self
+    }
+
     /// Builder method that adds a secondary label to the diagnostic.
     pub fn with_secondary(mut self, span: Span, label: impl Into<String>) -> Self {
-        self.secondary.push(DiagLabel::new(span, label));
+        self.labels.push(DiagLabel::secondary(span, label));
         self
     }
 
     /// Builder method that adds a note to the diagnostic.
-    pub fn with_note(mut self, note: impl Into<String>) -> Self {
-        self.notes.push(note.into());
+    pub fn with_note(mut self, note: impl AsRef<str>) -> Self {
+        self.notes.push(format!("note: {}", note.as_ref()));
         self
     }
 }
@@ -162,16 +173,23 @@ pub mod render {
         }
     }
 
+    impl LabelKind {
+        fn into_codespan_underline_style(self) -> diagnostic::LabelStyle {
+            match self {
+                LabelKind::Primary => diagnostic::LabelStyle::Primary,
+                LabelKind::Secondary => diagnostic::LabelStyle::Secondary,
+            }
+        }
+    }
+
     impl DiagLabel {
-        pub(crate) fn into_codespan_label(
-            self,
-            kind: diagnostic::LabelStyle,
-        ) -> diagnostic::Label<usize> {
+        pub(crate) fn into_codespan_label(self) -> diagnostic::Label<usize> {
             SourceMap::with_current(|sm| {
-                let DiagLabel { span, label } = self;
+                let DiagLabel { kind, span, label } = self;
                 let source = sm.span_source(span).unwrap();
                 let range = span.range_within(source.span()).unwrap();
-                diagnostic::Label::new(kind, source.index(), range).with_message(label)
+                diagnostic::Label::new(kind.into_codespan_underline_style(), source.index(), range)
+                    .with_message(label)
             })
         }
     }
@@ -181,8 +199,7 @@ pub mod render {
             let Diag {
                 kind,
                 message,
-                primary,
-                secondary,
+                labels,
                 notes,
             } = self;
 
@@ -191,12 +208,10 @@ pub mod render {
                 DiagKind::Error => diagnostic::Severity::Error,
             };
 
-            let mut labels = vec![primary.into_codespan_label(diagnostic::LabelStyle::Primary)];
-            labels.extend(
-                secondary
-                    .into_iter()
-                    .map(|label| label.into_codespan_label(diagnostic::LabelStyle::Secondary)),
-            );
+            let labels = labels
+                .into_iter()
+                .map(|label| label.into_codespan_label())
+                .collect();
 
             diagnostic::Diagnostic::new(severity)
                 .with_message(message)
@@ -265,12 +280,8 @@ mod test {
             let primary_span =
                 SourceMap::with_current(|sm| sm.global_line(1).span_within(4..8).unwrap());
 
-            let diag = Diag::new(
-                DiagKind::Error,
-                "You messed up",
-                primary_span,
-                "what's up with this",
-            );
+            let diag = Diag::new(DiagKind::Error, "You messed up")
+                .with_primary(primary_span, "what's up with this");
 
             insta::assert_snapshot!(render_diag(diag), @r#"
             error: You messed up
@@ -298,22 +309,18 @@ mod test {
                 let primary_span = sm.global_line(2).span_within(23..27).unwrap();
                 let primary_label = "identifier `oops` is not in scope";
 
-                Diag::new(
-                    DiagKind::Error,
-                    "unrecognized identifier `oops`",
-                    primary_span,
-                    primary_label,
-                )
-                .with_secondary(
-                    sm.global_line(0).span_within(14..16).unwrap(),
-                    "there's this thing here, did you mean that?",
-                )
-                .with_secondary(
-                    sm.global_line(3).span_within(6..7).unwrap(),
-                    "forgot something here too lol",
-                )
-                .with_note("can't use undeclared identifiers bud!")
-                .with_note("also lol forgot a semicolon lmao")
+                Diag::new(DiagKind::Error, "unrecognized identifier `oops`")
+                    .with_primary(primary_span, primary_label)
+                    .with_secondary(
+                        sm.global_line(0).span_within(14..16).unwrap(),
+                        "there's this thing here, did you mean that?",
+                    )
+                    .with_secondary(
+                        sm.global_line(3).span_within(6..7).unwrap(),
+                        "forgot something here too lol",
+                    )
+                    .with_note("can't use undeclared identifiers bud!")
+                    .with_note("also lol forgot a semicolon lmao")
             });
 
             insta::assert_snapshot!(render_diag(diag), @r#"
@@ -328,8 +335,8 @@ mod test {
             4 |     lol
               |       - forgot something here too lol
               |
-              = can't use undeclared identifiers bud!
-              = also lol forgot a semicolon lmao
+              = note: can't use undeclared identifiers bud!
+              = note: also lol forgot a semicolon lmao
 
             "#);
         });
@@ -355,17 +362,16 @@ mod test {
             ]);
 
             let diag = SourceMap::with_current(|sm| {
-                Diag::new(
-                    DiagKind::Warning,
-                    "huh?",
-                    sm.source(1).line(2).span_within(8..11).unwrap(),
-                    "this one's reserved",
-                )
-                .with_secondary(sm.source(0).line(3).span_within(7..9).unwrap(), "empty???")
-                .with_secondary(
-                    sm.source(1).line(0).span_within(9..10).unwrap(),
-                    "wtf is this",
-                )
+                Diag::new(DiagKind::Warning, "huh?")
+                    .with_primary(
+                        sm.source(1).line(2).span_within(8..11).unwrap(),
+                        "this one's reserved",
+                    )
+                    .with_secondary(sm.source(0).line(3).span_within(7..9).unwrap(), "empty???")
+                    .with_secondary(
+                        sm.source(1).line(0).span_within(9..10).unwrap(),
+                        "wtf is this",
+                    )
             });
 
             insta::assert_snapshot!(render_diag(diag), @r#"
