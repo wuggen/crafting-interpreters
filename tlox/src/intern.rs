@@ -1,18 +1,25 @@
 //! Interned data.
 
 use std::collections::HashMap;
+use std::fmt::{self, Debug, Formatter};
 use std::hash::Hash;
 use std::ops::Deref;
 use std::ptr;
 use std::sync::Mutex;
 
-#[derive(Debug, PartialOrd, Ord)]
+#[derive(PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct Interned<T: ?Sized + 'static>(pub &'static T);
 
+impl<T: Debug + ?Sized + 'static> Debug for Interned<T> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        Debug::fmt(self.0, f)
+    }
+}
+
 impl<T: ?Sized + 'static> Clone for Interned<T> {
     fn clone(&self) -> Self {
-        Interned(self.0)
+        *self
     }
 }
 

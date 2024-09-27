@@ -2,6 +2,7 @@
 
 use std::fmt::{self, Display, Formatter};
 
+use crate::intern::Interned;
 use crate::span::{Spannable, Spanned};
 
 /// Unary operator symbols.
@@ -80,7 +81,7 @@ impl Display for BinopSym {
 }
 
 /// A literal value.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Lit {
     /// Literal nil
     Nil,
@@ -92,7 +93,7 @@ pub enum Lit {
     Bool(bool),
 
     /// String literal
-    Str(String),
+    Str(Interned<str>),
 }
 
 impl Display for Lit {

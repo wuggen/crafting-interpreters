@@ -3,12 +3,14 @@
 use std::num::ParseFloatError;
 
 use crate::diag::{Diag, DiagKind, Diagnostic};
+use crate::intern::Interned;
 use crate::span::{Cursor, Source, Span, Spannable, Spanned};
+use crate::Internable;
 
 #[cfg(test)]
 mod test;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Token {
     LeftParen,
     RightParen,
@@ -30,8 +32,8 @@ pub enum Token {
     GreaterEqual,
     Less,
     LessEqual,
-    Ident(String),
-    Str(String),
+    Ident(Interned<str>),
+    Str(Interned<str>),
     Number(f64),
     Boolean(bool),
     And,
@@ -391,8 +393,8 @@ impl<'sm> Lexer<'sm> {
     }
 
     /// Create a token with the current span, constructing the token type from the current buffer.
-    fn token_with_buffer(&self, f: impl FnOnce(String) -> Token) -> Option<Spanned<Token>> {
-        self.token(f(self.buffer().into()))
+    fn token_with_buffer(&self, f: impl FnOnce(&str) -> Token) -> Option<Spanned<Token>> {
+        self.token(f(self.buffer()))
     }
 
     /// Emit an error with the given kind, using the current span.
@@ -426,7 +428,7 @@ impl<'sm> Lexer<'sm> {
 
             match c {
                 '"' => {
-                    break self.token_with_buffer(Token::Str);
+                    break self.token_with_buffer(|s| Token::Str(s.intern()));
                 }
 
                 '\\' => match self.peek() {
@@ -497,7 +499,7 @@ impl<'sm> Lexer<'sm> {
             "this" => self.token(This),
             "var" => self.token(Var),
             "while" => self.token(While),
-            _ => self.token_with_buffer(Ident),
+            _ => self.token_with_buffer(|id| Ident(id.intern())),
         }
     }
 

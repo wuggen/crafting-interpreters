@@ -115,12 +115,12 @@ where
 
 use Token::*;
 
-fn ident(s: impl Into<String>) -> Token {
-    Ident(s.into())
+fn ident(s: &str) -> Token {
+    Ident(s.intern())
 }
 
-fn strlit(s: impl Into<String>) -> Token {
-    Str(s.into())
+fn strlit(s: &str) -> Token {
+    Str(s.intern())
 }
 
 fn num(n: f64) -> Token {
