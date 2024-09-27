@@ -1,5 +1,8 @@
 //! The Lox treewalking interpreter.
 
+#![feature(hash_raw_entry)]
+#![feature(concat_idents)]
+
 use std::path::PathBuf;
 
 use structopt::StructOpt;
@@ -14,6 +17,10 @@ macro_rules! debug_println {
         }
     };
 }
+
+pub mod intern;
+
+mk_internable! {}
 
 pub mod context;
 pub mod diag;
