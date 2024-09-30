@@ -1,9 +1,12 @@
 //! Abstract syntax tree.
 
+use std::any::TypeId;
 use std::fmt::{self, Display, Formatter};
+use std::hash::{Hash, Hasher};
 
 use crate::intern::Interned;
 use crate::span::{Spannable, Spanned};
+use crate::Internable;
 
 /// Unary operator symbols.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -81,7 +84,7 @@ impl Display for BinopSym {
 }
 
 /// A literal value.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy)]
 pub enum Lit {
     /// Literal nil
     Nil,
@@ -107,8 +110,35 @@ impl Display for Lit {
     }
 }
 
+impl Hash for Lit {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        TypeId::of::<Self>().hash(state);
+        std::mem::discriminant(self).hash(state);
+        match self {
+            Lit::Nil => {}
+            Lit::Num(n) => n.to_bits().hash(state),
+            Lit::Bool(b) => b.hash(state),
+            Lit::Str(s) => s.hash(state),
+        }
+    }
+}
+
+impl PartialEq for Lit {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Lit::Nil, Lit::Nil) => true,
+            (Lit::Num(a), Lit::Num(b)) => a.total_cmp(b).is_eq(),
+            (Lit::Bool(a), Lit::Bool(b)) => a == b,
+            (Lit::Str(a), Lit::Str(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for Lit {}
+
 /// An expression.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Expr {
     /// A literal expression
     Literal(Lit),
@@ -119,7 +149,7 @@ pub enum Expr {
         sym: Spanned<UnopSym>,
 
         /// Operand
-        operand: Box<Spanned<Expr>>,
+        operand: Spanned<Interned<Expr>>,
     },
 
     /// A binary operator expression
@@ -128,35 +158,33 @@ pub enum Expr {
         sym: Spanned<BinopSym>,
 
         /// Left operand
-        lhs: Box<Spanned<Expr>>,
+        lhs: Spanned<Interned<Expr>>,
 
         /// Right operand
-        rhs: Box<Spanned<Expr>>,
+        rhs: Spanned<Interned<Expr>>,
     },
 }
 
 impl Expr {
-    pub fn literal(value: Lit) -> Self {
-        Self::Literal(value)
+    pub fn literal(value: Lit) -> Interned<Self> {
+        Self::Literal(value).interned()
     }
 
-    pub fn unop(sym: Spanned<UnopSym>, operand: Spanned<Expr>) -> Spanned<Self> {
+    pub fn unop(
+        sym: Spanned<UnopSym>,
+        operand: Spanned<Interned<Expr>>,
+    ) -> Spanned<Interned<Self>> {
         let span = sym.span.join(operand.span);
-        Self::Unop {
-            sym,
-            operand: Box::new(operand),
-        }
-        .spanned(span)
+        Self::Unop { sym, operand }.interned().spanned(span)
     }
 
-    pub fn binop(sym: Spanned<BinopSym>, lhs: Spanned<Expr>, rhs: Spanned<Expr>) -> Spanned<Self> {
+    pub fn binop(
+        sym: Spanned<BinopSym>,
+        lhs: Spanned<Interned<Expr>>,
+        rhs: Spanned<Interned<Expr>>,
+    ) -> Spanned<Interned<Self>> {
         let span = lhs.span.join(rhs.span);
-        Self::Binop {
-            sym,
-            lhs: Box::new(lhs),
-            rhs: Box::new(rhs),
-        }
-        .spanned(span)
+        Self::Binop { sym, lhs, rhs }.interned().spanned(span)
     }
 }
 

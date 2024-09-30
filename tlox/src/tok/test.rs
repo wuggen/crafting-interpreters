@@ -1,4 +1,4 @@
-use crate::context::with_new_interpreter;
+use crate::context::with_new_session;
 use crate::diag::render::render_dcx;
 use crate::span::{Location, SourceMap};
 
@@ -107,7 +107,7 @@ where
     I: IntoIterator<Item = T>,
     T: for<'sm> TokenTestable<'sm> + Debug,
 {
-    with_new_interpreter(|_| {
+    with_new_session(|_| {
         check_scan(source, expected);
         render_dcx()
     })
@@ -116,11 +116,11 @@ where
 use Token::*;
 
 fn ident(s: &str) -> Token {
-    Ident(s.intern())
+    Ident(s.interned())
 }
 
 fn strlit(s: &str) -> Token {
-    Str(s.intern())
+    Str(s.interned())
 }
 
 fn num(n: f64) -> Token {

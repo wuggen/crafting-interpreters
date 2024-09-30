@@ -20,14 +20,21 @@ macro_rules! debug_println {
 
 pub mod intern;
 
-mk_internable! {}
+mk_internable! {
+    expr: syn::Expr,
+}
 
 pub mod context;
 pub mod diag;
+pub mod error;
+pub mod interp;
 pub mod parse;
 pub mod span;
 pub mod syn;
 pub mod tok;
+pub mod ty;
+pub mod util;
+pub mod val;
 
 /// A Lox tree-walking interpreter
 #[derive(Debug, StructOpt)]

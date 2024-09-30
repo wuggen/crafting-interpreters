@@ -16,7 +16,7 @@ pub trait Diagnostic: Sized {
     /// Emit this diagnostic to the global context.
     ///
     /// This method will panic if called from a thread that is not currently in the context of an
-    /// [`Interpreter`](crate::context::Interpreter).
+    /// [`Session`](crate::context::Session).
     fn emit(self) {
         with_context(move |cx| cx.with_diag_context(move |dcx| dcx.emit(self)));
     }
@@ -245,7 +245,7 @@ mod test {
     use codespan_reporting::term;
     use indoc::indoc;
 
-    use crate::context::with_new_interpreter;
+    use crate::context::with_new_session;
     use crate::span::SourceMap;
 
     use super::*;
@@ -270,7 +270,7 @@ mod test {
 
     #[test]
     fn single_label_single_source() {
-        with_new_interpreter(|_| {
+        with_new_session(|_| {
             let source = indoc! {"
             lmao hey() {
                 what's() up;
@@ -296,7 +296,7 @@ mod test {
 
     #[test]
     fn several_labels_single_source() {
-        with_new_interpreter(|_| {
+        with_new_session(|_| {
             let source = indoc! {r#"
             fun hey(here, is, some, stuff) {
                 things = stuff + 3;
@@ -344,7 +344,7 @@ mod test {
 
     #[test]
     fn multiple_sources() {
-        with_new_interpreter(|_| {
+        with_new_session(|_| {
             mkmap([
                 indoc! {"
                 a = 4;

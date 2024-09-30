@@ -143,15 +143,9 @@ impl<'sm> Iterator for Lexer<'sm> {
 }
 
 #[derive(Debug)]
-pub struct LexerError {
-    pub(crate) kind: LexerErrorKind,
-    pub(crate) span: Span,
-}
-
-impl LexerError {
-    pub fn kind(&self) -> &LexerErrorKind {
-        &self.kind
-    }
+struct LexerError {
+    kind: LexerErrorKind,
+    span: Span,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -428,7 +422,7 @@ impl<'sm> Lexer<'sm> {
 
             match c {
                 '"' => {
-                    break self.token_with_buffer(|s| Token::Str(s.intern()));
+                    break self.token_with_buffer(|s| Token::Str(s.interned()));
                 }
 
                 '\\' => match self.peek() {
@@ -499,7 +493,7 @@ impl<'sm> Lexer<'sm> {
             "this" => self.token(This),
             "var" => self.token(Var),
             "while" => self.token(While),
-            _ => self.token_with_buffer(|id| Ident(id.intern())),
+            _ => self.token_with_buffer(|id| Ident(id.interned())),
         }
     }
 

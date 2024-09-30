@@ -1,15 +1,25 @@
 //! Parser for Lox.
 
-use std::fmt::Write;
 use std::iter::Peekable;
 
 use crate::diag::{Diag, DiagKind, Diagnostic};
-use crate::span::{Source, Span, Spannable, Spanned};
+use crate::intern::Interned;
+use crate::span::{Source, SourceMap, Span, Spannable, Spanned};
 use crate::syn::*;
 use crate::tok::{Lexer, Token};
+use crate::util::oxford_or;
 
 #[cfg(test)]
 mod test;
+
+/// Scan and parse the source with the given index in the current session's source map.
+pub fn parse_source(source_idx: usize) -> Option<Spanned<Interned<Expr>>> {
+    SourceMap::with_current(|sm| {
+        let lexer = Lexer::new(sm.source(source_idx));
+        let parser = Parser::new(lexer);
+        parser.parse()
+    })
+}
 
 #[derive(Debug, Clone)]
 pub struct Parser<'sm> {
@@ -48,7 +58,7 @@ impl<'sm> Parser<'sm> {
         }
     }
 
-    pub fn parse(mut self) -> Option<Spanned<Expr>> {
+    pub fn parse(mut self) -> Option<Spanned<Interned<Expr>>> {
         self.expr().ok()
     }
 }
@@ -235,7 +245,7 @@ impl Parser<'_> {
     /// Parse an expression.
     ///
     /// Corresponds to the `expr` grammar production.
-    fn expr(&mut self) -> ParserRes<Spanned<Expr>> {
+    fn expr(&mut self) -> ParserRes<Spanned<Interned<Expr>>> {
         debug_println!("= Parsing expression");
         self.equal()
     }
@@ -254,10 +264,10 @@ impl Parser<'_> {
     fn binop_chain_left_assoc(
         &mut self,
         level: BinopLevel,
-        operand: impl Fn(&mut Self) -> ParserRes<Spanned<Expr>>,
+        operand: impl Fn(&mut Self) -> ParserRes<Spanned<Interned<Expr>>>,
         sym_test: impl Fn(&Token) -> bool,
         sym_map: impl Fn(Token) -> BinopSym,
-    ) -> ParserRes<Spanned<Expr>> {
+    ) -> ParserRes<Spanned<Interned<Expr>>> {
         let mut lhs = match operand(self) {
             Ok(expr) => expr,
 
@@ -315,7 +325,7 @@ impl Parser<'_> {
     /// Parse an equality operator chain.
     ///
     /// Corresponds to the `equal` grammar production.
-    fn equal(&mut self) -> ParserRes<Spanned<Expr>> {
+    fn equal(&mut self) -> ParserRes<Spanned<Interned<Expr>>> {
         self.binop_chain_left_assoc(
             BinopLevel::Eq,
             Self::comp,
@@ -331,7 +341,7 @@ impl Parser<'_> {
     /// Parse a comparison operator chain.
     ///
     /// Corresponds to the `comp` grammar production.
-    fn comp(&mut self) -> ParserRes<Spanned<Expr>> {
+    fn comp(&mut self) -> ParserRes<Spanned<Interned<Expr>>> {
         self.binop_chain_left_assoc(
             BinopLevel::Comp,
             Self::terms,
@@ -354,7 +364,7 @@ impl Parser<'_> {
     /// Parse an additive (addition/subtraction) operator chain.
     ///
     /// Corresponds to the `terms` grammar production.
-    fn terms(&mut self) -> ParserRes<Spanned<Expr>> {
+    fn terms(&mut self) -> ParserRes<Spanned<Interned<Expr>>> {
         self.binop_chain_left_assoc(
             BinopLevel::Add,
             Self::factors,
@@ -370,7 +380,7 @@ impl Parser<'_> {
     /// Parse a multiplicative (multiplication/division/modulo) operator chain.
     ///
     /// Corresponds to the `factors` grammar production.
-    fn factors(&mut self) -> ParserRes<Spanned<Expr>> {
+    fn factors(&mut self) -> ParserRes<Spanned<Interned<Expr>>> {
         self.binop_chain_left_assoc(
             BinopLevel::Mul,
             Self::unary,
@@ -387,7 +397,7 @@ impl Parser<'_> {
     /// Parse a unary (boolean/numerical negation) operator chain.
     ///
     /// Corresponds to the `unary` grammar production.
-    fn unary(&mut self) -> ParserRes<Spanned<Expr>> {
+    fn unary(&mut self) -> ParserRes<Spanned<Interned<Expr>>> {
         if self.check_next(|tok| matches!(tok, Token::Minus | Token::Bang)) {
             let sym = self
                 .advance_map(|tok| match tok {
@@ -408,7 +418,7 @@ impl Parser<'_> {
     /// Parse an atomic (literal/identifier/parenthesized) expression.
     ///
     /// Corresponds to the `atom` grammar production.
-    fn atom(&mut self) -> ParserRes<Spanned<Expr>> {
+    fn atom(&mut self) -> ParserRes<Spanned<Interned<Expr>>> {
         if let Some(Spanned { node: tok, span }) = self.advance() {
             match tok {
                 Token::Number(n) => Ok(Expr::literal(Lit::Num(n)).spanned(span)),
@@ -448,7 +458,7 @@ impl Parser<'_> {
     /// the span for the opening paren, for diagnostic reporting.
     ///
     /// Corresponds to the parenthesized expression arm of the `atom` grammar production.
-    fn group(&mut self, oparen_span: Span) -> ParserRes<Spanned<Expr>> {
+    fn group(&mut self, oparen_span: Span) -> ParserRes<Spanned<Interned<Expr>>> {
         let expr = match self.expr() {
             Ok(expr) => expr,
             Err(ParserError::SpuriousCloseParen { close, reported }) => {
@@ -508,19 +518,6 @@ enum ParserDiag {
     },
 }
 
-fn mk_expected(expected: &[&'static str]) -> String {
-    if expected.len() == 1 {
-        format!("expected {}", expected[0])
-    } else {
-        let mut note = format!("expected {}", expected[0]);
-        for expected in &expected[1..expected.len() - 1] {
-            write!(note, ", {}", expected).unwrap();
-        }
-        write!(note, " or {}", expected.last().unwrap()).unwrap();
-        note
-    }
-}
-
 impl ParserDiag {
     fn message(&self) -> &'static str {
         match self {
@@ -545,7 +542,7 @@ impl ParserDiag {
                 location, expected, ..
             } => {
                 if !expected.is_empty() {
-                    diag = diag.with_note(mk_expected(&expected));
+                    diag = diag.with_note(format!("expected {}", oxford_or(&expected)));
                 }
 
                 diag.with_primary(location, "unexpected token")
@@ -557,7 +554,7 @@ impl ParserDiag {
                 expected,
             } => {
                 if !expected.is_empty() {
-                    diag = diag.with_note(mk_expected(&expected));
+                    diag = diag.with_note(format!("expected {}", oxford_or(&expected)));
                 }
                 diag.with_secondary(open, "parentheses opened here")
                     .with_primary(close, "parentheses closed here, prematurely")
@@ -579,7 +576,7 @@ impl ParserDiag {
             } else {
                 diag.with_primary(operator, "expected left-hand operand for this operator")
             }
-            .with_note(mk_expected(&Parser::ATOM_STARTS)),
+            .with_note(format!("expected {}", oxford_or(&Parser::ATOM_STARTS))),
 
             Self::MissingRhs {
                 operator,
@@ -591,7 +588,7 @@ impl ParserDiag {
                     operator.join(lhs),
                     "this expression is missing the right-hand operand",
                 )
-                .with_note(mk_expected(&Parser::ATOM_STARTS)),
+                .with_note(format!("expected {}", oxford_or(&Parser::ATOM_STARTS))),
         }
     }
 }

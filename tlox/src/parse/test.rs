@@ -1,41 +1,22 @@
 use indoc::indoc;
 use insta::assert_snapshot;
 
-use crate::context::with_new_interpreter;
+use crate::context::with_new_session;
 use crate::diag::render::render_dcx;
-use crate::span::SourceMap;
-
-use super::*;
-
-fn parse_source(source: &str) -> Option<Spanned<Expr>> {
-    let source_idx = SourceMap::with_current_mut(|sm| sm.add_source(0, source));
-
-    SourceMap::with_current(|sm| {
-        let lexer = Lexer::new(sm.source(source_idx));
-        let parser = Parser::new(lexer);
-        let res = parser.parse();
-        if let Some(res) = res.as_ref() {
-            debug_println!("PARSED: {res}\n");
-        } else {
-            debug_println!("PARSED: None\n");
-        }
-
-        res
-    })
-}
+use crate::util::test::parse_new_source;
 
 #[test]
 fn literals() {
-    with_new_interpreter(|_| {
-        let res = parse_source("true");
+    with_new_session(|_| {
+        let res = parse_new_source("true");
         assert_snapshot!(res.unwrap(), @"true{1:1..1:4}");
         assert!(render_dcx().is_empty());
 
-        let res = parse_source("134");
+        let res = parse_new_source("134");
         assert_snapshot!(res.unwrap(), @"134{1:1..1:3}");
         assert!(render_dcx().is_empty());
 
-        let res = parse_source(r#""lol hey\ndude""#);
+        let res = parse_new_source(r#""lol hey\ndude""#);
         assert_snapshot!(res.unwrap(), @r#""lol hey\ndude"{1:1..1:15}"#);
         assert!(render_dcx().is_empty());
     });
@@ -43,8 +24,8 @@ fn literals() {
 
 #[test]
 fn comp_chain() {
-    with_new_interpreter(|_| {
-        let res = parse_source(indoc! {r#"
+    with_new_session(|_| {
+        let res = parse_new_source(indoc! {r#"
         45 < nil >= false
             <= "wow" > 003.32
         "#});
@@ -55,8 +36,8 @@ fn comp_chain() {
 
 #[test]
 fn comp_chain_with_parens() {
-    with_new_interpreter(|_| {
-        let res = parse_source(r#"45 < ("wow" >= nil)"#);
+    with_new_session(|_| {
+        let res = parse_new_source(r#"45 < ("wow" >= nil)"#);
         assert_snapshot!(res.unwrap().node, @r#"(< 45 (>= "wow" nil))"#);
         assert!(render_dcx().is_empty());
     });
@@ -64,8 +45,8 @@ fn comp_chain_with_parens() {
 
 #[test]
 fn lotsa_parens() {
-    with_new_interpreter(|_| {
-        let res = parse_source(indoc! {r#"
+    with_new_session(|_| {
+        let res = parse_new_source(indoc! {r#"
         (((true + "false") - (nil / nil) >= 0 * "hey") % ("what")) + (0)
         "#});
         assert_snapshot!(res.unwrap().node, @r#"(+ (% (>= (- (+ true "false") (/ nil nil)) (* 0 "hey")) "what") 0)"#);
@@ -75,8 +56,8 @@ fn lotsa_parens() {
 
 #[test]
 fn err_missing_lhs() {
-    with_new_interpreter(|_| {
-        parse_source("+ 4");
+    with_new_session(|_| {
+        parse_new_source("+ 4");
         assert_snapshot!(render_dcx(), @r#"
         error: binary operator without left-hand operand
           --> %i0:1:1
@@ -84,11 +65,11 @@ fn err_missing_lhs() {
         1 | + 4
           | ^^^ this expression is missing the left-hand operand
           |
-          = note: expected number, string, `true`, `false`, `nil` or `(`
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
 
         "#);
 
-        parse_source("4 + (* nil) - 5");
+        parse_new_source("4 + (* nil) - 5");
         assert_snapshot!(render_dcx(), @r#"
         error: binary operator without left-hand operand
           --> %i0:1:6
@@ -96,7 +77,7 @@ fn err_missing_lhs() {
         1 | 4 + (* nil) - 5
           |      ^^^^^ this expression is missing the left-hand operand
           |
-          = note: expected number, string, `true`, `false`, `nil` or `(`
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
 
         "#);
     });
@@ -104,8 +85,8 @@ fn err_missing_lhs() {
 
 #[test]
 fn err_missing_rhs() {
-    with_new_interpreter(|_| {
-        parse_source("4 +");
+    with_new_session(|_| {
+        parse_new_source("4 +");
         assert_snapshot!(render_dcx(), @r#"
         error: unexpected end of input
           --> %i0:1:4
@@ -113,7 +94,7 @@ fn err_missing_rhs() {
         1 | 4 +
           |    ^ unexpected token
           |
-          = note: expected number, string, `true`, `false`, `nil` or `(`
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
 
         "#);
     });
@@ -121,8 +102,8 @@ fn err_missing_rhs() {
 
 #[test]
 fn err_early_close_paren() {
-    with_new_interpreter(|_| {
-        parse_source("4 + (nil *) - 5");
+    with_new_session(|_| {
+        parse_new_source("4 + (nil *) - 5");
         assert_snapshot!(render_dcx(), @r#"
         error: binary operator without right-hand operand
           --> %i0:1:11
@@ -132,7 +113,7 @@ fn err_early_close_paren() {
           |      |     
           |      this expression is missing the right-hand operand
           |
-          = note: expected number, string, `true`, `false`, `nil` or `(`
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
 
         "#);
     });
@@ -140,8 +121,8 @@ fn err_early_close_paren() {
 
 #[test]
 fn err_unclosed_paren() {
-    with_new_interpreter(|_| {
-        parse_source(r#""hey" + (4 - nil"#);
+    with_new_session(|_| {
+        parse_new_source(r#""hey" + (4 - nil"#);
         assert_snapshot!(render_dcx(), @r#"
         error: unclosed parentheses
           --> %i0:1:17
@@ -155,7 +136,7 @@ fn err_unclosed_paren() {
 
         "#);
 
-        parse_source(indoc! {r#"
+        parse_new_source(indoc! {r#"
             123.4 - (nil
 
 
@@ -179,8 +160,8 @@ fn err_unclosed_paren() {
 
 #[test]
 fn err_multiple() {
-    with_new_interpreter(|_| {
-        parse_source("8 * + (4 - ) / (  ) + 5");
+    with_new_session(|_| {
+        parse_new_source("8 * + (4 - ) / (  ) + 5");
         assert_snapshot!(render_dcx(), @r#"
         error: binary operator without right-hand operand
           --> %i0:1:12
@@ -190,7 +171,7 @@ fn err_multiple() {
           |        |    
           |        this expression is missing the right-hand operand
           |
-          = note: expected number, string, `true`, `false`, `nil` or `(`
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
 
         error: parentheses closed prematurely
           --> %i0:1:19
@@ -200,7 +181,7 @@ fn err_multiple() {
           |                |   
           |                parentheses opened here
           |
-          = note: expected number, string, `true`, `false`, `nil` or `(`
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
 
         error: binary operator without left-hand operand
           --> %i0:1:5
@@ -208,11 +189,11 @@ fn err_multiple() {
         1 | 8 * + (4 - ) / (  ) + 5
           |     ^^^^^^^^^^^^^^^ this expression is missing the left-hand operand
           |
-          = note: expected number, string, `true`, `false`, `nil` or `(`
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
 
         "#);
 
-        parse_source(indoc! {r#"
+        parse_new_source(indoc! {r#"
         / false * (nil
             - ) == ()
         "#});
@@ -223,7 +204,7 @@ fn err_multiple() {
         1 | / false * (nil
           | ^^^^^^^ this expression is missing the left-hand operand
           |
-          = note: expected number, string, `true`, `false`, `nil` or `(`
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
 
         error: binary operator without right-hand operand
           --> %i0:2:7
@@ -234,7 +215,7 @@ fn err_multiple() {
           | |       ^ expected right-hand operand here
           | \-----' this expression is missing the right-hand operand
           |  
-          = note: expected number, string, `true`, `false`, `nil` or `(`
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
 
         error: parentheses closed prematurely
           --> %i0:2:13
@@ -244,7 +225,7 @@ fn err_multiple() {
           |            | 
           |            parentheses opened here
           |
-          = note: expected number, string, `true`, `false`, `nil` or `(`
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
 
         "#);
     });
@@ -255,8 +236,8 @@ fn err_multiple() {
 // expression and quits lol
 #[ignore = "parser not equipped to detect this condition yet"]
 fn err_spurious_close_paren() {
-    with_new_interpreter(|_| {
-        parse_source("45 - nil ) / false");
+    with_new_session(|_| {
+        parse_new_source("45 - nil ) / false");
         assert_snapshot!(render_dcx(), @"");
     });
 }
