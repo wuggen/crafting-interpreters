@@ -75,8 +75,8 @@ impl Session {
 /// more than one session at a time. #[derive(Debug)]
 #[derive(Debug)]
 pub struct Context {
-    source_map: RwLock<SourceMap>,
-    diag_context: DiagContext,
+    pub source_map: RwLock<SourceMap>,
+    pub diag_context: DiagContext,
 }
 
 impl Default for Context {
@@ -88,34 +88,10 @@ impl Default for Context {
     }
 }
 
-macro_rules! accessor {
-    (rw $name:ident => $field:ident : $ty:ty) => {
-        pub fn $name<T>(&self, f: impl FnOnce(&$ty) -> T) -> T {
-            f(&self.$field.read().unwrap())
-        }
-    };
-
-    (mut rw $name:ident => $field:ident : $ty:ty) => {
-        pub fn $name<T>(&self, f: impl FnOnce(&mut $ty) -> T) -> T {
-            f(&mut self.$field.write().unwrap())
-        }
-    };
-
-    ($name:ident => $field:ident : $ty:ty) => {
-        pub fn $name<T>(&self, f: impl FnOnce(&$ty) -> T) -> T {
-            f(&self.$field)
-        }
-    };
-}
-
 impl Context {
     pub fn new() -> Self {
         Self::default()
     }
-
-    accessor!(rw with_source_map => source_map: SourceMap);
-    accessor!(mut rw with_source_map_mut => source_map: SourceMap);
-    accessor!(with_diag_context => diag_context: DiagContext);
 }
 
 /// Perform an action with the global session context.

@@ -250,11 +250,11 @@ impl SourceMap {
     }
 
     pub fn with_current<T>(f: impl FnOnce(&Self) -> T) -> T {
-        with_context(|cx| cx.with_source_map(f))
+        with_context(|cx| f(&cx.source_map.read().unwrap()))
     }
 
     pub fn with_current_mut<T>(f: impl FnOnce(&mut Self) -> T) -> T {
-        with_context(|cx| cx.with_source_map_mut(f))
+        with_context(|cx| f(&mut cx.source_map.write().unwrap()))
     }
 
     /// Append a source to the source map.
@@ -287,6 +287,10 @@ impl SourceMap {
             .push((name.into(), orig_line_num..new_line_num));
 
         self.sources.len() - 1
+    }
+
+    pub fn add_source_to_current(name: impl Into<SourceName>, content: &str) -> usize {
+        Self::with_current_mut(|sm| sm.add_source(name, content))
     }
 
     /// Get the complete content of the source map, including all sources one after the other.

@@ -92,7 +92,7 @@ fn err_missing_rhs() {
           --> %i0:1:4
           |
         1 | 4 +
-          |    ^ unexpected token
+          |    ^ unexpected end of input
           |
           = note: expected number, string, `true`, `false`, `nil`, or `(`
 
@@ -229,6 +229,15 @@ fn err_multiple() {
 
         "#);
     });
+}
+
+/// Spans for parenthesized expressions should include the parentheses.
+#[test]
+fn paren_spans() {
+    with_new_session(|_| {
+        let expr = parse_new_source("(4 + 10)").unwrap();
+        assert_eq!(expr.span.range(), 0..8);
+    })
 }
 
 #[test]

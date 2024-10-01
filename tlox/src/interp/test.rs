@@ -117,5 +117,29 @@ fn err_eval_non_num() {
           = note: operator `-` expects operand of type Num
 
         "#);
+
+        test_eval("!(5 + 10) > nil", NONE_VAL, false);
+        assert_snapshot!(render_dcx(), @r#"
+        error: cannot coerce Bool to Num
+          --> %i0:1:1
+          |
+        1 | !(5 + 10) > nil
+          | ^^^^^^^^^ - value coerced due to use as an operand to this operator
+          | |          
+          | expression found to be of type Bool
+          |
+          = note: operator `>` expects operands of type Num
+
+        error: cannot coerce Nil to Num
+          --> %i0:1:13
+          |
+        1 | !(5 + 10) > nil
+          |           - ^^^ expression found to be of type Nil
+          |           |  
+          |           value coerced due to use as an operand to this operator
+          |
+          = note: operator `>` expects operands of type Num
+
+        "#);
     })
 }

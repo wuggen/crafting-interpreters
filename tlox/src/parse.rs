@@ -2,7 +2,7 @@
 
 use std::iter::Peekable;
 
-use crate::diag::{Diag, DiagKind, Diagnostic};
+use crate::diag::{Diag, DiagContext, DiagKind, Diagnostic};
 use crate::intern::Interned;
 use crate::span::{Source, SourceMap, Span, Spannable, Spanned};
 use crate::syn::*;
@@ -59,7 +59,12 @@ impl<'sm> Parser<'sm> {
     }
 
     pub fn parse(mut self) -> Option<Spanned<Interned<Expr>>> {
-        self.expr().ok()
+        let res = self.expr().ok()?;
+        if DiagContext::current_has_errors() {
+            None
+        } else {
+            Some(res)
+        }
     }
 }
 
@@ -246,7 +251,7 @@ impl Parser<'_> {
     ///
     /// Corresponds to the `expr` grammar production.
     fn expr(&mut self) -> ParserRes<Spanned<Interned<Expr>>> {
-        debug_println!("= Parsing expression");
+        debug_println!(@"= Parsing expression");
         self.equal()
     }
 
@@ -473,18 +478,21 @@ impl Parser<'_> {
             other => return other,
         };
 
-        if let Err(maybe_tok) = self.advance_test(|tok| matches!(tok, Token::RightParen)) {
-            let span = if let Some(tok) = maybe_tok {
-                tok.span
-            } else {
-                self.end_of_source()
-            };
+        let cparen_span = match self.advance_test(|tok| matches!(tok, Token::RightParen)) {
+            Ok(tok) => tok.span,
+            Err(maybe_tok) => {
+                let span = if let Some(tok) = maybe_tok {
+                    tok.span
+                } else {
+                    self.end_of_source()
+                };
 
-            ParserDiag::unclosed_paren(oparen_span, span).emit();
-            return Err(ParserError::Other);
-        }
+                ParserDiag::unclosed_paren(oparen_span, span).emit();
+                return Err(ParserError::Other);
+            }
+        };
 
-        Ok(expr)
+        Ok(expr.node.spanned(oparen_span.join(cparen_span)))
     }
 }
 
@@ -539,13 +547,18 @@ impl ParserDiag {
     fn elaborate(self, mut diag: Diag) -> Diag {
         match self {
             Self::Unexpected {
-                location, expected, ..
+                location,
+                expected,
+                kind,
             } => {
                 if !expected.is_empty() {
                     diag = diag.with_note(format!("expected {}", oxford_or(&expected)));
                 }
 
-                diag.with_primary(location, "unexpected token")
+                match kind {
+                    UnexpectedKind::Token => diag.with_primary(location, "unexpected token"),
+                    UnexpectedKind::Eof => diag.with_primary(location, "unexpected end of input"),
+                }
             }
 
             Self::EarlyCloseParen {

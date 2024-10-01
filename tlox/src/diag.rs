@@ -18,7 +18,7 @@ pub trait Diagnostic: Sized {
     /// This method will panic if called from a thread that is not currently in the context of an
     /// [`Session`](crate::context::Session).
     fn emit(self) {
-        with_context(move |cx| cx.with_diag_context(move |dcx| dcx.emit(self)));
+        with_context(move |cx| cx.diag_context.emit(self));
     }
 }
 
@@ -123,7 +123,7 @@ impl DiagContext {
     }
 
     pub fn with_current<T>(f: impl FnOnce(&Self) -> T) -> T {
-        with_context(|cx| cx.with_diag_context(f))
+        with_context(|cx| f(&cx.diag_context))
     }
 
     /// Does the current context contain any errors?
@@ -138,6 +138,10 @@ impl DiagContext {
     /// Add a diagnostic to the context.
     pub fn emit<D: Diagnostic>(&self, diag: D) {
         self.pending.lock().unwrap().push(diag.into_diag());
+    }
+
+    pub fn current_has_errors() -> bool {
+        Self::with_current(Self::has_errors)
     }
 }
 
@@ -236,6 +240,14 @@ pub mod render {
                     term::emit(writer, &config, sm, &report).unwrap();
                 });
             }
+        }
+
+        pub fn report_current_to(writer: &mut dyn WriteColor) {
+            Self::with_current(|dcx| dcx.report_to(writer));
+        }
+
+        pub fn report_current() {
+            Self::with_current(Self::report)
         }
     }
 }
