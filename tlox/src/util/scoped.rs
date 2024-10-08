@@ -1,4 +1,6 @@
-use std::{cell::Cell, marker::PhantomData, thread::LocalKey};
+use std::cell::Cell;
+use std::marker::PhantomData;
+use std::thread::LocalKey;
 
 pub struct ScopedKey<T> {
     #[doc(hidden)]

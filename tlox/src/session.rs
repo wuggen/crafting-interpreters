@@ -1,4 +1,6 @@
-use crate::{diag::DiagContext, scoped_thread_local, span::SourceMap};
+use crate::diag::DiagContext;
+use crate::scoped_thread_local;
+use crate::span::SourceMap;
 
 scoped_thread_local!(static SESSION: Session);
 

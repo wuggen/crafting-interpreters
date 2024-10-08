@@ -2,12 +2,11 @@ use std::fmt::Debug;
 
 use insta::assert_snapshot;
 
+use super::Interpreter;
 use crate::diag::render::render_dcx;
 use crate::session::Session;
 use crate::util::test::parse_new_source;
 use crate::val::Value;
-
-use super::Interpreter;
 
 const NONE_VAL: Option<Value> = None;
 

@@ -4,12 +4,10 @@
 #![feature(mapped_lock_guards)]
 #![feature(round_char_boundary)]
 
-use std::{
-    fs,
-    io::{self, Write},
-    path::PathBuf,
-    process::ExitCode,
-};
+use std::fs;
+use std::io::{self, Write};
+use std::path::PathBuf;
+use std::process::ExitCode;
 
 use diag::{Diag, DiagKind, Diagnostic};
 use interp::Interpreter;

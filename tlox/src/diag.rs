@@ -2,7 +2,8 @@
 
 use std::sync::Mutex;
 
-use crate::{session::Session, span::Span};
+use crate::session::Session;
+use crate::span::Span;
 
 /// Warning and error types.
 pub trait Diagnostic: Sized {
@@ -139,12 +140,11 @@ impl DiagContext {
 pub mod render {
     //! Diagnostic rendering.
 
-    use crate::session::Session;
-
-    use super::*;
-
     use codespan_reporting::term::termcolor::{ColorChoice, WriteColor};
     use codespan_reporting::{diagnostic, term};
+
+    use super::*;
+    use crate::session::Session;
 
     #[cfg(test)]
     pub fn render_dcx() -> String {
@@ -242,9 +242,8 @@ mod test {
     use codespan_reporting::term;
     use indoc::indoc;
 
-    use crate::session::Session;
-
     use super::*;
+    use crate::session::Session;
 
     fn render_diag(diag: Diag) -> String {
         let mut writer = term::termcolor::NoColor::new(Vec::<u8>::new());

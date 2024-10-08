@@ -1,13 +1,12 @@
-use crate::diag::render::render_dcx;
-use crate::session::Session;
-use crate::span::Location;
-
-use super::*;
+use std::fmt::Debug;
+use std::ops::{Range, RangeInclusive};
 
 use indoc::indoc;
 
-use std::fmt::Debug;
-use std::ops::{Range, RangeInclusive};
+use super::*;
+use crate::diag::render::render_dcx;
+use crate::session::Session;
+use crate::span::Location;
 
 trait TokenTestable<'sm> {
     fn check(&self, tok: &Spanned<Token>) -> bool;
