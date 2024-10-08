@@ -45,7 +45,7 @@ pub mod test {
     use crate::syn::Expr;
 
     pub fn parse_new_source(source: &str) -> Option<Spanned<Interned<Expr>>> {
-        let source_idx = SourceMap::with_current_mut(|sm| sm.add_source(0, source));
+        let source_idx = SourceMap::with_current(|sm| sm.add_source(0, source));
         parse_source(source_idx)
     }
 

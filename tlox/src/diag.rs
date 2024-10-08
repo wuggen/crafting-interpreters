@@ -273,7 +273,7 @@ mod test {
     }
 
     fn mkmap<'a>(sources: impl IntoIterator<Item = &'a str>) {
-        SourceMap::with_current_mut(|sm| {
+        SourceMap::with_current(|sm| {
             for (i, source) in sources.into_iter().enumerate() {
                 sm.add_source(i, source);
             }

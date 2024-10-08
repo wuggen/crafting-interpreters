@@ -4,7 +4,7 @@
 //! each interpreter session, and accessible by any code in the session's context.
 
 use std::cell::RefCell;
-use std::sync::{Arc, RwLock, Weak};
+use std::sync::{Arc, Weak};
 
 use crate::diag::DiagContext;
 use crate::span::SourceMap;
@@ -75,14 +75,14 @@ impl Session {
 /// more than one session at a time. #[derive(Debug)]
 #[derive(Debug)]
 pub struct Context {
-    pub source_map: RwLock<SourceMap>,
+    pub source_map: SourceMap,
     pub diag_context: DiagContext,
 }
 
 impl Default for Context {
     fn default() -> Self {
         Self {
-            source_map: RwLock::new(SourceMap::new()),
+            source_map: SourceMap::new(),
             diag_context: DiagContext::new(),
         }
     }

@@ -1,7 +1,8 @@
 //! The Lox treewalking interpreter.
 
 #![feature(hash_raw_entry)]
-#![feature(concat_idents)]
+#![feature(mapped_lock_guards)]
+#![feature(round_char_boundary)]
 
 use std::{
     fs,

@@ -61,7 +61,7 @@ where
     I: IntoIterator<Item = T>,
     T: for<'sm> TokenTestable<'sm> + Debug,
 {
-    let source_idx = SourceMap::with_current_mut(|sm| sm.add_source(0, source));
+    let source_idx = SourceMap::with_current(|sm| sm.add_source(0, source));
     SourceMap::with_current(|sm| {
         let mut success = true;
         let mut lexer = Lexer::new(sm.source(source_idx));

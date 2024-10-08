@@ -13,7 +13,7 @@ use std::fmt::{self, Display, Formatter};
 use std::iter::FusedIterator;
 use std::ops::{Bound, Range, RangeBounds, Sub};
 use std::path::PathBuf;
-use std::str::Chars;
+use std::sync::{MappedRwLockReadGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use codespan_reporting::files::{self, Files};
 
@@ -161,6 +161,11 @@ impl<T: Sized> Spannable for T {}
 /// allows source code locations and spans to be treated uniformly across all sources.
 #[derive(Debug)]
 pub struct SourceMap {
+    inner: RwLock<SourceMapInner>,
+}
+
+#[derive(Debug)]
+struct SourceMapInner {
     content: String,
     lines: Vec<Span>,
     sources: Vec<(SourceName, Range<usize>)>,
@@ -197,18 +202,41 @@ impl From<usize> for SourceName {
 }
 
 impl SourceMap {
-    /// Convenience method that clones the line index range for a source.
-    fn source_info(&self, source: usize) -> Option<(&SourceName, Range<usize>)> {
-        self.sources
-            .get(source)
-            .map(|(name, range)| (name, range.clone()))
+    fn inner(&self) -> RwLockReadGuard<SourceMapInner> {
+        self.inner.read().unwrap()
+    }
+
+    fn inner_mut(&self) -> RwLockWriteGuard<SourceMapInner> {
+        self.inner.write().unwrap()
+    }
+
+    fn map_inner<T: ?Sized>(
+        &self,
+        f: impl FnOnce(&SourceMapInner) -> &T,
+    ) -> MappedRwLockReadGuard<T> {
+        RwLockReadGuard::map(self.inner(), f)
+    }
+
+    fn try_map_inner<T: ?Sized>(
+        &self,
+        f: impl FnOnce(&SourceMapInner) -> Option<&T>,
+    ) -> Option<MappedRwLockReadGuard<T>> {
+        RwLockReadGuard::try_map(self.inner(), f).ok()
+    }
+
+    fn source_info(
+        &self,
+        source: usize,
+    ) -> Option<MappedRwLockReadGuard<(SourceName, Range<usize>)>> {
+        self.try_map_inner(|inner| inner.sources.get(source))
     }
 
     /// Find the global index of the line containing the given byte offset.
     ///
     /// This method operates via binary search on the line spans.
     fn index_of_global_line_containing_offset(&self, byte_offset: usize) -> Option<usize> {
-        self.lines
+        self.inner()
+            .lines
             .binary_search_by(|span| {
                 if byte_offset < span.start() {
                     Ordering::Greater
@@ -225,7 +253,8 @@ impl SourceMap {
     ///
     /// This method operates via binary search on the source ranges.
     fn index_of_source_containing_global_line(&self, line_index: usize) -> Option<usize> {
-        self.sources
+        self.inner()
+            .sources
             .binary_search_by(|(_, range)| {
                 if line_index < range.start {
                     Ordering::Greater
@@ -243,18 +272,16 @@ impl SourceMap {
     /// Create a new, empty source map.
     pub(crate) fn new() -> Self {
         Self {
-            content: String::new(),
-            lines: vec![],
-            sources: vec![],
+            inner: RwLock::new(SourceMapInner {
+                content: String::new(),
+                lines: vec![],
+                sources: vec![],
+            }),
         }
     }
 
     pub fn with_current<T>(f: impl FnOnce(&Self) -> T) -> T {
-        with_context(|cx| f(&cx.source_map.read().unwrap()))
-    }
-
-    pub fn with_current_mut<T>(f: impl FnOnce(&mut Self) -> T) -> T {
-        with_context(|cx| f(&mut cx.source_map.write().unwrap()))
+        with_context(|cx| f(&cx.source_map))
     }
 
     /// Append a source to the source map.
@@ -263,12 +290,13 @@ impl SourceMap {
     /// the source map are terminated with a newline.
     ///
     /// Returns the index of the newly added source.
-    pub fn add_source(&mut self, name: impl Into<SourceName>, content: &str) -> usize {
-        let current_len = self.content.len();
+    pub fn add_source(&self, name: impl Into<SourceName>, content: &str) -> usize {
+        let mut inner = self.inner_mut();
+        let current_len = inner.content.len();
 
-        self.content.push_str(content);
+        inner.content.push_str(content);
         if content.get(content.len() - 1..) != Some("\n") {
-            self.content.push('\n');
+            inner.content.push('\n');
         }
 
         let mut line_start = 0;
@@ -279,23 +307,24 @@ impl SourceMap {
             Span { byte_offset, len }
         });
 
-        let orig_line_num = self.lines.len();
-        self.lines.extend(lines);
-        let new_line_num = self.lines.len();
+        let orig_line_num = inner.lines.len();
+        inner.lines.extend(lines);
+        let new_line_num = inner.lines.len();
 
-        self.sources
+        inner
+            .sources
             .push((name.into(), orig_line_num..new_line_num));
 
-        self.sources.len() - 1
+        inner.sources.len() - 1
     }
 
     pub fn add_source_to_current(name: impl Into<SourceName>, content: &str) -> usize {
-        Self::with_current_mut(|sm| sm.add_source(name, content))
+        Self::with_current(|sm| sm.add_source(name, content))
     }
 
     /// Get the complete content of the source map, including all sources one after the other.
-    pub fn content(&self) -> &str {
-        &self.content
+    pub fn content(&self) -> MappedRwLockReadGuard<'_, str> {
+        self.map_inner(|inner| inner.content.as_str())
     }
 
     /// Get the portion of the source covered by the given [`Span`].
@@ -304,8 +333,8 @@ impl SourceMap {
     /// map, or if either endpoint of the span splits a multi-byte UTF-8 character. Spans obtained
     /// from methods on this source map, or from [`Source`]s or [`Line`]s of this source map, are
     /// guaranteed to be valid.
-    pub fn span_content(&self, span: Span) -> Option<&str> {
-        self.content.get(span.range())
+    pub fn span_content(&self, span: Span) -> Option<MappedRwLockReadGuard<'_, str>> {
+        self.try_map_inner(|inner| inner.content.get(span.range()))
     }
 
     /// Gets the [`Source`] containing this span.
@@ -331,26 +360,19 @@ impl SourceMap {
             map: self,
             offset: 0,
             char_offset: 0,
-            range: 0..self.content.len(),
+            range: 0..self.inner().content.len(),
         }
     }
 
     /// Non-panicking version of [`SourceMap::source`].
     pub fn source_checked(&self, index: usize) -> Option<Source> {
-        let (_, range) = self.source_info(index)?;
-
-        let first_line_index = range.start;
-        let lines = &self.lines[range];
-        let start = lines.first().unwrap().start();
-        let end = lines.last().unwrap().end();
-        let content = &self.content[start..end];
+        let (_, range) = &*self.source_info(index)?;
+        let lines = (range.start, range.end);
 
         Some(Source {
             map: self,
             index,
             lines,
-            first_line_index,
-            content,
         })
     }
 
@@ -373,20 +395,20 @@ impl SourceMap {
     pub fn sources(&self) -> Sources {
         Sources {
             map: self,
-            range: 0..self.sources.len(),
+            range: 0..self.inner().sources.len(),
         }
     }
 
     /// Non-panicking version of [`SourceMap::global_line`].
     pub fn global_line_checked(&self, index: usize) -> Option<Line> {
-        if index >= self.lines.len() {
+        if index >= self.inner().lines.len() {
             return None;
         }
 
         let source_index = self.index_of_source_containing_global_line(index).unwrap();
         let source = self.source(source_index);
 
-        Some(source.line(index - source.first_line_index))
+        Some(source.line(index - source.lines.0))
     }
 
     /// Get the [`Line`] with the given global index.
@@ -403,7 +425,7 @@ impl SourceMap {
     pub fn global_lines(&self) -> SourceLines {
         SourceLines {
             map: self,
-            range: 0..self.lines.len(),
+            range: 0..self.inner().lines.len(),
         }
     }
 
@@ -417,7 +439,7 @@ impl SourceMap {
 
         let line_offset = byte_offset - line.span().byte_offset;
         let column = line
-            .content
+            .content()
             .char_indices()
             .position(|(i, _)| i == line_offset)?;
 
@@ -479,9 +501,7 @@ impl FusedIterator for Sources<'_> {}
 pub struct Source<'sm> {
     map: &'sm SourceMap,
     index: usize,
-    lines: &'sm [Span],
-    first_line_index: usize,
-    content: &'sm str,
+    lines: (usize, usize),
 }
 
 impl<'sm> Source<'sm> {
@@ -491,8 +511,8 @@ impl<'sm> Source<'sm> {
     }
 
     /// Get the name of this source.
-    pub fn name(&self) -> &'sm SourceName {
-        &self.map.sources[self.index].0
+    pub fn name(&self) -> MappedRwLockReadGuard<'sm, SourceName> {
+        self.map.map_inner(|inner| &inner.sources[self.index].0)
     }
 
     /// Get the index of this source within the owning [`SourceMap`].
@@ -501,13 +521,20 @@ impl<'sm> Source<'sm> {
     }
 
     /// Get the slice of [`Span`]s corresponding to each line of this source.
-    pub fn line_spans(&self) -> &'sm [Span] {
-        self.lines
+    pub fn line_spans(&self) -> MappedRwLockReadGuard<'sm, [Span]> {
+        self.map
+            .map_inner(|inner| &inner.lines[self.global_line_range()])
+    }
+
+    /// Get the [`Span`] covering this source.
+    pub fn span(&self) -> Span {
+        let inner = self.map.inner();
+        inner.lines[self.lines.0].join(inner.lines[self.lines.1 - 1])
     }
 
     /// Get the entire contents of this source.
-    pub fn content(&self) -> &'sm str {
-        self.content
+    pub fn content(&self) -> MappedRwLockReadGuard<'sm, str> {
+        self.map.span_content(self.span()).unwrap()
     }
 
     /// Get a cursor over this source.
@@ -523,7 +550,7 @@ impl<'sm> Source<'sm> {
 
     /// Get the number of lines in this source.
     pub fn num_lines(&self) -> usize {
-        self.lines.len()
+        self.lines.1 - self.lines.0
     }
 
     /// An iterator over the [`Line`]s of this source.
@@ -536,28 +563,19 @@ impl<'sm> Source<'sm> {
 
     /// Get the range of global line indices that comprise this source.
     pub fn global_line_range(&self) -> Range<usize> {
-        self.first_line_index..self.first_line_index + self.lines.len()
-    }
-
-    /// Get the [`Span`] that covers this source's content.
-    pub fn span(&self) -> Span {
-        let byte_offset = self.lines.first().unwrap().start();
-        let end = self.lines.last().unwrap().end();
-        let len = end - byte_offset;
-        Span { byte_offset, len }
+        self.lines.0..self.lines.1
     }
 
     /// Non-panicking version of [`Source::line`].
     pub fn line_checked(&self, n: usize) -> Option<Line<'sm>> {
-        let content = self
-            .lines
-            .get(n)
-            .and_then(|span| self.map.span_content(*span))?;
-        Some(Line {
-            source: *self,
-            index_in_source: n,
-            content,
-        })
+        if n < self.num_lines() {
+            Some(Line {
+                source: *self,
+                index_in_source: n,
+            })
+        } else {
+            None
+        }
     }
 
     /// Get the [`Line`] at the given index within this source.
@@ -581,12 +599,6 @@ impl<'sm> Source<'sm> {
         } else {
             None
         }
-    }
-}
-
-impl<'sm> AsRef<str> for Source<'sm> {
-    fn as_ref(&self) -> &str {
-        self.content
     }
 }
 
@@ -631,7 +643,6 @@ impl<'sm> FusedIterator for SourceLines<'sm> {}
 pub struct Line<'sm> {
     source: Source<'sm>,
     index_in_source: usize,
-    content: &'sm str,
 }
 
 impl<'sm> Line<'sm> {
@@ -653,8 +664,8 @@ impl<'sm> Line<'sm> {
     /// Get the full contents of this line.
     ///
     /// Note that lines are always terminated by `'\n'` characters.
-    pub fn content(&self) -> &'sm str {
-        self.content
+    pub fn content(&self) -> MappedRwLockReadGuard<'sm, str> {
+        self.map().span_content(self.span()).unwrap()
     }
 
     /// Get a cursor over this line.
@@ -670,12 +681,12 @@ impl<'sm> Line<'sm> {
 
     /// Get the [`Span`] covering this line's content.
     pub fn span(&self) -> Span {
-        self.source.lines[self.index_in_source]
+        self.source.line_spans()[self.index_in_source]
     }
 
     /// Get the global index of this line within the [`SourceMap`].
     pub fn global_index(&self) -> usize {
-        self.source.first_line_index + self.index_in_source
+        self.source.lines.0 + self.index_in_source
     }
 
     /// Get the character at column index `n` within this line.
@@ -684,7 +695,7 @@ impl<'sm> Line<'sm> {
     /// correspond with the rendered position of the character in the line, e.g. in the case of
     /// combining diacritics or zero-width characters.
     pub fn column(&self, n: usize) -> Option<char> {
-        self.content.chars().nth(n)
+        self.content().chars().nth(n)
     }
 
     /// Get the span covering the given range of bytes within this line.
@@ -732,7 +743,7 @@ impl<'sm> Cursor<'sm> {
     ///
     /// Returns the advanced-over character, or `None` if the cursor is at the end of its range.
     pub fn advance(&mut self) -> Option<char> {
-        let c = self.chars_from_current().next()?;
+        let c = self.peek()?;
         self.offset += c.len_utf8();
         self.char_offset += 1;
         Some(c)
@@ -742,15 +753,11 @@ impl<'sm> Cursor<'sm> {
     ///
     /// Returns the retracted character, or `None` if the cursor is at the beginning of its range.
     pub fn retract(&mut self) -> Option<char> {
-        if self.offset == self.range.start {
+        if self.offset <= self.range.start {
             None
         } else {
-            while self.offset > self.range.start {
-                self.offset -= 1;
-                if self.map.content().is_char_boundary(self.offset) {
-                    break;
-                }
-            }
+            let content = self.map.content();
+            self.offset = content.floor_char_boundary(self.offset - 1);
             self.peek()
         }
     }
@@ -759,12 +766,7 @@ impl<'sm> Cursor<'sm> {
     ///
     /// Returns `None` if the cursor is at the end of its range.
     pub fn peek(&self) -> Option<char> {
-        self.chars_from_current().next()
-    }
-
-    /// Get a [`Chars`] iterator from the current cursor offset to the end of its range.
-    pub fn chars_from_current(&self) -> Chars<'sm> {
-        self.remaining().chars()
+        self.remaining().chars().next()
     }
 
     /// Get the current global byte offset of the cursor within the source map.
@@ -800,8 +802,10 @@ impl<'sm> Cursor<'sm> {
     }
 
     /// Get the string slice from the current cursor location to the end of its range.
-    pub fn remaining(&self) -> &'sm str {
-        &self.map.content[self.offset..self.range.end]
+    pub fn remaining(&self) -> MappedRwLockReadGuard<'sm, str> {
+        MappedRwLockReadGuard::map(self.map.content(), |content| {
+            &content[self.offset..self.range.end]
+        })
     }
 
     /// Get the current `Location` of the cursor.
@@ -832,23 +836,40 @@ impl<'sm> Sub for &Cursor<'sm> {
     }
 }
 
+#[doc(hidden)]
+pub struct MappedAsRef<'a, T: ?Sized> {
+    pub mapped: MappedRwLockReadGuard<'a, T>,
+}
+
+impl<T: ?Sized> AsRef<T> for MappedAsRef<'_, T> {
+    fn as_ref(&self) -> &T {
+        &self.mapped
+    }
+}
+
 impl<'sm> Files<'sm> for SourceMap {
     type FileId = usize;
 
-    type Name = &'sm SourceName;
+    type Name = MappedRwLockReadGuard<'sm, SourceName>;
 
-    type Source = Source<'sm>;
+    type Source = MappedAsRef<'sm, str>;
 
     fn name(&'sm self, id: Self::FileId) -> Result<Self::Name, files::Error> {
-        Files::source(self, id).map(|s| s.name())
+        self.source_checked(id)
+            .map(|s| s.name())
+            .ok_or(files::Error::FileMissing)
     }
 
     fn source(&'sm self, id: Self::FileId) -> Result<Self::Source, files::Error> {
-        self.source_checked(id).ok_or(files::Error::FileMissing)
+        self.source_checked(id)
+            .map(|s| MappedAsRef {
+                mapped: s.content(),
+            })
+            .ok_or(files::Error::FileMissing)
     }
 
     fn line_index(&'sm self, id: Self::FileId, byte_index: usize) -> Result<usize, files::Error> {
-        let source = Files::source(self, id)?;
+        let source = self.source_checked(id).ok_or(files::Error::FileMissing)?;
         let source_offset = source.span().byte_offset;
         let global_line_idx = if let Some(idx) =
             self.index_of_global_line_containing_offset(source_offset + byte_index)
@@ -871,7 +892,8 @@ impl<'sm> Files<'sm> for SourceMap {
         id: Self::FileId,
         line_index: usize,
     ) -> Result<Range<usize>, files::Error> {
-        Files::source(self, id)
+        self.source_checked(id)
+            .ok_or(files::Error::FileMissing)
             .and_then(|s| {
                 s.line_checked(line_index)
                     .ok_or_else(|| files::Error::LineTooLarge {
