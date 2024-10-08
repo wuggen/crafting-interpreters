@@ -2,8 +2,8 @@ use std::fmt::Debug;
 
 use insta::assert_snapshot;
 
-use crate::context::with_new_session;
 use crate::diag::render::render_dcx;
+use crate::session::Session;
 use crate::util::test::parse_new_source;
 use crate::val::Value;
 
@@ -54,7 +54,7 @@ where
 
 #[test]
 fn eval_lits() {
-    with_new_session(|_| {
+    Session::with_default(|_| {
         test_eval("nil", Some(Value::Nil), true);
         test_eval("true", Some(true), true);
         test_eval("false", Some(false), true);
@@ -65,7 +65,7 @@ fn eval_lits() {
 
 #[test]
 fn eval_unary() {
-    with_new_session(|_| {
+    Session::with_default(|_| {
         test_eval("-42", Some(-42.0), true);
         test_eval("!true", Some(false), true);
     })
@@ -73,7 +73,7 @@ fn eval_unary() {
 
 #[test]
 fn eval_binary() {
-    with_new_session(|_| {
+    Session::with_default(|_| {
         test_eval("3 + 4", Some(7.0), true);
         test_eval("5 == nil", Some(false), true);
         test_eval("5 == 5 == true", Some(true), true);
@@ -93,7 +93,7 @@ fn eval_binary() {
 
 #[test]
 fn eval_truthiness() {
-    with_new_session(|_| {
+    Session::with_default(|_| {
         test_eval("!!42", Some(true), false);
         test_eval("!!nil", Some(false), false);
         test_eval("!!false", Some(false), false);
@@ -103,7 +103,7 @@ fn eval_truthiness() {
 
 #[test]
 fn err_eval_non_num() {
-    with_new_session(|_| {
+    Session::with_default(|_| {
         test_eval("-nil", NONE_VAL, false);
         assert_snapshot!(render_dcx(), @r#"
         error: cannot coerce Nil to Num

@@ -17,7 +17,7 @@ use std::sync::{MappedRwLockReadGuard, RwLock, RwLockReadGuard, RwLockWriteGuard
 
 use codespan_reporting::files::{self, Files};
 
-use crate::context::{in_context, with_context};
+use crate::session::Session;
 
 #[cfg(test)]
 mod test;
@@ -121,9 +121,9 @@ pub struct Spanned<T> {
 
 impl<T: Display> Display for Spanned<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if in_context() {
-            SourceMap::with_current(|sm| {
-                if let Some((start, end)) = sm.span_extents(self.span) {
+        if Session::has_current() {
+            Session::with_current(|sess| {
+                if let Some((start, end)) = sess.sm.span_extents(self.span) {
                     write!(
                         f,
                         "{}{{{}:{}..{}:{}}}",
@@ -159,12 +159,12 @@ impl<T: Sized> Spannable for T {}
 ///
 /// A source map stores the complete contents of every source, including files and REPL inputs, and
 /// allows source code locations and spans to be treated uniformly across all sources.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct SourceMap {
     inner: RwLock<SourceMapInner>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct SourceMapInner {
     content: String,
     lines: Vec<Span>,
@@ -270,18 +270,8 @@ impl SourceMap {
 
 impl SourceMap {
     /// Create a new, empty source map.
-    pub(crate) fn new() -> Self {
-        Self {
-            inner: RwLock::new(SourceMapInner {
-                content: String::new(),
-                lines: vec![],
-                sources: vec![],
-            }),
-        }
-    }
-
-    pub fn with_current<T>(f: impl FnOnce(&Self) -> T) -> T {
-        with_context(|cx| f(&cx.source_map))
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Append a source to the source map.
@@ -316,10 +306,6 @@ impl SourceMap {
             .push((name.into(), orig_line_num..new_line_num));
 
         inner.sources.len() - 1
-    }
-
-    pub fn add_source_to_current(name: impl Into<SourceName>, content: &str) -> usize {
-        Self::with_current(|sm| sm.add_source(name, content))
     }
 
     /// Get the complete content of the source map, including all sources one after the other.

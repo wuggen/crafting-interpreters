@@ -1,6 +1,6 @@
-use crate::context::with_new_session;
 use crate::diag::render::render_dcx;
-use crate::span::{Location, SourceMap};
+use crate::session::Session;
+use crate::span::Location;
 
 use super::*;
 
@@ -33,14 +33,14 @@ impl<'sm> TokenTestable<'sm> for Range<usize> {
 
 impl<'sm> TokenTestable<'sm> for (Location, Location) {
     fn check(&self, tok: &Spanned<Token>) -> bool {
-        SourceMap::with_current(|sm| *self == sm.span_extents(tok.span).unwrap())
+        Session::with_current(|sess| *self == sess.sm.span_extents(tok.span).unwrap())
     }
 }
 
 impl<'sm> TokenTestable<'sm> for RangeInclusive<(usize, usize)> {
     fn check(&self, tok: &Spanned<Token>) -> bool {
-        SourceMap::with_current(|sm| {
-            let (start, end) = sm.span_extents(tok.span).unwrap();
+        Session::with_current(|sess| {
+            let (start, end) = sess.sm.span_extents(tok.span).unwrap();
             ((start.line, start.column), (end.line, end.column)) == self.clone().into_inner()
         })
     }
@@ -61,10 +61,10 @@ where
     I: IntoIterator<Item = T>,
     T: for<'sm> TokenTestable<'sm> + Debug,
 {
-    let source_idx = SourceMap::with_current(|sm| sm.add_source(0, source));
-    SourceMap::with_current(|sm| {
+    Session::with_current(|sess| {
+        let source_idx = sess.sm.add_source(0, source);
         let mut success = true;
-        let mut lexer = Lexer::new(sm.source(source_idx));
+        let mut lexer = Lexer::new(sess.sm.source(source_idx));
 
         let mut expected = expected.into_iter();
 
@@ -107,7 +107,7 @@ where
     I: IntoIterator<Item = T>,
     T: for<'sm> TokenTestable<'sm> + Debug,
 {
-    with_new_session(|_| {
+    Session::with_default(|_| {
         check_scan(source, expected);
         render_dcx()
     })

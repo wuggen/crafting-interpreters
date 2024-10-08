@@ -2,9 +2,10 @@
 
 use std::iter::Peekable;
 
-use crate::diag::{Diag, DiagContext, DiagKind, Diagnostic};
+use crate::diag::{Diag, DiagKind, Diagnostic};
 use crate::intern::Interned;
-use crate::span::{Source, SourceMap, Span, Spannable, Spanned};
+use crate::session::Session;
+use crate::span::{Source, Span, Spannable, Spanned};
 use crate::syn::*;
 use crate::tok::{Lexer, Token};
 use crate::util::oxford_or;
@@ -14,8 +15,8 @@ mod test;
 
 /// Scan and parse the source with the given index in the current session's source map.
 pub fn parse_source(source_idx: usize) -> Option<Spanned<Interned<Expr>>> {
-    SourceMap::with_current(|sm| {
-        let lexer = Lexer::new(sm.source(source_idx));
+    Session::with_current(|sess| {
+        let lexer = Lexer::new(sess.sm.source(source_idx));
         let parser = Parser::new(lexer);
         parser.parse()
     })
@@ -60,11 +61,13 @@ impl<'sm> Parser<'sm> {
 
     pub fn parse(mut self) -> Option<Spanned<Interned<Expr>>> {
         let res = self.expr().ok()?;
-        if DiagContext::current_has_errors() {
-            None
-        } else {
-            Some(res)
-        }
+        Session::with_current(|sess| {
+            if sess.dcx.has_errors() {
+                None
+            } else {
+                Some(res)
+            }
+        })
     }
 }
 

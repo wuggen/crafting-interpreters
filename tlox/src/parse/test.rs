@@ -1,13 +1,13 @@
 use indoc::indoc;
 use insta::assert_snapshot;
 
-use crate::context::with_new_session;
 use crate::diag::render::render_dcx;
+use crate::session::Session;
 use crate::util::test::parse_new_source;
 
 #[test]
 fn literals() {
-    with_new_session(|_| {
+    Session::with_default(|_| {
         let res = parse_new_source("true");
         assert_snapshot!(res.unwrap(), @"true{1:1..1:4}");
         assert!(render_dcx().is_empty());
@@ -24,7 +24,7 @@ fn literals() {
 
 #[test]
 fn comp_chain() {
-    with_new_session(|_| {
+    Session::with_default(|_| {
         let res = parse_new_source(indoc! {r#"
         45 < nil >= false
             <= "wow" > 003.32
@@ -36,7 +36,7 @@ fn comp_chain() {
 
 #[test]
 fn comp_chain_with_parens() {
-    with_new_session(|_| {
+    Session::with_default(|_| {
         let res = parse_new_source(r#"45 < ("wow" >= nil)"#);
         assert_snapshot!(res.unwrap().node, @r#"(< 45 (>= "wow" nil))"#);
         assert!(render_dcx().is_empty());
@@ -45,7 +45,7 @@ fn comp_chain_with_parens() {
 
 #[test]
 fn lotsa_parens() {
-    with_new_session(|_| {
+    Session::with_default(|_| {
         let res = parse_new_source(indoc! {r#"
         (((true + "false") - (nil / nil) >= 0 * "hey") % ("what")) + (0)
         "#});
@@ -56,7 +56,7 @@ fn lotsa_parens() {
 
 #[test]
 fn err_missing_lhs() {
-    with_new_session(|_| {
+    Session::with_default(|_| {
         parse_new_source("+ 4");
         assert_snapshot!(render_dcx(), @r#"
         error: binary operator without left-hand operand
@@ -85,7 +85,7 @@ fn err_missing_lhs() {
 
 #[test]
 fn err_missing_rhs() {
-    with_new_session(|_| {
+    Session::with_default(|_| {
         parse_new_source("4 +");
         assert_snapshot!(render_dcx(), @r#"
         error: unexpected end of input
@@ -102,7 +102,7 @@ fn err_missing_rhs() {
 
 #[test]
 fn err_early_close_paren() {
-    with_new_session(|_| {
+    Session::with_default(|_| {
         parse_new_source("4 + (nil *) - 5");
         assert_snapshot!(render_dcx(), @r#"
         error: binary operator without right-hand operand
@@ -121,7 +121,7 @@ fn err_early_close_paren() {
 
 #[test]
 fn err_unclosed_paren() {
-    with_new_session(|_| {
+    Session::with_default(|_| {
         parse_new_source(r#""hey" + (4 - nil"#);
         assert_snapshot!(render_dcx(), @r#"
         error: unclosed parentheses
@@ -160,7 +160,7 @@ fn err_unclosed_paren() {
 
 #[test]
 fn err_multiple() {
-    with_new_session(|_| {
+    Session::with_default(|_| {
         parse_new_source("8 * + (4 - ) / (  ) + 5");
         assert_snapshot!(render_dcx(), @r#"
         error: binary operator without right-hand operand
@@ -234,7 +234,7 @@ fn err_multiple() {
 /// Spans for parenthesized expressions should include the parentheses.
 #[test]
 fn paren_spans() {
-    with_new_session(|_| {
+    Session::with_default(|_| {
         let expr = parse_new_source("(4 + 10)").unwrap();
         assert_eq!(expr.span.range(), 0..8);
     })
@@ -245,7 +245,7 @@ fn paren_spans() {
 // expression and quits lol
 #[ignore = "parser not equipped to detect this condition yet"]
 fn err_spurious_close_paren() {
-    with_new_session(|_| {
+    Session::with_default(|_| {
         parse_new_source("45 - nil ) / false");
         assert_snapshot!(render_dcx(), @"");
     });

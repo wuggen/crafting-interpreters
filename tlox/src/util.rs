@@ -1,5 +1,7 @@
 //! Assorted utility functions.
 
+pub mod scoped;
+
 use std::fmt::{self, Display, Formatter};
 
 /// Wrapper struct that `Display`s as a prose list, with the given conjunction and appropriate
@@ -41,12 +43,15 @@ pub mod test {
 
     use crate::intern::Interned;
     use crate::parse::parse_source;
-    use crate::span::{SourceMap, Spanned};
+    use crate::session::Session;
+    use crate::span::Spanned;
     use crate::syn::Expr;
 
     pub fn parse_new_source(source: &str) -> Option<Spanned<Interned<Expr>>> {
-        let source_idx = SourceMap::with_current(|sm| sm.add_source(0, source));
-        parse_source(source_idx)
+        Session::with_current(|sess| {
+            let source_idx = sess.sm.add_source(0, source);
+            parse_source(source_idx)
+        })
     }
 
     pub struct DisplayOption<'a, T>(pub &'a Option<T>);
