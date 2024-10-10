@@ -1,8 +1,16 @@
 //! The Lox treewalking interpreter.
 
+#![feature(alloc_layout_extra)]
+#![feature(box_vec_non_null)]
+#![feature(dropck_eyepatch)]
 #![feature(hash_raw_entry)]
+#![feature(layout_for_ptr)]
 #![feature(mapped_lock_guards)]
+#![feature(ptr_metadata)]
+#![feature(ptr_sub_ptr)]
 #![feature(round_char_boundary)]
+#![feature(slice_ptr_get)]
+#![feature(strict_provenance)]
 
 use std::fs;
 use std::io::{self, Write};
@@ -34,6 +42,7 @@ mk_internable! {
     expr: syn::Expr,
 }
 
+pub mod arena;
 pub mod diag;
 pub mod error;
 pub mod interp;
