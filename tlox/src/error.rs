@@ -25,6 +25,7 @@ pub enum RuntimeError {
     },
 }
 
+/// A `Result` type specialized to runtime errors.
 pub type RuntimeResult<T> = Result<T, Vec<RuntimeError>>;
 
 /// Join the errors of two runtime results, if any.

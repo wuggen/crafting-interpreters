@@ -43,6 +43,7 @@ pub enum DiagKind {
     Error,
 }
 
+/// Diagnostic label kind; primary or secondary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LabelKind {
     Primary,
@@ -58,6 +59,7 @@ pub struct DiagLabel {
 }
 
 impl DiagLabel {
+    /// Create a new diagnostic label.
     pub fn new(kind: LabelKind, span: Span, label: impl Into<String>) -> Self {
         Self {
             kind,
@@ -66,10 +68,12 @@ impl DiagLabel {
         }
     }
 
+    /// Create a primary diagnostic label.
     pub fn primary(span: Span, label: impl Into<String>) -> Self {
         Self::new(LabelKind::Primary, span, label)
     }
 
+    /// Create a secondary diagnostic label.
     pub fn secondary(span: Span, label: impl Into<String>) -> Self {
         Self::new(LabelKind::Secondary, span, label)
     }
@@ -82,6 +86,7 @@ impl Diagnostic for Diag {
 }
 
 impl Diag {
+    /// Create a new diagnostic.
     pub fn new(kind: DiagKind, message: impl Into<String>) -> Self {
         Self {
             kind,
@@ -91,6 +96,7 @@ impl Diag {
         }
     }
 
+    /// Builder method that adds a primary label to the diagnostic.
     pub fn with_primary(mut self, span: Span, label: impl Into<String>) -> Self {
         self.labels.push(DiagLabel::primary(span, label));
         self
@@ -118,6 +124,7 @@ pub struct DiagContext {
 }
 
 impl DiagContext {
+    /// Create a new empty diagnostic context.
     pub fn new() -> Self {
         Self::default()
     }
@@ -147,6 +154,7 @@ pub mod render {
     use crate::session::Session;
 
     #[cfg(test)]
+    /// Render the current session's `DiagContext` to a string.
     pub fn render_dcx() -> String {
         use codespan_reporting::term::termcolor::NoColor;
 
@@ -224,6 +232,7 @@ pub mod render {
             self.report_to(&mut writer.lock());
         }
 
+        /// Render all collected diagnostics to the given stream.
         pub fn report_to(&self, writer: &mut dyn WriteColor) {
             let config = render_config();
 

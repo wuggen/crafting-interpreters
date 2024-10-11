@@ -22,6 +22,7 @@ pub fn parse_source(source_idx: usize) -> Option<Spanned<Interned<Expr>>> {
     })
 }
 
+/// Parser for Lox.
 #[derive(Debug, Clone)]
 pub struct Parser<'sm> {
     lexer: Peekable<Lexer<'sm>>,
@@ -51,6 +52,7 @@ pub struct Parser<'sm> {
 //       | '(' expr ')'
 
 impl<'sm> Parser<'sm> {
+    /// Create a new parser, using the given lexer.
     pub fn new(lexer: Lexer<'sm>) -> Self {
         let source = lexer.source();
         Self {
@@ -59,6 +61,10 @@ impl<'sm> Parser<'sm> {
         }
     }
 
+    /// Parse a Lox syntax tree from the parser's token stream.
+    ///
+    /// Returns `None` if the parser encounters syntax errors. Any such errors will have been
+    /// emitted to the global session's diagnostic context.
     pub fn parse(mut self) -> Option<Spanned<Interned<Expr>>> {
         let res = self.expr().ok()?;
         Session::with_current(|sess| {

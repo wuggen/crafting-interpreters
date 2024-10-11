@@ -1,4 +1,4 @@
-/// Evaluation of Lox syntax trees.
+//! Evaluation of Lox syntax trees.
 use std::ops::{Add, Div, Mul, Rem, Sub};
 
 use crate::diag::Diagnostic;
@@ -16,6 +16,7 @@ mod test;
 pub struct Interpreter {}
 
 impl Interpreter {
+    /// Evaluate a Lox syntax tree.
     pub fn eval(&self, expr: &Spanned<Interned<Expr>>) -> Option<Value> {
         match self.eval_expression(expr) {
             Ok(val) => Some(val),

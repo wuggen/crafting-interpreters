@@ -205,6 +205,7 @@ impl InternedTable<[u8]> {
 #[macro_export]
 macro_rules! mk_internable {
     ($($name:ident: $ty:ty),*) => {
+        /// Types that can be interned.
         pub trait Internable: ::std::marker::Sized + ::std::borrow::Borrow<Self::Interned> {
             type Interned: ?::std::marker::Sized;
             fn interned(self) -> $crate::intern::Interned<Self::Interned>;

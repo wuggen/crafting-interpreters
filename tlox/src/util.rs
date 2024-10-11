@@ -4,8 +4,8 @@ pub mod scoped;
 
 use std::fmt::{self, Display, Formatter};
 
-/// Wrapper struct that `Display`s as a prose list, with the given conjunction and appropriate
-/// Oxford comma placement.
+/// Wrapper struct that `Display`s as a prose list, with the given joiner (usually a conjunction)
+/// and appropriate Oxford comma placement.
 pub struct Oxford<'a, D> {
     pub list: &'a [D],
     pub join: &'static str,
@@ -39,6 +39,7 @@ pub fn oxford_and<D>(list: &[D]) -> Oxford<D> {
 
 #[cfg(test)]
 pub mod test {
+    //! Testing utilities.
     use std::fmt::{self, Display, Formatter};
 
     use crate::intern::Interned;
@@ -47,6 +48,7 @@ pub mod test {
     use crate::span::Spanned;
     use crate::syn::Expr;
 
+    /// Add a new source to the current session and parse it.
     pub fn parse_new_source(source: &str) -> Option<Spanned<Interned<Expr>>> {
         Session::with_current(|sess| {
             let source_idx = sess.sm.add_source(0, source);
@@ -54,6 +56,7 @@ pub mod test {
         })
     }
 
+    /// A wrapper that adds a `Display` implementation to an `Option<T>` where `T: Display`.
     pub struct DisplayOption<'a, T>(pub &'a Option<T>);
     impl<T: Display> Display for DisplayOption<'_, T> {
         fn fmt(&self, f: &mut Formatter) -> fmt::Result {

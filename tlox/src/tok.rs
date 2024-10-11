@@ -10,6 +10,7 @@ use crate::Internable;
 #[cfg(test)]
 mod test;
 
+/// A Lox token.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Token {
     LeftParen,
@@ -53,6 +54,7 @@ pub enum Token {
 }
 
 impl Token {
+    /// Is this token a binary operator?
     pub fn is_binop(&self) -> bool {
         matches!(
             self,
@@ -113,6 +115,7 @@ impl Token {
     }
 }
 
+/// A lexer for Lox.
 #[derive(Debug, Clone)]
 pub struct Lexer<'sm> {
     cursor: Cursor<'sm>,
@@ -121,6 +124,7 @@ pub struct Lexer<'sm> {
 }
 
 impl<'sm> Lexer<'sm> {
+    /// Create a new lexer for the given source.
     pub fn new(source: Source<'sm>) -> Self {
         Self {
             cursor: source.cursor(),
@@ -129,6 +133,7 @@ impl<'sm> Lexer<'sm> {
         }
     }
 
+    /// Get the source over which this lexer is scanning.
     pub fn source(&self) -> Source<'sm> {
         self.cursor.source()
     }
@@ -149,7 +154,7 @@ struct LexerError {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum LexerErrorKind {
+enum LexerErrorKind {
     UnterminatedBlockComment,
     UnterminatedString,
     UnrecognizedEscapeCharacter { c: char },

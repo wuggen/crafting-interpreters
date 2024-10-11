@@ -166,10 +166,12 @@ pub enum Expr {
 }
 
 impl Expr {
+    /// Create a literal expression.
     pub fn literal(value: Lit) -> Interned<Self> {
         Self::Literal(value).interned()
     }
 
+    /// Create a unary operator expression.
     pub fn unop(
         sym: Spanned<UnopSym>,
         operand: Spanned<Interned<Expr>>,
@@ -178,6 +180,7 @@ impl Expr {
         Self::Unop { sym, operand }.interned().spanned(span)
     }
 
+    /// Create a binary operator expression.
     pub fn binop(
         sym: Spanned<BinopSym>,
         lhs: Spanned<Interned<Expr>>,
