@@ -13,7 +13,7 @@ use crate::val::{StrValue, Value};
 mod test;
 
 /// A tree-walking Lox interpreter.
-pub struct Interpreter {}
+pub struct Interpreter;
 
 impl Interpreter {
     /// Evaluate a Lox syntax tree.

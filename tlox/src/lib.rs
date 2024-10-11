@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use diag::{Diag, DiagKind, Diagnostic};
-use interp::Interpreter;
+use eval::Interpreter;
 use parse::parse_source;
 use session::Session;
 use span::SourceName;
@@ -36,7 +36,7 @@ mk_internable! {
 
 pub mod diag;
 pub mod error;
-pub mod interp;
+pub mod eval;
 pub mod parse;
 pub mod session;
 pub mod span;
@@ -102,7 +102,7 @@ impl TLox {
     fn run_source(name: impl Into<SourceName>, source: &str) -> Option<()> {
         Session::with_current(|sess| {
             let idx = sess.sm.add_source(name, source);
-            if let Some(res) = parse_source(idx).and_then(|expr| Interpreter {}.eval(&expr)) {
+            if let Some(res) = parse_source(idx).and_then(|expr| Interpreter.eval(&expr)) {
                 println!("{res}");
                 Some(())
             } else {
