@@ -3,7 +3,6 @@
 use std::iter::Peekable;
 
 use crate::diag::{Diag, DiagKind, Diagnostic};
-use crate::intern::Interned;
 use crate::session::Session;
 use crate::span::{Source, Span, Spannable, Spanned};
 use crate::syn::*;
@@ -14,7 +13,7 @@ use crate::util::oxford_or;
 mod test;
 
 /// Scan and parse the source with the given index in the current session's source map.
-pub fn parse_source(source_idx: usize) -> Option<Spanned<Interned<Expr>>> {
+pub fn parse_source(source_idx: usize) -> Option<Spanned<Expr>> {
     Session::with_current(|sess| {
         let lexer = Lexer::new(sess.sm.source(source_idx));
         let parser = Parser::new(lexer);
@@ -65,7 +64,7 @@ impl<'sm> Parser<'sm> {
     ///
     /// Returns `None` if the parser encounters syntax errors. Any such errors will have been
     /// emitted to the global session's diagnostic context.
-    pub fn parse(mut self) -> Option<Spanned<Interned<Expr>>> {
+    pub fn parse(mut self) -> Option<Spanned<Expr>> {
         let res = self.expr().ok()?;
         Session::with_current(|sess| {
             if sess.dcx.has_errors() {
@@ -259,7 +258,7 @@ impl Parser<'_> {
     /// Parse an expression.
     ///
     /// Corresponds to the `expr` grammar production.
-    fn expr(&mut self) -> ParserRes<Spanned<Interned<Expr>>> {
+    fn expr(&mut self) -> ParserRes<Spanned<Expr>> {
         debug_println!(@"= Parsing expression");
         self.equal()
     }
@@ -278,10 +277,10 @@ impl Parser<'_> {
     fn binop_chain_left_assoc(
         &mut self,
         level: BinopLevel,
-        operand: impl Fn(&mut Self) -> ParserRes<Spanned<Interned<Expr>>>,
+        operand: impl Fn(&mut Self) -> ParserRes<Spanned<Expr>>,
         sym_test: impl Fn(&Token) -> bool,
         sym_map: impl Fn(Token) -> BinopSym,
-    ) -> ParserRes<Spanned<Interned<Expr>>> {
+    ) -> ParserRes<Spanned<Expr>> {
         let mut lhs = match operand(self) {
             Ok(expr) => expr,
 
@@ -339,7 +338,7 @@ impl Parser<'_> {
     /// Parse an equality operator chain.
     ///
     /// Corresponds to the `equal` grammar production.
-    fn equal(&mut self) -> ParserRes<Spanned<Interned<Expr>>> {
+    fn equal(&mut self) -> ParserRes<Spanned<Expr>> {
         self.binop_chain_left_assoc(
             BinopLevel::Eq,
             Self::comp,
@@ -355,7 +354,7 @@ impl Parser<'_> {
     /// Parse a comparison operator chain.
     ///
     /// Corresponds to the `comp` grammar production.
-    fn comp(&mut self) -> ParserRes<Spanned<Interned<Expr>>> {
+    fn comp(&mut self) -> ParserRes<Spanned<Expr>> {
         self.binop_chain_left_assoc(
             BinopLevel::Comp,
             Self::terms,
@@ -378,7 +377,7 @@ impl Parser<'_> {
     /// Parse an additive (addition/subtraction) operator chain.
     ///
     /// Corresponds to the `terms` grammar production.
-    fn terms(&mut self) -> ParserRes<Spanned<Interned<Expr>>> {
+    fn terms(&mut self) -> ParserRes<Spanned<Expr>> {
         self.binop_chain_left_assoc(
             BinopLevel::Add,
             Self::factors,
@@ -394,7 +393,7 @@ impl Parser<'_> {
     /// Parse a multiplicative (multiplication/division/modulo) operator chain.
     ///
     /// Corresponds to the `factors` grammar production.
-    fn factors(&mut self) -> ParserRes<Spanned<Interned<Expr>>> {
+    fn factors(&mut self) -> ParserRes<Spanned<Expr>> {
         self.binop_chain_left_assoc(
             BinopLevel::Mul,
             Self::unary,
@@ -411,7 +410,7 @@ impl Parser<'_> {
     /// Parse a unary (boolean/numerical negation) operator chain.
     ///
     /// Corresponds to the `unary` grammar production.
-    fn unary(&mut self) -> ParserRes<Spanned<Interned<Expr>>> {
+    fn unary(&mut self) -> ParserRes<Spanned<Expr>> {
         if self.check_next(|tok| matches!(tok, Token::Minus | Token::Bang)) {
             let sym = self
                 .advance_map(|tok| match tok {
@@ -432,7 +431,7 @@ impl Parser<'_> {
     /// Parse an atomic (literal/identifier/parenthesized) expression.
     ///
     /// Corresponds to the `atom` grammar production.
-    fn atom(&mut self) -> ParserRes<Spanned<Interned<Expr>>> {
+    fn atom(&mut self) -> ParserRes<Spanned<Expr>> {
         if let Some(Spanned { node: tok, span }) = self.advance() {
             match tok {
                 Token::Number(n) => Ok(Expr::literal(Lit::Num(n)).spanned(span)),
@@ -472,7 +471,7 @@ impl Parser<'_> {
     /// the span for the opening paren, for diagnostic reporting.
     ///
     /// Corresponds to the parenthesized expression arm of the `atom` grammar production.
-    fn group(&mut self, oparen_span: Span) -> ParserRes<Spanned<Interned<Expr>>> {
+    fn group(&mut self, oparen_span: Span) -> ParserRes<Spanned<Expr>> {
         let expr = match self.expr() {
             Ok(expr) => expr,
             Err(ParserError::SpuriousCloseParen { close, reported }) => {

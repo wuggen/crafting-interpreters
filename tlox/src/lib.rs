@@ -31,7 +31,7 @@ pub mod intern;
 pub mod util;
 
 mk_internable! {
-    expr: syn::Expr,
+    expr: syn::ExprNode,
 }
 
 pub mod diag;

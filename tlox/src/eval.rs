@@ -3,9 +3,8 @@ use std::ops::{Add, Div, Mul, Rem, Sub};
 
 use crate::diag::Diagnostic;
 use crate::error::{join_errs, CoercionCause, RuntimeError, RuntimeResult};
-use crate::intern::Interned;
 use crate::span::{Spannable, Spanned};
-use crate::syn::{BinopSym, Expr, Lit, UnopSym};
+use crate::syn::{BinopSym, Expr, ExprNode, Lit, UnopSym};
 use crate::ty::{PrimitiveTy, Ty};
 use crate::val::{StrValue, Value};
 
@@ -17,7 +16,7 @@ pub struct Interpreter;
 
 impl Interpreter {
     /// Evaluate a Lox syntax tree.
-    pub fn eval(&self, expr: &Spanned<Interned<Expr>>) -> Option<Value> {
+    pub fn eval(&self, expr: &Spanned<Expr>) -> Option<Value> {
         match self.eval_expression(expr) {
             Ok(val) => Some(val),
             Err(errs) => {
@@ -30,11 +29,11 @@ impl Interpreter {
     }
 
     /// Evaluate an expression.
-    fn eval_expression(&self, expr: &Spanned<Interned<Expr>>) -> RuntimeResult<Value> {
+    fn eval_expression(&self, expr: &Spanned<Expr>) -> RuntimeResult<Value> {
         match &*expr.node {
-            Expr::Literal(lit) => Ok(lit.eval()),
+            ExprNode::Literal(lit) => Ok(lit.eval()),
 
-            Expr::Unop { sym, operand } => {
+            ExprNode::Unop { sym, operand } => {
                 let operand_val = self.eval_expression(operand)?;
                 match sym.node {
                     UnopSym::Not => Ok(Value::Bool(!operand_val.is_truthy())),
@@ -49,7 +48,7 @@ impl Interpreter {
                 }
             }
 
-            Expr::Binop { sym, lhs, rhs } => {
+            ExprNode::Binop { sym, lhs, rhs } => {
                 let lop = self.eval_expression(lhs)?;
                 let rop = self.eval_expression(rhs)?;
 

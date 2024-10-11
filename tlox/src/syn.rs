@@ -139,7 +139,7 @@ impl Eq for Lit {}
 
 /// An expression.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Expr {
+pub enum ExprNode {
     /// A literal expression
     Literal(Lit),
 
@@ -149,7 +149,7 @@ pub enum Expr {
         sym: Spanned<UnopSym>,
 
         /// Operand
-        operand: Spanned<Interned<Expr>>,
+        operand: Spanned<Expr>,
     },
 
     /// A binary operator expression
@@ -158,45 +158,47 @@ pub enum Expr {
         sym: Spanned<BinopSym>,
 
         /// Left operand
-        lhs: Spanned<Interned<Expr>>,
+        lhs: Spanned<Expr>,
 
         /// Right operand
-        rhs: Spanned<Interned<Expr>>,
+        rhs: Spanned<Expr>,
     },
 }
 
+pub type Expr = Interned<ExprNode>;
+
 impl Expr {
     /// Create a literal expression.
-    pub fn literal(value: Lit) -> Interned<Self> {
-        Self::Literal(value).interned()
+    pub fn literal(value: Lit) -> Self {
+        ExprNode::Literal(value).interned()
     }
 
     /// Create a unary operator expression.
     pub fn unop(
         sym: Spanned<UnopSym>,
-        operand: Spanned<Interned<Expr>>,
-    ) -> Spanned<Interned<Self>> {
+        operand: Spanned<Expr>,
+    ) -> Spanned<Self> {
         let span = sym.span.join(operand.span);
-        Self::Unop { sym, operand }.interned().spanned(span)
+        ExprNode::Unop { sym, operand }.interned().spanned(span)
     }
 
     /// Create a binary operator expression.
     pub fn binop(
         sym: Spanned<BinopSym>,
-        lhs: Spanned<Interned<Expr>>,
-        rhs: Spanned<Interned<Expr>>,
-    ) -> Spanned<Interned<Self>> {
+        lhs: Spanned<Expr>,
+        rhs: Spanned<Expr>,
+    ) -> Spanned<Self> {
         let span = lhs.span.join(rhs.span);
-        Self::Binop { sym, lhs, rhs }.interned().spanned(span)
+        ExprNode::Binop { sym, lhs, rhs }.interned().spanned(span)
     }
 }
 
-impl Display for Expr {
+impl Display for ExprNode {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Expr::Literal(lit) => write!(f, "{lit}"),
-            Expr::Unop { sym, operand } => write!(f, "({} {})", sym.node, operand.node),
-            Expr::Binop { sym, lhs, rhs } => write!(f, "({} {} {})", sym.node, lhs.node, rhs.node),
+            ExprNode::Literal(lit) => write!(f, "{lit}"),
+            ExprNode::Unop { sym, operand } => write!(f, "({} {})", sym.node, operand.node),
+            ExprNode::Binop { sym, lhs, rhs } => write!(f, "({} {} {})", sym.node, lhs.node, rhs.node),
         }
     }
 }

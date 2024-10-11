@@ -42,14 +42,13 @@ pub mod test {
     //! Testing utilities.
     use std::fmt::{self, Display, Formatter};
 
-    use crate::intern::Interned;
     use crate::parse::parse_source;
     use crate::session::Session;
     use crate::span::Spanned;
     use crate::syn::Expr;
 
     /// Add a new source to the current session and parse it.
-    pub fn parse_new_source(source: &str) -> Option<Spanned<Interned<Expr>>> {
+    pub fn parse_new_source(source: &str) -> Option<Spanned<Expr>> {
         Session::with_current(|sess| {
             let source_idx = sess.sm.add_source(0, source);
             parse_source(source_idx)
