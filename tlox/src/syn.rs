@@ -174,20 +174,13 @@ impl Expr {
     }
 
     /// Create a unary operator expression.
-    pub fn unop(
-        sym: Spanned<UnopSym>,
-        operand: Spanned<Expr>,
-    ) -> Spanned<Self> {
+    pub fn unop(sym: Spanned<UnopSym>, operand: Spanned<Expr>) -> Spanned<Self> {
         let span = sym.span.join(operand.span);
         ExprNode::Unop { sym, operand }.interned().spanned(span)
     }
 
     /// Create a binary operator expression.
-    pub fn binop(
-        sym: Spanned<BinopSym>,
-        lhs: Spanned<Expr>,
-        rhs: Spanned<Expr>,
-    ) -> Spanned<Self> {
+    pub fn binop(sym: Spanned<BinopSym>, lhs: Spanned<Expr>, rhs: Spanned<Expr>) -> Spanned<Self> {
         let span = lhs.span.join(rhs.span);
         ExprNode::Binop { sym, lhs, rhs }.interned().spanned(span)
     }
@@ -198,7 +191,9 @@ impl Display for ExprNode {
         match self {
             ExprNode::Literal(lit) => write!(f, "{lit}"),
             ExprNode::Unop { sym, operand } => write!(f, "({} {})", sym.node, operand.node),
-            ExprNode::Binop { sym, lhs, rhs } => write!(f, "({} {} {})", sym.node, lhs.node, rhs.node),
+            ExprNode::Binop { sym, lhs, rhs } => {
+                write!(f, "({} {} {})", sym.node, lhs.node, rhs.node)
+            }
         }
     }
 }

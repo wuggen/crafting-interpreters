@@ -610,16 +610,16 @@ impl<'sm> Iterator for SourceLines<'sm> {
     }
 }
 
-impl<'sm> DoubleEndedIterator for SourceLines<'sm> {
+impl DoubleEndedIterator for SourceLines<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         let n = self.range.next_back()?;
         Some(self.map.global_line(n))
     }
 }
 
-impl<'sm> ExactSizeIterator for SourceLines<'sm> {}
+impl ExactSizeIterator for SourceLines<'_> {}
 
-impl<'sm> FusedIterator for SourceLines<'sm> {}
+impl FusedIterator for SourceLines<'_> {}
 
 /// A line of a particular [`Source`].
 ///
@@ -800,7 +800,7 @@ impl<'sm> Cursor<'sm> {
     }
 }
 
-impl<'sm> Cursor<'sm> {
+impl Cursor<'_> {
     fn global_line_index(&self) -> usize {
         self.map
             .index_of_global_line_containing_offset(self.offset)
@@ -814,7 +814,7 @@ impl<'sm> Cursor<'sm> {
     }
 }
 
-impl<'sm> Sub for &Cursor<'sm> {
+impl Sub for &Cursor<'_> {
     type Output = Span;
 
     fn sub(self, rhs: Self) -> Self::Output {
