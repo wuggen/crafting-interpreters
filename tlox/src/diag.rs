@@ -16,7 +16,7 @@ pub trait Diagnostic: Sized {
     /// Emit this diagnostic to the global context.
     ///
     /// This method will panic if called from a thread that is not currently in the context of an
-    /// [`Session`](crate::context::Session).
+    /// [`Session`].
     fn emit(self) {
         Session::with_current(|sess| {
             sess.dcx.emit(self);
