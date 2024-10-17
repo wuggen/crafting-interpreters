@@ -1,11 +1,13 @@
 //! Interned data.
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::hash::Hash;
 use std::ops::Deref;
-use std::ptr;
 use std::sync::Mutex;
+use std::{mem, ptr, slice};
+
+use crate::arena::{DroplessArena, TypedArena};
 
 /// A `T` that is known to be unique.
 ///
@@ -75,16 +77,23 @@ impl<T: ?Sized + 'static> AsRef<T> for Interned<T> {
 /// Normally this should not be manually constructed. The [`mk_internable`] macro establishes
 /// static intern tables for a given set of types.
 #[doc(hidden)]
-pub struct InternedTable<T: ?Sized> {
-    items: Mutex<HashMap<Box<T>, ()>>,
+pub struct InternedTable<T: 'static> {
+    arena: TypedArena<T>,
+    items: Mutex<HashSet<&'static T>>,
 }
 
-impl<T: ?Sized> Default for InternedTable<T> {
+impl<T> Default for InternedTable<T> {
     fn default() -> Self {
         Self {
-            items: Mutex::new(HashMap::new()),
+            arena: TypedArena::new(),
+            items: Mutex::new(HashSet::new()),
         }
     }
+}
+
+#[inline(always)]
+unsafe fn with_lifetime<'a, T: ?Sized>(val: &T) -> &'a T {
+    mem::transmute(val)
 }
 
 impl<T: Eq + Hash> InternedTable<T> {
@@ -92,43 +101,69 @@ impl<T: Eq + Hash> InternedTable<T> {
     ///
     /// If a value equal to the given item has already been interned in this table, returns a
     /// reference to that item.
-    ///
-    /// # Safety
-    ///
-    /// This table must live for the `'static` lifetime in order for the returned reference to be
-    /// valid.
-    pub unsafe fn intern(&self, item: T) -> Interned<T> {
+    pub fn intern(&'static self, item: T) -> Interned<T> {
         let mut items = self.items.lock().unwrap();
-        let (interned, _) = items
-            .raw_entry_mut()
-            .from_key(&item)
-            .or_insert_with(|| (Box::new(item), ()));
-
-        Interned(&*(interned.as_ref() as *const _))
+        if let Some(interned) = items.get(&item) {
+            Interned(interned)
+        } else {
+            let item = unsafe { with_lifetime(self.arena.alloc(item)) };
+            items.insert(item);
+            Interned(item)
+        }
     }
 }
 
-impl InternedTable<[u8]> {
-    /// Intern a byte slice.
-    ///
-    /// If a byte slice equal to the given one has already been interned in this table, returns a
-    /// reference to that slice.
-    ///
-    /// The [`mk_internable`] macro uses a single table of byte slices for both `&[u8]` and `&str`
-    /// data.
-    ///
-    /// # Safety
-    ///
-    /// This table must live for the `'static` lifetime in order for the returned reference to be
-    /// valid.
-    pub unsafe fn intern_bytes(&self, bytes: &[u8]) -> Interned<[u8]> {
-        let mut items = self.items.lock().unwrap();
-        let (interned, _) = items
-            .raw_entry_mut()
-            .from_key(bytes)
-            .or_insert_with(|| (Vec::from(bytes).into_boxed_slice(), ()));
+#[doc(hidden)]
+#[derive(Default)]
+pub struct DroplessTable {
+    arena: DroplessArena,
+    items: Mutex<HashSet<(&'static [u8], usize)>>,
+}
 
-        Interned(&*(interned.as_ref() as *const _))
+#[inline(always)]
+fn ref_as_bytes<T: Copy>(val: &T) -> &[u8] {
+    unsafe { slice::from_raw_parts(val as *const T as *const u8, mem::size_of::<T>()) }
+}
+
+#[inline(always)]
+unsafe fn ref_from_bytes<T: Copy>(val: &[u8]) -> &T {
+    debug_assert!(val.len() >= mem::size_of::<T>());
+    debug_assert!((val.as_ptr() as *const T).is_aligned());
+    &*(val.as_ptr() as *const T)
+}
+
+impl DroplessTable {
+    pub fn intern_copy<T: Copy>(&'static self, item: T) -> Interned<T> {
+        let mut items = self.items.lock().unwrap();
+        let align = const { mem::align_of::<T>() };
+        let item_bytes: &'static [u8] = unsafe { with_lifetime(ref_as_bytes(&item)) };
+
+        if let Some(&(item, _)) = items.get(&(item_bytes, align)) {
+            Interned(unsafe { ref_from_bytes(item) })
+        } else {
+            let item = self.arena.alloc(item);
+            let item_bytes = ref_as_bytes(item);
+            items.insert((item_bytes, align));
+            Interned(item)
+        }
+    }
+
+    pub fn intern_bytes(&'static self, bytes: &[u8]) -> Interned<[u8]> {
+        let mut items = self.items.lock().unwrap();
+        let bytes: &'static [u8] = unsafe { with_lifetime(bytes) };
+
+        if let Some(&(bytes, _)) = items.get(&(bytes, 1)) {
+            Interned(bytes)
+        } else {
+            let bytes = unsafe { with_lifetime(self.arena.alloc_bytes(bytes)) };
+            items.insert((bytes, 1));
+            Interned(bytes)
+        }
+    }
+
+    pub fn intern_str(&'static self, s: &str) -> Interned<str> {
+        let Interned(bytes) = self.intern_bytes(s.as_bytes());
+        Interned(unsafe { std::str::from_utf8_unchecked(bytes) })
     }
 }
 
@@ -214,7 +249,7 @@ macro_rules! mk_internable {
         #[allow(non_snake_case)]
         #[derive(Default)]
         struct InternedTables {
-            __default_bytes_table: $crate::intern::InternedTable<[u8]>,
+            __default_bytes_table: $crate::intern::DroplessTable,
             $(
                 $name: $crate::intern::InternedTable<$ty>,
             )*
@@ -225,16 +260,14 @@ macro_rules! mk_internable {
         impl Internable for &[u8] {
             type Interned = [u8];
             fn interned(self) -> $crate::intern::Interned<Self::Interned> {
-                unsafe { INTERNED_TABLES.__default_bytes_table.intern_bytes(self) }
+                INTERNED_TABLES.__default_bytes_table.intern_bytes(self)
             }
         }
 
         impl Internable for &str {
             type Interned = str;
             fn interned(self) -> $crate::intern::Interned<Self::Interned> {
-                use $crate::intern::Interned;
-                let interned_bytes = self.as_bytes().interned();
-                unsafe { Interned(std::str::from_utf8_unchecked(interned_bytes.0)) }
+                INTERNED_TABLES.__default_bytes_table.intern_str(self)
             }
         }
 
@@ -242,7 +275,7 @@ macro_rules! mk_internable {
             impl Internable for $ty {
                 type Interned = Self;
                 fn interned(self) -> $crate::intern::Interned<Self::Interned> {
-                    unsafe { INTERNED_TABLES.$name.intern(self) }
+                    INTERNED_TABLES.$name.intern(self)
                 }
             }
         )*
