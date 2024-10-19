@@ -142,3 +142,10 @@ fn err_eval_non_num() {
         "#);
     })
 }
+
+#[test]
+fn computed_str_eq() {
+    Session::with_default(|key| {
+        test_eval(key, r#""hey there" == "hey " + "there""#, Some(true), true);
+    });
+}

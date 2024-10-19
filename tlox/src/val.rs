@@ -45,10 +45,16 @@ impl Display for Value<'_> {
     }
 }
 
-// Implementing this between `Value`s of any lifetimes can potentially cause spurious unqual
-// comparisons between static string values that are logically equal but interned in different
-// sessions. This shouldn't be a problem in practice, but hey, putting this note here in case I'm
-// wrong about that.
+// Note: implementing `PartialEq` between `Value`s of arbitrary lifetimes can potentially cause
+// spurious (or is this desired? We let it distinguish between static and computed string
+// values 🤔) unequal comparisons between static string values that are logically equal but interned
+// in different sessions. This shouldn't be a problem in practice, but hey, putting this note here
+// in case I'm wrong about that.
+//
+// Also, just in case it isn't clear: this is manual instead of derived because the derived
+// implementation enforces the _same_ lifetime between operands. There are some tests over in
+// eval/test.rs that rely on being able to compare arbitrarily lived `Value`s (though none
+// of them compare string values, which is what the lifetime's there for :P)
 impl<'s> PartialEq<Value<'s>> for Value<'_> {
     fn eq(&self, other: &Value<'s>) -> bool {
         match (self, other) {

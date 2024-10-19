@@ -92,6 +92,8 @@ impl Interpreter {
             (Value::Nil, Value::Nil) => true,
             (Value::Bool(b1), Value::Bool(b2)) => b1 == b2,
             (Value::Num(n1), Value::Num(n2)) => n1 == n2,
+            // Importantly, we don't use the PartialEq implementation for StrValues, which
+            // distinguishes between static and computed values
             (Value::Str(s1), Value::Str(s2)) => s1.as_ref() == s2.as_ref(),
             _ => false,
         }
