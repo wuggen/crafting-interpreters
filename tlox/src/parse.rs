@@ -250,7 +250,10 @@ impl<'s> Parser<'s> {
     ///
     /// This advances until the next non-operator keyword or method receiver start token.
     fn sync_to_statement(&mut self) {
-        self.synchronize(|tok| matches!(tok, Token::Semicolon), |tok| tok.is_stmt_start());
+        self.synchronize(
+            |tok| matches!(tok, Token::Semicolon),
+            |tok| tok.is_stmt_start(),
+        );
     }
 
     /// Parse an expression.
