@@ -3,16 +3,17 @@
 use std::num::ParseFloatError;
 
 use crate::diag::{Diag, DiagKind, Diagnostic};
-use crate::intern::Interned;
+use crate::session::SessionKey;
 use crate::span::{Cursor, Source, Span, Spannable, Spanned};
-use crate::Internable;
+use crate::sym;
+use crate::symbol::Symbol;
 
 #[cfg(test)]
 mod test;
 
 /// A Lox token.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Token {
+pub enum Token<'s> {
     LeftParen,
     RightParen,
     LeftBrace,
@@ -33,8 +34,8 @@ pub enum Token {
     GreaterEqual,
     Less,
     LessEqual,
-    Ident(Interned<str>),
-    Str(Interned<str>),
+    Ident(Symbol<'s>),
+    Str(Symbol<'s>),
     Number(f64),
     Boolean(bool),
     And,
@@ -53,7 +54,7 @@ pub enum Token {
     While,
 }
 
-impl Token {
+impl Token<'_> {
     /// Is this token a binary operator?
     pub fn is_binop(&self) -> bool {
         matches!(
@@ -117,16 +118,18 @@ impl Token {
 
 /// A lexer for Lox.
 #[derive(Debug, Clone)]
-pub struct Lexer<'sm> {
-    cursor: Cursor<'sm>,
-    span_start: Cursor<'sm>,
+pub struct Lexer<'s> {
+    key: SessionKey<'s>,
+    cursor: Cursor<'s>,
+    span_start: Cursor<'s>,
     buffer: String,
 }
 
-impl<'sm> Lexer<'sm> {
+impl<'s> Lexer<'s> {
     /// Create a new lexer for the given source.
-    pub fn new(source: Source<'sm>) -> Self {
+    pub fn new(key: SessionKey<'s>, source: Source<'s>) -> Self {
         Self {
+            key,
             cursor: source.cursor(),
             span_start: source.cursor(),
             buffer: String::new(),
@@ -134,13 +137,18 @@ impl<'sm> Lexer<'sm> {
     }
 
     /// Get the source over which this lexer is scanning.
-    pub fn source(&self) -> Source<'sm> {
+    pub fn source(&self) -> Source<'s> {
         self.cursor.source()
+    }
+
+    /// Get the session key for this lexer.
+    pub fn key(&self) -> SessionKey<'s> {
+        self.key
     }
 }
 
-impl Iterator for Lexer<'_> {
-    type Item = Spanned<Token>;
+impl<'s> Iterator for Lexer<'s> {
+    type Item = Spanned<Token<'s>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.scan()
@@ -227,9 +235,9 @@ fn unescape(c: char) -> Option<char> {
     }
 }
 
-impl<'sm> Lexer<'sm> {
+impl<'s> Lexer<'s> {
     /// The current cursor.
-    fn cursor(&self) -> Cursor<'sm> {
+    fn cursor(&self) -> Cursor<'s> {
         self.cursor.clone()
     }
 
@@ -249,7 +257,7 @@ impl<'sm> Lexer<'sm> {
     }
 
     /// Set the span start to the given cursor.
-    fn set_span_start(&mut self, start: Cursor<'sm>) {
+    fn set_span_start(&mut self, start: Cursor<'s>) {
         self.span_start = start;
     }
 
@@ -387,12 +395,12 @@ impl<'sm> Lexer<'sm> {
     }
 
     /// Create a token of the given type with the current span.
-    fn token(&self, tok: Token) -> Option<Spanned<Token>> {
+    fn token(&self, tok: Token<'s>) -> Option<Spanned<Token<'s>>> {
         Some(tok.spanned(self.span()))
     }
 
     /// Create a token with the current span, constructing the token type from the current buffer.
-    fn token_with_buffer(&self, f: impl FnOnce(&str) -> Token) -> Option<Spanned<Token>> {
+    fn token_with_buffer(&self, f: impl FnOnce(&str) -> Token<'s>) -> Option<Spanned<Token<'s>>> {
         self.token(f(self.buffer()))
     }
 
@@ -411,7 +419,7 @@ impl<'sm> Lexer<'sm> {
     /// This assumes that the cursor is at the first character of the string body, i.e. after the
     /// opening `"`, and that the span start is exactly the opening `"`. When it returns, the
     /// cursor will be at the character after the closing `"`.
-    fn scan_string(&mut self) -> Option<Spanned<Token>> {
+    fn scan_string(&mut self) -> Option<Spanned<Token<'s>>> {
         use LexerErrorKind::*;
 
         self.clear_buffer();
@@ -427,7 +435,7 @@ impl<'sm> Lexer<'sm> {
 
             match c {
                 '"' => {
-                    break self.token_with_buffer(|s| Token::Str(s.interned()));
+                    break self.token_with_buffer(|s| Token::Str(sym!(self.key, s)));
                 }
 
                 '\\' => match self.peek() {
@@ -477,7 +485,7 @@ impl<'sm> Lexer<'sm> {
     /// It will scan until a non-identifier character is encountered. If the resulting buffer
     /// matches a keyword, the appropriate token will be returned; otherwise, returns an identifier
     /// token.
-    fn scan_ident(&mut self) -> Option<Spanned<Token>> {
+    fn scan_ident(&mut self) -> Option<Spanned<Token<'s>>> {
         use Token::*;
 
         self.advance_while(is_ident_continue);
@@ -498,12 +506,12 @@ impl<'sm> Lexer<'sm> {
             "this" => self.token(This),
             "var" => self.token(Var),
             "while" => self.token(While),
-            _ => self.token_with_buffer(|id| Ident(id.interned())),
+            _ => self.token_with_buffer(|id| Ident(sym!(self.key, id))),
         }
     }
 
     /// Scan a number token.
-    fn scan_number(&mut self) -> Option<Spanned<Token>> {
+    fn scan_number(&mut self) -> Option<Spanned<Token<'s>>> {
         self.advance_while(|c| c.is_ascii_digit());
 
         if self.peek() == Some('.') {
@@ -523,7 +531,7 @@ impl<'sm> Lexer<'sm> {
     /// Scan from the current cursor, yielding a single token or error.
     ///
     /// Returns `None` if the end of the input has been reached.
-    fn scan(&mut self) -> Option<Spanned<Token>> {
+    fn scan(&mut self) -> Option<Spanned<Token<'s>>> {
         use Token::*;
 
         loop {

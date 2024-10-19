@@ -18,8 +18,8 @@ pub trait Diagnostic: Sized {
     /// This method will panic if called from a thread that is not currently in the context of an
     /// [`Session`].
     fn emit(self) {
-        Session::with_current(|sess| {
-            sess.dcx.emit(self);
+        Session::with_current(|key| {
+            key.get().dcx.emit(self);
         })
     }
 }
@@ -160,9 +160,9 @@ pub mod render {
 
         use crate::session::Session;
 
-        Session::with_current(|sess| {
+        Session::with_current(|key| {
             let mut buf = NoColor::new(Vec::<u8>::new());
-            sess.dcx.report_to(&mut buf);
+            key.get().dcx.report_to(&mut buf);
             String::from_utf8(buf.into_inner()).unwrap()
         })
     }
@@ -189,9 +189,9 @@ pub mod render {
 
     impl DiagLabel {
         pub(crate) fn into_codespan_label(self) -> diagnostic::Label<usize> {
-            Session::with_current(|sess| {
+            Session::with_current(|key| {
                 let DiagLabel { kind, span, label } = self;
-                let source = sess.sm.span_source(span).unwrap();
+                let source = key.get().sm.span_source(span).unwrap();
                 let range = span.range_within(source.span()).unwrap();
                 diagnostic::Label::new(kind.into_codespan_underline_style(), source.index(), range)
                     .with_message(label)
@@ -236,10 +236,10 @@ pub mod render {
         pub fn report_to(&self, writer: &mut dyn WriteColor) {
             let config = render_config();
 
-            Session::with_current(|sess| {
+            Session::with_current(|key| {
                 for diag in self.pending.lock().unwrap().drain(..) {
                     let report = diag.into_codespan_diagnostic();
-                    term::emit(writer, &config, &sess.sm, &report).unwrap();
+                    term::emit(writer, &config, &key.get().sm, &report).unwrap();
                 }
             });
         }
@@ -258,30 +258,30 @@ mod test {
         let mut writer = term::termcolor::NoColor::new(Vec::<u8>::new());
         let config = render::render_config();
         let report = diag.into_codespan_diagnostic();
-        Session::with_current(|sess| {
-            term::emit(&mut writer, &config, &sess.sm, &report).unwrap();
+        Session::with_current(|key| {
+            term::emit(&mut writer, &config, &key.get().sm, &report).unwrap();
         });
         String::from_utf8(writer.into_inner()).unwrap()
     }
 
     fn mkmap<'a>(sources: impl IntoIterator<Item = &'a str>) {
-        Session::with_current(|sess| {
+        Session::with_current(|key| {
             for (i, source) in sources.into_iter().enumerate() {
-                sess.sm.add_source(i, source);
+                key.get().sm.add_source(i, source);
             }
         });
     }
 
     #[test]
     fn single_label_single_source() {
-        Session::with_default(|sess| {
+        Session::with_default(|key| {
             let source = indoc! {"
             lmao hey() {
                 what's() up;
             }"};
             mkmap(Some(source));
 
-            let primary_span = sess.sm.global_line(1).span_within(4..8).unwrap();
+            let primary_span = key.get().sm.global_line(1).span_within(4..8).unwrap();
 
             let diag = Diag::new(DiagKind::Error, "You messed up")
                 .with_primary(primary_span, "what's up with this");
@@ -299,7 +299,7 @@ mod test {
 
     #[test]
     fn several_labels_single_source() {
-        Session::with_default(|sess| {
+        Session::with_default(|key| {
             let source = indoc! {r#"
             fun hey(here, is, some, stuff) {
                 things = stuff + 3;
@@ -308,17 +308,17 @@ mod test {
             }"#};
             mkmap(Some(source));
 
-            let primary_span = sess.sm.global_line(2).span_within(23..27).unwrap();
+            let primary_span = key.get().sm.global_line(2).span_within(23..27).unwrap();
             let primary_label = "identifier `oops` is not in scope";
 
             let diag = Diag::new(DiagKind::Error, "unrecognized identifier `oops`")
                 .with_primary(primary_span, primary_label)
                 .with_secondary(
-                    sess.sm.global_line(0).span_within(14..16).unwrap(),
+                    key.get().sm.global_line(0).span_within(14..16).unwrap(),
                     "there's this thing here, did you mean that?",
                 )
                 .with_secondary(
-                    sess.sm.global_line(3).span_within(6..7).unwrap(),
+                    key.get().sm.global_line(3).span_within(6..7).unwrap(),
                     "forgot something here too lol",
                 )
                 .with_note("can't use undeclared identifiers bud!")
@@ -345,7 +345,7 @@ mod test {
 
     #[test]
     fn multiple_sources() {
-        Session::with_default(|sess| {
+        Session::with_default(|key| {
             mkmap([
                 indoc! {"
                 a = 4;
@@ -364,15 +364,15 @@ mod test {
 
             let diag = Diag::new(DiagKind::Warning, "huh?")
                 .with_primary(
-                    sess.sm.source(1).line(2).span_within(8..11).unwrap(),
+                    key.get().sm.source(1).line(2).span_within(8..11).unwrap(),
                     "this one's reserved",
                 )
                 .with_secondary(
-                    sess.sm.source(0).line(3).span_within(7..9).unwrap(),
+                    key.get().sm.source(0).line(3).span_within(7..9).unwrap(),
                     "empty???",
                 )
                 .with_secondary(
-                    sess.sm.source(1).line(0).span_within(9..10).unwrap(),
+                    key.get().sm.source(1).line(0).span_within(9..10).unwrap(),
                     "wtf is this",
                 );
 

@@ -37,22 +37,30 @@ pub fn oxford_and<D>(list: &[D]) -> Oxford<D> {
     Oxford { list, join: "and" }
 }
 
+/// Arbitrarily change the lifetime of a reference.
+///
+/// # Safety
+///
+/// The value must not be accessed outside of the `'a` lifetime.
+#[inline(always)]
+pub unsafe fn with_lifetime<'a, T: ?Sized>(val: &T) -> &'a T {
+    std::mem::transmute(val)
+}
+
 #[cfg(test)]
 pub mod test {
     //! Testing utilities.
     use std::fmt::{self, Display, Formatter};
 
     use crate::parse::parse_source;
-    use crate::session::Session;
+    use crate::session::SessionKey;
     use crate::span::Spanned;
     use crate::syn::Expr;
 
     /// Add a new source to the current session and parse it.
-    pub fn parse_new_source(source: &str) -> Option<Spanned<Expr>> {
-        Session::with_current(|sess| {
-            let source_idx = sess.sm.add_source(0, source);
-            parse_source(source_idx)
-        })
+    pub fn parse_new_source<'s>(key: SessionKey<'s>, source: &str) -> Option<Spanned<Expr<'s>>> {
+        let source_idx = key.get().sm.add_source(0, source);
+        parse_source(key, source_idx)
     }
 
     /// A wrapper that adds a `Display` implementation to an `Option<T>` where `T: Display`.

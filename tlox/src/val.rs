@@ -3,19 +3,19 @@
 use std::fmt::{self, Display, Formatter};
 use std::rc::Rc;
 
-use crate::intern::Interned;
+use crate::symbol::Symbol;
 use crate::ty::{PrimitiveTy, Ty};
 
 /// A runtime value.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Value {
+#[derive(Debug, Clone)]
+pub enum Value<'s> {
     Nil,
     Bool(bool),
     Num(f64),
-    Str(StrValue),
+    Str(StrValue<'s>),
 }
 
-impl Value {
+impl Value<'_> {
     /// Get the type of this value.
     pub fn ty(&self) -> Ty {
         match self {
@@ -34,7 +34,7 @@ impl Value {
     }
 }
 
-impl Display for Value {
+impl Display for Value<'_> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Value::Nil => write!(f, "nil"),
@@ -45,7 +45,23 @@ impl Display for Value {
     }
 }
 
-impl PartialEq<bool> for Value {
+// Implementing this between `Value`s of any lifetimes can potentially cause spurious unqual
+// comparisons between static string values that are logically equal but interned in different
+// sessions. This shouldn't be a problem in practice, but hey, putting this note here in case I'm
+// wrong about that.
+impl<'s> PartialEq<Value<'s>> for Value<'_> {
+    fn eq(&self, other: &Value<'s>) -> bool {
+        match (self, other) {
+            (Value::Nil, Value::Nil) => true,
+            (Value::Bool(b1), Value::Bool(b2)) => b1 == b2,
+            (Value::Num(n1), Value::Num(n2)) => n1 == n2,
+            (Value::Str(s1), Value::Str(s2)) => s1 == s2,
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq<bool> for Value<'_> {
     fn eq(&self, other: &bool) -> bool {
         if let Value::Bool(b) = self {
             b == other
@@ -55,7 +71,7 @@ impl PartialEq<bool> for Value {
     }
 }
 
-impl PartialEq<f64> for Value {
+impl PartialEq<f64> for Value<'_> {
     fn eq(&self, other: &f64) -> bool {
         if let Value::Num(n) = self {
             n == other
@@ -65,7 +81,7 @@ impl PartialEq<f64> for Value {
     }
 }
 
-impl PartialEq<&str> for Value {
+impl PartialEq<&str> for Value<'_> {
     fn eq(&self, other: &&str) -> bool {
         if let Value::Str(s) = self {
             s.as_ref() == *other
@@ -82,12 +98,12 @@ impl PartialEq<&str> for Value {
 /// strings are constructed at runtime, are not interned, and are represented by reference-counted
 /// Rust `String`s.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StrValue {
-    Static(Interned<str>),
+pub enum StrValue<'s> {
+    Static(Symbol<'s>),
     Computed(Rc<String>),
 }
 
-impl AsRef<str> for StrValue {
+impl AsRef<str> for StrValue<'_> {
     fn as_ref(&self) -> &str {
         match self {
             StrValue::Static(s) => s,
@@ -96,13 +112,13 @@ impl AsRef<str> for StrValue {
     }
 }
 
-impl Display for StrValue {
+impl Display for StrValue<'_> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}", <Self as AsRef<str>>::as_ref(self))
     }
 }
 
-impl StrValue {
+impl StrValue<'_> {
     /// Concatenate two string values.
     ///
     /// String values in Lox are immutable; concatenation produces a new string value whose

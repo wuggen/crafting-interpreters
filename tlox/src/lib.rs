@@ -32,12 +32,9 @@ macro_rules! debug_println {
     };
 }
 
-pub mod intern;
+// These two first, since they have macros
+pub mod symbol;
 pub mod util;
-
-mk_internable! {
-    expr: syn::ExprNode,
-}
 
 pub mod arena;
 pub mod diag;
@@ -61,7 +58,7 @@ pub struct TLox {
 impl TLox {
     pub fn run() -> ExitCode {
         let Self { script } = Self::from_args();
-        Session::with_default(|sess| {
+        Session::with_default(|key| {
             if let Some(path) = script {
                 match fs::read_to_string(&path) {
                     Ok(content) => {
@@ -74,7 +71,7 @@ impl TLox {
 
                     Err(io_err) => {
                         FileReadError::from_io(path, io_err).emit();
-                        sess.dcx.report();
+                        key.get().dcx.report();
                         ExitCode::FAILURE
                     }
                 }
@@ -91,7 +88,7 @@ impl TLox {
                     io::stdout().flush().unwrap();
                     if let Err(err) = reader.read_line(&mut buffer) {
                         FileReadError::from_io(current_input, err).emit();
-                        sess.dcx.report();
+                        key.get().dcx.report();
                         continue;
                     }
 
@@ -106,14 +103,14 @@ impl TLox {
     }
 
     fn run_source(name: impl Into<SourceName>, source: &str) -> Option<()> {
-        Session::with_current(|sess| {
-            let idx = sess.sm.add_source(name, source);
-            if let Some(res) = parse_source(idx).and_then(|expr| Interpreter.eval(&expr)) {
+        Session::with_current(|key| {
+            let idx = key.get().sm.add_source(name, source);
+            if let Some(res) = parse_source(key, idx).and_then(|expr| Interpreter.eval(&expr)) {
                 println!("{res}");
                 Some(())
             } else {
-                if sess.dcx.has_errors() {
-                    sess.dcx.report();
+                if key.get().dcx.has_errors() {
+                    key.get().dcx.report();
                 }
                 None
             }

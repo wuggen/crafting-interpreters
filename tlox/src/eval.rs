@@ -16,7 +16,7 @@ pub struct Interpreter;
 
 impl Interpreter {
     /// Evaluate a Lox syntax tree.
-    pub fn eval(&self, expr: &Spanned<Expr>) -> Option<Value> {
+    pub fn eval<'s>(&self, expr: &Spanned<Expr<'s>>) -> Option<Value<'s>> {
         match self.eval_expression(expr) {
             Ok(val) => Some(val),
             Err(errs) => {
@@ -29,7 +29,7 @@ impl Interpreter {
     }
 
     /// Evaluate an expression.
-    fn eval_expression(&self, expr: &Spanned<Expr>) -> RuntimeResult<Value> {
+    fn eval_expression<'s>(&self, expr: &Spanned<Expr<'s>>) -> RuntimeResult<Value<'s>> {
         match &*expr.node {
             ExprNode::Literal(lit) => Ok(lit.eval()),
 
@@ -58,12 +58,12 @@ impl Interpreter {
     }
 
     /// Evaluate a binary operator expression.
-    fn eval_binop(
+    fn eval_binop<'s>(
         &self,
         sym: Spanned<BinopSym>,
-        lhs: Spanned<Value>,
-        rhs: Spanned<Value>,
-    ) -> RuntimeResult<Value> {
+        lhs: Spanned<Value<'s>>,
+        rhs: Spanned<Value<'s>>,
+    ) -> RuntimeResult<Value<'s>> {
         match (sym.node, &lhs.node, &rhs.node) {
             (BinopSym::Add, Value::Str(lnode), Value::Str(rnode)) => {
                 Ok(Value::Str(lnode.concat(rnode)))
@@ -116,8 +116,8 @@ impl Interpreter {
     }
 }
 
-impl Lit {
-    fn eval(&self) -> Value {
+impl<'s> Lit<'s> {
+    fn eval(&self) -> Value<'s> {
         match *self {
             Lit::Nil => Value::Nil,
             Lit::Num(n) => Value::Num(n),
@@ -156,7 +156,7 @@ impl BinopSym {
         }
     }
 
-    fn eval_num(self, lhs: f64, rhs: f64) -> Value {
+    fn eval_num<'s>(self, lhs: f64, rhs: f64) -> Value<'s> {
         if self.is_num_num() {
             Value::Num(self.num_num_op()(lhs, rhs))
         } else {

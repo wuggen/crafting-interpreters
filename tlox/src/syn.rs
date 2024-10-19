@@ -1,12 +1,10 @@
 //! Abstract syntax tree.
 
-use std::any::TypeId;
 use std::fmt::{self, Display, Formatter};
 use std::hash::{Hash, Hasher};
 
-use crate::intern::Interned;
 use crate::span::{Spannable, Spanned};
-use crate::Internable;
+use crate::symbol::Symbol;
 
 /// Unary operator symbols.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -85,7 +83,7 @@ impl Display for BinopSym {
 
 /// A literal value.
 #[derive(Debug, Clone, Copy)]
-pub enum Lit {
+pub enum Lit<'s> {
     /// Literal nil
     Nil,
 
@@ -96,23 +94,23 @@ pub enum Lit {
     Bool(bool),
 
     /// String literal
-    Str(Interned<str>),
+    Str(Symbol<'s>),
 }
 
-impl Display for Lit {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+impl Display for Lit<'_> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Lit::Nil => write!(f, "nil"),
             Lit::Num(n) => write!(f, "{n}"),
             Lit::Bool(b) => write!(f, "{b}"),
-            Lit::Str(s) => write!(f, "{s:?}"),
+            Lit::Str(s) => write!(f, "{:?}", s.as_str()),
         }
     }
 }
 
-impl Hash for Lit {
+impl Hash for Lit<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        TypeId::of::<Self>().hash(state);
+        "Lit".hash(state);
         std::mem::discriminant(self).hash(state);
         match self {
             Lit::Nil => {}
@@ -123,7 +121,7 @@ impl Hash for Lit {
     }
 }
 
-impl PartialEq for Lit {
+impl PartialEq for Lit<'_> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Lit::Nil, Lit::Nil) => true,
@@ -135,13 +133,13 @@ impl PartialEq for Lit {
     }
 }
 
-impl Eq for Lit {}
+impl Eq for Lit<'_> {}
 
 /// An expression.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ExprNode {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ExprNode<'s> {
     /// A literal expression
-    Literal(Lit),
+    Literal(Lit<'s>),
 
     /// A unary operator expression
     Unop {
@@ -149,7 +147,7 @@ pub enum ExprNode {
         sym: Spanned<UnopSym>,
 
         /// Operand
-        operand: Spanned<Expr>,
+        operand: Spanned<Expr<'s>>,
     },
 
     /// A binary operator expression
@@ -158,36 +156,40 @@ pub enum ExprNode {
         sym: Spanned<BinopSym>,
 
         /// Left operand
-        lhs: Spanned<Expr>,
+        lhs: Spanned<Expr<'s>>,
 
         /// Right operand
-        rhs: Spanned<Expr>,
+        rhs: Spanned<Expr<'s>>,
     },
 }
 
-pub type Expr = Interned<ExprNode>;
+pub type Expr<'s> = Box<ExprNode<'s>>;
 
-impl Expr {
+impl<'s> ExprNode<'s> {
     /// Create a literal expression.
-    pub fn literal(value: Lit) -> Self {
-        ExprNode::Literal(value).interned()
+    pub fn literal(value: Lit<'s>) -> Expr<'s> {
+        Box::new(ExprNode::Literal(value))
     }
 
     /// Create a unary operator expression.
-    pub fn unop(sym: Spanned<UnopSym>, operand: Spanned<Expr>) -> Spanned<Self> {
+    pub fn unop(sym: Spanned<UnopSym>, operand: Spanned<Expr<'s>>) -> Spanned<Expr<'s>> {
         let span = sym.span.join(operand.span);
-        ExprNode::Unop { sym, operand }.interned().spanned(span)
+        Box::new(ExprNode::Unop { sym, operand }).spanned(span)
     }
 
     /// Create a binary operator expression.
-    pub fn binop(sym: Spanned<BinopSym>, lhs: Spanned<Expr>, rhs: Spanned<Expr>) -> Spanned<Self> {
+    pub fn binop(
+        sym: Spanned<BinopSym>,
+        lhs: Spanned<Expr<'s>>,
+        rhs: Spanned<Expr<'s>>,
+    ) -> Spanned<Expr<'s>> {
         let span = lhs.span.join(rhs.span);
-        ExprNode::Binop { sym, lhs, rhs }.interned().spanned(span)
+        Box::new(ExprNode::Binop { sym, lhs, rhs }).spanned(span)
     }
 }
 
-impl Display for ExprNode {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+impl Display for ExprNode<'_> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             ExprNode::Literal(lit) => write!(f, "{lit}"),
             ExprNode::Unop { sym, operand } => write!(f, "({} {})", sym.node, operand.node),

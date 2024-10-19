@@ -122,8 +122,8 @@ pub struct Spanned<T> {
 impl<T: Display> Display for Spanned<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if Session::has_current() {
-            Session::with_current(|sess| {
-                if let Some((start, end)) = sess.sm.span_extents(self.span) {
+            Session::with_current(|key| {
+                if let Some((start, end)) = key.get().sm.span_extents(self.span) {
                     write!(
                         f,
                         "{}{{{}:{}..{}:{}}}",
