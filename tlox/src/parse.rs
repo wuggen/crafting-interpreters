@@ -303,7 +303,7 @@ impl<'s> Parser<'s> {
                     location
                 };
 
-                ExprNode::literal(Lit::Nil).spanned(dummy_span)
+                expr::literal(Lit::Nil).spanned(dummy_span)
             }
             other => return other,
         };
@@ -312,7 +312,7 @@ impl<'s> Parser<'s> {
             let sym = self.advance_map(&sym_map).unwrap();
             match operand(self) {
                 Ok(rhs) => {
-                    lhs = ExprNode::binop(sym, lhs, rhs);
+                    lhs = expr::binop(sym, lhs, rhs);
                 }
 
                 Err(ParserError::SpuriousCloseParen { close, .. }) => {
@@ -423,7 +423,7 @@ impl<'s> Parser<'s> {
 
             let operand = self.unary()?;
 
-            Ok(ExprNode::unop(sym, operand))
+            Ok(expr::unop(sym, operand))
         } else {
             self.atom()
         }
@@ -435,10 +435,10 @@ impl<'s> Parser<'s> {
     fn atom(&mut self) -> ParserRes<Spanned<Expr<'s>>> {
         if let Some(Spanned { node: tok, span }) = self.advance() {
             match tok {
-                Token::Number(n) => Ok(ExprNode::literal(Lit::Num(n)).spanned(span)),
-                Token::Str(s) => Ok(ExprNode::literal(Lit::Str(s)).spanned(span)),
-                Token::Boolean(b) => Ok(ExprNode::literal(Lit::Bool(b)).spanned(span)),
-                Token::Nil => Ok(ExprNode::literal(Lit::Nil).spanned(span)),
+                Token::Number(n) => Ok(expr::literal(Lit::Num(n)).spanned(span)),
+                Token::Str(s) => Ok(expr::literal(Lit::Str(s)).spanned(span)),
+                Token::Boolean(b) => Ok(expr::literal(Lit::Bool(b)).spanned(span)),
+                Token::Nil => Ok(expr::literal(Lit::Nil).spanned(span)),
                 Token::LeftParen => self.group(span),
 
                 // Error productions
@@ -482,7 +482,7 @@ impl<'s> Parser<'s> {
                 // Close the group and return a dummy expression to allow checking for further
                 // errors in this expression
                 let dummy_span = oparen_span.join(close);
-                return Ok(ExprNode::literal(Lit::Nil).spanned(dummy_span));
+                return Ok(expr::literal(Lit::Nil).spanned(dummy_span));
             }
             other => return other,
         };

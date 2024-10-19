@@ -165,20 +165,22 @@ pub enum ExprNode<'s> {
 
 pub type Expr<'s> = Box<ExprNode<'s>>;
 
-impl<'s> ExprNode<'s> {
+pub mod expr {
+    use super::*;
+
     /// Create a literal expression.
-    pub fn literal(value: Lit<'s>) -> Expr<'s> {
+    pub fn literal(value: Lit) -> Expr {
         Box::new(ExprNode::Literal(value))
     }
 
     /// Create a unary operator expression.
-    pub fn unop(sym: Spanned<UnopSym>, operand: Spanned<Expr<'s>>) -> Spanned<Expr<'s>> {
+    pub fn unop<'s>(sym: Spanned<UnopSym>, operand: Spanned<Expr<'s>>) -> Spanned<Expr<'s>> {
         let span = sym.span.join(operand.span);
         Box::new(ExprNode::Unop { sym, operand }).spanned(span)
     }
 
     /// Create a binary operator expression.
-    pub fn binop(
+    pub fn binop<'s>(
         sym: Spanned<BinopSym>,
         lhs: Spanned<Expr<'s>>,
         rhs: Spanned<Expr<'s>>,
