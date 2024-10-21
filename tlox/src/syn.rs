@@ -6,6 +6,42 @@ use std::hash::{Hash, Hasher};
 use crate::span::{Spannable, Spanned};
 use crate::symbol::Symbol;
 
+/// A Lox statement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Stmt<'s> {
+    /// An expression statement.
+    Expr { val: Spanned<Expr<'s>> },
+
+    /// A print statement.
+    Print { val: Spanned<Expr<'s>> },
+}
+
+impl Display for Stmt<'_> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            Self::Expr { val } => write!(f, "{};", val.node),
+            Self::Print { val } => write!(f, "print {};", val.node),
+        }
+    }
+}
+
+/// A Lox program.
+///
+/// Syntactically, a Lox program is simply a list of statements.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Program<'s> {
+    pub stmts: Vec<Spanned<Stmt<'s>>>,
+}
+
+impl Display for Program<'_> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        for stmt in &self.stmts {
+            writeln!(f, "{stmt}")?;
+        }
+        Ok(())
+    }
+}
+
 /// Unary operator symbols.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UnopSym {
@@ -174,7 +210,7 @@ pub mod expr {
     }
 
     /// Create a unary operator expression.
-    pub fn unop<'s>(sym: Spanned<UnopSym>, operand: Spanned<Expr<'s>>) -> Spanned<Expr<'s>> {
+    pub fn unop(sym: Spanned<UnopSym>, operand: Spanned<Expr>) -> Spanned<Expr> {
         let span = sym.span.join(operand.span);
         Box::new(ExprNode::Unop { sym, operand }).spanned(span)
     }
@@ -196,7 +232,7 @@ impl Display for ExprNode<'_> {
             ExprNode::Literal(lit) => write!(f, "{lit}"),
             ExprNode::Unop { sym, operand } => write!(f, "({} {})", sym.node, operand.node),
             ExprNode::Binop { sym, lhs, rhs } => {
-                write!(f, "({} {} {})", sym.node, lhs.node, rhs.node)
+                write!(f, "({} {} {})", lhs.node, sym.node, rhs.node)
             }
         }
     }

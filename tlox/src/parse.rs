@@ -13,7 +13,7 @@ use crate::util::oxford_or;
 mod test;
 
 /// Scan and parse the source with the given index in the current session's source map.
-pub fn parse_source(key: SessionKey, source_idx: usize) -> Option<Spanned<Expr>> {
+pub fn parse_source(key: SessionKey, source_idx: usize) -> Option<Program> {
     let lexer = Lexer::new(key, key.get().sm.source(source_idx));
     let parser = Parser::new(lexer);
     parser.parse()
@@ -27,6 +27,14 @@ pub struct Parser<'s> {
 }
 
 // Grammar:
+//
+// program -> stmt* EOF
+//
+// stmt -> expr_stmt | print_stmt
+//
+// expr_stmt -> expr ';'
+//
+// print_stmt -> 'print' expr ';'
 //
 // expr -> equal
 //
@@ -62,8 +70,9 @@ impl<'s> Parser<'s> {
     ///
     /// Returns `None` if the parser encounters syntax errors. Any such errors will have been
     /// emitted to the global session's diagnostic context.
-    pub fn parse(mut self) -> Option<Spanned<Expr<'s>>> {
-        let res = self.expr().ok()?;
+    pub fn parse(mut self) -> Option<Program<'s>> {
+        debug_println!("=== STARTING NEW PARSE ===");
+        let res = self.program();
         Session::with_current(|key| {
             if key.get().dcx.has_errors() {
                 None
@@ -79,8 +88,75 @@ impl<'s> Parser<'s> {
 /// The errors that are actually reported to the user go through the diagnostic context instead.
 type ParserRes<T> = Result<T, ParserError>;
 
-#[derive(Debug, Clone, Copy)]
 enum ParserError {
+    Handled(ParserErrorKind),
+    Defered(ParserErrorKind),
+}
+
+impl ParserError {
+    fn handled(self) -> Self {
+        match self {
+            ParserError::Defered(kind) => ParserError::Handled(kind),
+            _ => self,
+        }
+    }
+
+    fn new(kind: ParserErrorKind) -> Self {
+        ParserError::Defered(kind)
+    }
+
+    fn spurious_close_paren(close: Span) -> Self {
+        Self::new(ParserErrorKind::SpuriousCloseParen { close })
+    }
+
+    fn lone_binop(location: Span, level: BinopLevel) -> Self {
+        Self::new(ParserErrorKind::LoneBinop { location, level })
+    }
+
+    fn unterminated_stmt() -> Self {
+        Self::new(ParserErrorKind::UnterminatedStmt)
+    }
+
+    fn spurious_semi(location: Span) -> Self {
+        Self::new(ParserErrorKind::SpuriousSemi { location })
+    }
+
+    fn eof() -> Self {
+        Self::new(ParserErrorKind::Eof)
+    }
+
+    fn other() -> Self {
+        Self::new(ParserErrorKind::Other)
+    }
+
+    fn kind(&self) -> &ParserErrorKind {
+        match self {
+            ParserError::Handled(kind) | ParserError::Defered(kind) => kind,
+        }
+    }
+
+    fn into_kind(self) -> ParserErrorKind {
+        match self {
+            ParserError::Handled(kind) | ParserError::Defered(kind) => kind,
+        }
+    }
+}
+
+trait ParserResExt<T> {
+    fn catch_deferred(self, f: impl FnOnce(ParserErrorKind) -> ParserRes<T>) -> ParserRes<T>;
+}
+
+impl<T> ParserResExt<T> for ParserRes<T> {
+    fn catch_deferred(self, f: impl FnOnce(ParserErrorKind) -> ParserRes<T>) -> ParserRes<T> {
+        match self {
+            Err(ParserError::Defered(kind)) => f(kind),
+            other => other,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ParserErrorKind {
     /// Raised when encountering an unexpected close paren. Diagnostic should not be immediately
     /// emitted in this case, but rather left to the code catching it, to allow for more precise
     /// diagnostics.
@@ -95,7 +171,6 @@ enum ParserError {
     /// spurious paren has already been reported.
     SpuriousCloseParen {
         close: Span,
-        reported: bool,
     },
 
     /// Thrown when encountering an unexpected binary operator.
@@ -107,8 +182,30 @@ enum ParserError {
         level: BinopLevel,
     },
 
+    /// Thrown when a statement that requires a terminating semicolon doesn't have one.
+    ///
+    /// This indicates to the `program` rule that it might not need to synchronize to a semicolon;
+    /// there was supposed to be a semicolon at the current position, and we assume in its absence
+    /// that the next token (if it is a valid statement starting token) starts a statement.
+    UnterminatedStmt,
+
+    /// Thrown upon encountering a semicolon in a position unacceptable as an end of statement.
+    SpuriousSemi {
+        location: Span,
+    },
+
     Eof,
     Other,
+}
+
+impl ParserErrorKind {
+    fn handled(self) -> ParserError {
+        ParserError::Handled(self)
+    }
+
+    fn defered(self) -> ParserError {
+        ParserError::Defered(self)
+    }
 }
 
 /// Binary operator precedence levels.
@@ -139,12 +236,13 @@ impl<'s> Parser<'s> {
         ["number", "string", "`true`", "`false`", "`nil`", "`(`"];
 
     /// Get the span associated with the given error, if any.
-    fn err_span(&self, err: &ParserError) -> Option<Span> {
+    fn err_span(&self, err: &ParserErrorKind) -> Option<Span> {
         match err {
-            ParserError::SpuriousCloseParen { close, .. } => Some(*close),
-            ParserError::LoneBinop { location, .. } => Some(*location),
-            ParserError::Eof => Some(self.end_of_source()),
-            ParserError::Other => None,
+            ParserErrorKind::SpuriousCloseParen { close, .. } => Some(*close),
+            ParserErrorKind::LoneBinop { location, .. } => Some(*location),
+            ParserErrorKind::Eof => Some(self.end_of_source()),
+            ParserErrorKind::SpuriousSemi { location } => Some(*location),
+            _ => None,
         }
     }
 
@@ -152,6 +250,11 @@ impl<'s> Parser<'s> {
     fn end_of_source(&self) -> Span {
         let source = self.source.span();
         source.subspan(source.len() - 1..).unwrap()
+    }
+
+    /// Is the parser at the end of input?
+    fn is_at_end(&mut self) -> bool {
+        self.peek().is_none()
     }
 
     /// Peek at the next token in the stream without advancing.
@@ -236,7 +339,7 @@ impl<'s> Parser<'s> {
     ///   - If not, and the stream is at EOF, return.
     ///   - If not, and there is a next toke, advance one token and repeat.
     fn synchronize(&mut self, until: impl Fn(&Token) -> bool, next: impl Fn(&Token) -> bool) {
-        loop {
+        while !self.is_at_end() {
             self.advance_until(&until);
             if self.check_next(&next) {
                 break;
@@ -249,18 +352,82 @@ impl<'s> Parser<'s> {
     /// Synchronize to a statement start.
     ///
     /// This advances until the next non-operator keyword or method receiver start token.
-    fn sync_to_statement(&mut self) {
+    fn sync_to_stmt(&mut self) {
         self.synchronize(
             |tok| matches!(tok, Token::Semicolon),
             |tok| tok.is_stmt_start(),
         );
     }
 
+    fn program(&mut self) -> Program<'s> {
+        let mut stmts = Vec::new();
+        while !self.is_at_end() {
+            match self
+                .stmt()
+                .catch_deferred(|kind| {
+                    panic!("uncaught deferred parser error {kind:?}");
+                })
+                .map_err(ParserError::into_kind)
+            {
+                Ok(stmt) => {
+                    debug_println!("got stmt {stmt}, adding to program");
+                    stmts.push(stmt);
+                }
+
+                Err(ParserErrorKind::UnterminatedStmt | ParserErrorKind::SpuriousSemi { .. }) => {
+                    debug_println!("unterminated or spuriously terminated stmt, maybe not syncing");
+                    if !self.check_next(|tok| tok.is_stmt_start()) {
+                        debug_println!("=> next token is not a stmt start, syncing");
+                        self.sync_to_stmt();
+                    }
+                }
+                _ => {
+                    debug_println!("error in parsing stmt, syncing");
+                    self.sync_to_stmt();
+                }
+            }
+        }
+
+        debug_println!("no more stmts, returning accumulated program");
+
+        Program { stmts }
+    }
+
+    fn stmt(&mut self) -> ParserRes<Spanned<Stmt<'s>>> {
+        debug_println!("parsing stmt");
+        let maybe_print = self.advance_if(|tok| matches!(tok, Token::Print));
+        debug_println!("=> maybe print? {maybe_print:?}");
+
+        let expr = self.expr()?;
+
+        let semi = self
+            .advance_if(|tok| matches!(tok, Token::Semicolon))
+            .ok_or_else(|| {
+                debug_println!("=> no semicolon at end of stmt");
+                let mut stmt = expr.span;
+                if let Some(print) = &maybe_print {
+                    stmt = print.span.join(stmt);
+                }
+
+                ParserDiag::unterminated_stmt(stmt).emit();
+
+                ParserError::unterminated_stmt().handled()
+            })?;
+
+        if let Some(print) = maybe_print {
+            let span = print.span.join(semi.span);
+            Ok(Stmt::Print { val: expr }.spanned(span))
+        } else {
+            let span = expr.span.join(semi.span);
+            Ok(Stmt::Expr { val: expr }.spanned(span))
+        }
+    }
+
     /// Parse an expression.
     ///
     /// Corresponds to the `expr` grammar production.
     fn expr(&mut self) -> ParserRes<Spanned<Expr<'s>>> {
-        debug_println!(@"= Parsing expression");
+        debug_println!("parsing expression");
         self.equal()
     }
 
@@ -282,19 +449,20 @@ impl<'s> Parser<'s> {
         sym_test: impl Fn(&Token) -> bool,
         sym_map: impl Fn(Token) -> BinopSym,
     ) -> ParserRes<Spanned<Expr<'s>>> {
-        let mut lhs = match operand(self) {
-            Ok(expr) => expr,
+        debug_println!("parsing binop chain {level:?} initial LHS");
 
-            // Missing LHS: attempt to parse RHS, emit error, return dummy expr
-            Err(ParserError::LoneBinop {
-                level: lv,
+        let mut lhs = operand(self).catch_deferred(|kind| match kind {
+            ParserErrorKind::LoneBinop {
                 location,
-            }) if lv == level => {
+                level: lv,
+            } if lv == level => {
+                debug_println!("=> found lone {lv:?} binop parsing LHS, attempting to parse RHS");
                 let rhs = operand(self)
                     .map(|expr| expr.span)
-                    .or_else(|err| self.err_span(&err).ok_or(()))
+                    .or_else(|err| self.err_span(err.kind()).ok_or(()))
                     .ok();
 
+                debug_println!("=> maybe parsed {level:?} RHS after missing LHS, emitting diag");
                 ParserDiag::missing_lhs(location, rhs).emit();
 
                 let dummy_span = if let Some(rhs) = rhs {
@@ -303,36 +471,36 @@ impl<'s> Parser<'s> {
                     location
                 };
 
-                expr::literal(Lit::Nil).spanned(dummy_span)
+                Ok(expr::literal(Lit::Nil).spanned(dummy_span))
             }
-            other => return other,
-        };
+            _ => Err(kind.defered()),
+        })?;
+
+        debug_println!("=> got {level:?} LHS {lhs}");
 
         while self.check_next(&sym_test) {
             let sym = self.advance_map(&sym_map).unwrap();
-            match operand(self) {
-                Ok(rhs) => {
-                    lhs = expr::binop(sym, lhs, rhs);
-                }
+            debug_println!("=> got {level:?} operator {sym}");
 
-                Err(ParserError::SpuriousCloseParen { close, .. }) => {
-                    ParserDiag::missing_rhs(lhs.span, sym.span, close).emit();
-                    return Err(ParserError::SpuriousCloseParen {
-                        close,
-                        reported: true,
-                    });
+            let rhs = operand(self).catch_deferred(|kind| match kind {
+                ParserErrorKind::SpuriousCloseParen { .. }
+                | ParserErrorKind::SpuriousSemi { .. }
+                | ParserErrorKind::Eof => {
+                    debug_println!("=> missing {level:?} RHS (paren, semi, or EOF), emitting");
+                    let expected_rhs = self.err_span(&kind).unwrap();
+                    ParserDiag::missing_rhs(lhs.span, sym.span, expected_rhs).emit();
+                    Err(kind.handled())
                 }
+                _ => Err(kind.defered()),
+            })?;
 
-                Err(ParserError::Eof) => {
-                    break;
-                }
+            debug_println!("=> got {level:?} RHS {rhs}");
 
-                other => {
-                    return other;
-                }
-            }
+            lhs = expr::binop(sym, lhs, rhs);
+            debug_println!("=> current {level:?} chain {lhs}");
         }
 
+        debug_println!("=> final {level:?} chain {lhs}");
         Ok(lhs)
     }
 
@@ -412,6 +580,7 @@ impl<'s> Parser<'s> {
     ///
     /// Corresponds to the `unary` grammar production.
     fn unary(&mut self) -> ParserRes<Spanned<Expr<'s>>> {
+        debug_println!("parsing unary");
         if self.check_next(|tok| matches!(tok, Token::Minus | Token::Bang)) {
             let sym = self
                 .advance_map(|tok| match tok {
@@ -420,8 +589,17 @@ impl<'s> Parser<'s> {
                     _ => unreachable!(),
                 })
                 .unwrap();
+            debug_println!("got sym {sym}");
 
-            let operand = self.unary()?;
+            let operand = self.unary().catch_deferred(|kind| match kind {
+                ParserErrorKind::SpuriousCloseParen { .. }
+                | ParserErrorKind::SpuriousSemi { .. }
+                | ParserErrorKind::Eof => {
+                    ParserDiag::missing_unop(sym.span, self.err_span(&kind).unwrap()).emit();
+                    Err(kind.handled())
+                }
+                _ => Err(kind.defered()),
+            })?;
 
             Ok(expr::unop(sym, operand))
         } else {
@@ -433,6 +611,7 @@ impl<'s> Parser<'s> {
     ///
     /// Corresponds to the `atom` grammar production.
     fn atom(&mut self) -> ParserRes<Spanned<Expr<'s>>> {
+        debug_println!("parsing atom");
         if let Some(Spanned { node: tok, span }) = self.advance() {
             match tok {
                 Token::Number(n) => Ok(expr::literal(Lit::Num(n)).spanned(span)),
@@ -442,27 +621,22 @@ impl<'s> Parser<'s> {
                 Token::LeftParen => self.group(span),
 
                 // Error productions
-                Token::RightParen => Err(ParserError::SpuriousCloseParen {
-                    close: span,
-                    reported: false,
-                }),
+                Token::RightParen => Err(ParserError::spurious_close_paren(span)),
+
+                Token::Semicolon => Err(ParserError::spurious_semi(span)),
 
                 tok if tok.is_binop() => {
                     let level = BinopLevel::from_tok(&tok);
-                    Err(ParserError::LoneBinop {
-                        level,
-                        location: span,
-                    })
+                    Err(ParserError::lone_binop(span, level))
                 }
 
                 _ => {
                     ParserDiag::unexpected_tok(span, Self::ATOM_STARTS).emit();
-                    Err(ParserError::Other)
+                    Err(ParserError::other().handled())
                 }
             }
         } else {
-            ParserDiag::unexpected_eof(self.end_of_source(), Self::ATOM_STARTS).emit();
-            Err(ParserError::Eof)
+            Err(ParserError::eof())
         }
     }
 
@@ -473,18 +647,25 @@ impl<'s> Parser<'s> {
     ///
     /// Corresponds to the parenthesized expression arm of the `atom` grammar production.
     fn group(&mut self, oparen_span: Span) -> ParserRes<Spanned<Expr<'s>>> {
-        let expr = match self.expr() {
-            Ok(expr) => expr,
-            Err(ParserError::SpuriousCloseParen { close, reported }) => {
-                if !reported {
-                    ParserDiag::early_close_paren(oparen_span, close, Self::ATOM_STARTS).emit();
-                }
-                // Close the group and return a dummy expression to allow checking for further
-                // errors in this expression
-                let dummy_span = oparen_span.join(close);
-                return Ok(expr::literal(Lit::Nil).spanned(dummy_span));
+        debug_println!("parsing group");
+        let expr = match self.expr().catch_deferred(|kind| {
+            if let ParserErrorKind::SpuriousCloseParen { close } = kind {
+                ParserDiag::early_close_paren(oparen_span, close, Self::ATOM_STARTS).emit();
+                Err(kind.handled())
+            } else {
+                Err(kind.defered())
             }
-            other => return other,
+        }) {
+            Ok(expr) => expr,
+            Err(err) => match err.kind() {
+                ParserErrorKind::SpuriousCloseParen { close } => {
+                    // Close the group and return a dummy expression to allow checking for further
+                    // errors in this expression
+                    let dummy_span = oparen_span.join(*close);
+                    return Ok(expr::literal(Lit::Nil).spanned(dummy_span));
+                }
+                _ => return Err(err),
+            },
         };
 
         let cparen_span = match self.advance_test(|tok| matches!(tok, Token::RightParen)) {
@@ -497,7 +678,7 @@ impl<'s> Parser<'s> {
                 };
 
                 ParserDiag::unclosed_paren(oparen_span, span).emit();
-                return Err(ParserError::Other);
+                return Err(ParserError::other().handled());
             }
         };
 
@@ -505,6 +686,7 @@ impl<'s> Parser<'s> {
     }
 }
 
+#[derive(Debug)]
 enum ParserDiag {
     Unexpected {
         kind: UnexpectedKind,
@@ -533,6 +715,20 @@ enum ParserDiag {
         operator: Span,
         expected_rhs: Span,
     },
+
+    MissingUnop {
+        operator: Span,
+        expected_op: Span,
+    },
+
+    UnterminatedStmt {
+        stmt: Span,
+    },
+
+    UnexpectedStmtEnd {
+        semi: Span,
+        expected: Vec<&'static str>,
+    },
 }
 
 impl ParserDiag {
@@ -550,6 +746,9 @@ impl ParserDiag {
             Self::UnclosedParen { .. } => "unclosed parentheses",
             Self::MissingLhs { .. } => "binary operator without left-hand operand",
             Self::MissingRhs { .. } => "binary operator without right-hand operand",
+            Self::MissingUnop { .. } => "unary operator without operand",
+            Self::UnterminatedStmt { .. } => "missing semicolon after statement",
+            Self::UnexpectedStmtEnd { .. } => "unexpected statement end",
         }
     }
 
@@ -611,17 +810,35 @@ impl ParserDiag {
                     "this expression is missing the right-hand operand",
                 )
                 .with_note(format!("expected {}", oxford_or(&Parser::ATOM_STARTS))),
+
+            Self::MissingUnop {
+                operator,
+                expected_op,
+            } => diag
+                .with_primary(expected_op, "expected operand expression here")
+                .with_secondary(operator, "this operator")
+                .with_note(format!("expected {}", oxford_or(&Parser::ATOM_STARTS))),
+
+            Self::UnterminatedStmt { stmt } => {
+                diag.with_primary(stmt, "expected semicolon after this statement")
+            }
+
+            Self::UnexpectedStmtEnd { semi, expected } => diag
+                .with_primary(semi, "statement ended unexpectedly here")
+                .with_note(format!("expected {}", oxford_or(&expected))),
         }
     }
 }
 
 impl Diagnostic for ParserDiag {
     fn into_diag(self) -> Diag {
+        debug_println!("EMIT {self:?}");
         let message = self.message();
         self.elaborate(Diag::new(DiagKind::Error, message))
     }
 }
 
+#[derive(Debug)]
 enum UnexpectedKind {
     Token,
     Eof,
@@ -682,6 +899,24 @@ impl ParserDiag {
             operator,
             lhs,
             expected_rhs,
+        }
+    }
+
+    fn missing_unop(operator: Span, expected_op: Span) -> Self {
+        Self::MissingUnop {
+            operator,
+            expected_op,
+        }
+    }
+
+    fn unterminated_stmt(stmt: Span) -> Self {
+        Self::UnterminatedStmt { stmt }
+    }
+
+    fn unexpected_stmt_end(semi: Span, expected: impl IntoIterator<Item = &'static str>) -> Self {
+        Self::UnexpectedStmtEnd {
+            semi,
+            expected: expected.into_iter().collect(),
         }
     }
 }

@@ -1,6 +1,7 @@
 use indoc::indoc;
 use insta::assert_snapshot;
 
+use super::Stmt;
 use crate::diag::render::render_dcx;
 use crate::session::Session;
 use crate::util::test::parse_new_source;
@@ -8,16 +9,22 @@ use crate::util::test::parse_new_source;
 #[test]
 fn literals() {
     Session::with_default(|key| {
-        let res = parse_new_source(key, "true");
-        assert_snapshot!(res.unwrap(), @"true{1:1..1:4}");
+        let res = parse_new_source(key, "true;");
+        assert_snapshot!(res.unwrap(), @r#"
+        true;{1:1..1:5}
+        "#);
         assert!(render_dcx().is_empty());
 
-        let res = parse_new_source(key, "134");
-        assert_snapshot!(res.unwrap(), @"134{1:1..1:3}");
+        let res = parse_new_source(key, "134;");
+        assert_snapshot!(res.unwrap(), @r#"
+        134;{1:1..1:4}
+        "#);
         assert!(render_dcx().is_empty());
 
-        let res = parse_new_source(key, r#""lol hey\ndude""#);
-        assert_snapshot!(res.unwrap(), @r#""lol hey\ndude"{1:1..1:15}"#);
+        let res = parse_new_source(key, r#""lol hey\ndude";"#);
+        assert_snapshot!(res.unwrap(), @r#"
+        "lol hey\ndude";{1:1..1:16}
+        "#);
         assert!(render_dcx().is_empty());
     });
 }
@@ -28,11 +35,13 @@ fn comp_chain() {
         let res = parse_new_source(
             key,
             indoc! {r#"
-        45 < nil >= false
-            <= "wow" > 003.32
-        "#},
+            45 < nil >= false
+                <= "wow" > 003.32;
+            "#},
         );
-        assert_snapshot!(res.unwrap().node, @r#"(> (<= (>= (< 45 nil) false) "wow") 3.32)"#);
+        assert_snapshot!(res.unwrap(), @r#"
+        ((((45 < nil) >= false) <= "wow") > 3.32);{1:1..2:22}
+        "#);
         assert!(render_dcx().is_empty());
     });
 }
@@ -40,8 +49,10 @@ fn comp_chain() {
 #[test]
 fn comp_chain_with_parens() {
     Session::with_default(|key| {
-        let res = parse_new_source(key, r#"45 < ("wow" >= nil)"#);
-        assert_snapshot!(res.unwrap().node, @r#"(< 45 (>= "wow" nil))"#);
+        let res = parse_new_source(key, r#"45 < ("wow" >= nil);"#);
+        assert_snapshot!(res.unwrap(), @r#"
+        (45 < ("wow" >= nil));{1:1..1:20}
+        "#);
         assert!(render_dcx().is_empty());
     });
 }
@@ -52,10 +63,12 @@ fn lotsa_parens() {
         let res = parse_new_source(
             key,
             indoc! {r#"
-        (((true + "false") - (nil / nil) >= 0 * "hey") % ("what")) + (0)
-        "#},
+            (((true + "false") - (nil / nil) >= 0 * "hey") % ("what")) + (0);
+            "#},
         );
-        assert_snapshot!(res.unwrap().node, @r#"(+ (% (>= (- (+ true "false") (/ nil nil)) (* 0 "hey")) "what") 0)"#);
+        assert_snapshot!(res.unwrap(), @r#"
+        (((((true + "false") - (nil / nil)) >= (0 * "hey")) % "what") + 0);{1:1..1:65}
+        "#);
         assert!(render_dcx().is_empty());
     });
 }
@@ -63,24 +76,24 @@ fn lotsa_parens() {
 #[test]
 fn err_missing_lhs() {
     Session::with_default(|key| {
-        parse_new_source(key, "+ 4");
+        parse_new_source(key, "+ 4;");
         assert_snapshot!(render_dcx(), @r#"
         error: binary operator without left-hand operand
           --> %i0:1:1
           |
-        1 | + 4
+        1 | + 4;
           | ^^^ this expression is missing the left-hand operand
           |
           = note: expected number, string, `true`, `false`, `nil`, or `(`
 
         "#);
 
-        parse_new_source(key, "4 + (* nil) - 5");
+        parse_new_source(key, "4 + (* nil) - 5;");
         assert_snapshot!(render_dcx(), @r#"
         error: binary operator without left-hand operand
           --> %i0:1:6
           |
-        1 | 4 + (* nil) - 5
+        1 | 4 + (* nil) - 5;
           |      ^^^^^ this expression is missing the left-hand operand
           |
           = note: expected number, string, `true`, `false`, `nil`, or `(`
@@ -92,13 +105,15 @@ fn err_missing_lhs() {
 #[test]
 fn err_missing_rhs() {
     Session::with_default(|key| {
-        parse_new_source(key, "4 +");
+        parse_new_source(key, "4 +;");
         assert_snapshot!(render_dcx(), @r#"
-        error: unexpected end of input
+        error: binary operator without right-hand operand
           --> %i0:1:4
           |
-        1 | 4 +
-          |    ^ unexpected end of input
+        1 | 4 +;
+          | ---^ expected right-hand operand here
+          | |   
+          | this expression is missing the right-hand operand
           |
           = note: expected number, string, `true`, `false`, `nil`, or `(`
 
@@ -109,12 +124,12 @@ fn err_missing_rhs() {
 #[test]
 fn err_early_close_paren() {
     Session::with_default(|key| {
-        parse_new_source(key, "4 + (nil *) - 5");
+        parse_new_source(key, "4 + (nil *) - 5;");
         assert_snapshot!(render_dcx(), @r#"
         error: binary operator without right-hand operand
           --> %i0:1:11
           |
-        1 | 4 + (nil *) - 5
+        1 | 4 + (nil *) - 5;
           |      -----^ expected right-hand operand here
           |      |     
           |      this expression is missing the right-hand operand
@@ -149,7 +164,7 @@ fn err_unclosed_paren() {
 
 
 
-            "whoops""#},
+            "whoops";"#},
         );
         assert_snapshot!(render_dcx(), @r#"
         error: unclosed parentheses
@@ -158,13 +173,21 @@ fn err_unclosed_paren() {
         1 | 123.4 - (nil
           |         - parentheses opened here
           .
-        5 | "whoops"
+        5 | "whoops";
           | ^^^^^^^^ parentheses should have been closed
           |
           = note: expected `)`
 
         "#);
     });
+}
+
+#[test]
+fn err_two_ops() {
+    Session::with_default(|key| {
+        parse_new_source(key, "8 * + 4");
+        assert_snapshot!(render_dcx(), @"");
+    })
 }
 
 #[test]
@@ -205,9 +228,9 @@ fn err_multiple() {
         parse_new_source(
             key,
             indoc! {r#"
-        / false * (nil
-            - ) == ()
-        "#},
+            / false * (nil
+                - ) == ()
+            "#},
         );
         assert_snapshot!(render_dcx(), @r#"
         error: binary operator without left-hand operand
@@ -239,6 +262,13 @@ fn err_multiple() {
           |
           = note: expected number, string, `true`, `false`, `nil`, or `(`
 
+        error: missing semicolon after statement
+          --> %i0:1:1
+          |  
+        1 | / / false * (nil
+        2 | |     - ) == ()
+          | \-------------^ expected semicolon after this statement
+
         "#);
     });
 }
@@ -247,15 +277,18 @@ fn err_multiple() {
 #[test]
 fn paren_spans() {
     Session::with_default(|key| {
-        let expr = parse_new_source(key, "(4 + 10)").unwrap();
-        assert_eq!(expr.span.range(), 0..8);
+        let program = parse_new_source(key, "(4 + 10);").unwrap();
+        match &program.stmts[0].node {
+            Stmt::Expr { val } => assert_eq!(val.span.range(), 0..8),
+            stmt => panic!("should have parsed to expression statement, got {stmt:?} instead"),
+        }
     })
 }
 
 #[test]
 // TODO Parser actually can't detect this one yet, it just assumes it's at the end of an
 // expression and quits lol
-#[ignore = "parser not equipped to detect this condition yet"]
+//#[ignore = "parser not equipped to detect this condition yet"]
 fn err_spurious_close_paren() {
     Session::with_default(|key| {
         parse_new_source(key, "45 - nil ) / false");

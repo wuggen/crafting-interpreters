@@ -9,7 +9,7 @@
 //! and — in particular! — efficient, constant-size storage and copying of segments of code.
 
 use std::cmp::Ordering;
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 use std::iter::FusedIterator;
 use std::ops::{Bound, Range, RangeBounds, Sub};
 use std::path::PathBuf;
@@ -23,7 +23,7 @@ use crate::session::Session;
 mod test;
 
 /// A byte span within a [`SourceMap`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Span {
     byte_offset: usize,
     len: usize,
@@ -112,6 +112,29 @@ impl Span {
     }
 }
 
+impl Debug for Span {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        if Session::has_current() {
+            Session::with_current(|key| {
+                if let Some((start, end)) = key.get().sm.span_extents(*self) {
+                    write!(
+                        f,
+                        "{{{}:{}..{}:{}}}",
+                        start.line + 1,
+                        start.column + 1,
+                        end.line + 1,
+                        end.column + 1,
+                    )
+                } else {
+                    write!(f, "{{{:?}[!!]}}", self.range())
+                }
+            })
+        } else {
+            write!(f, "{{{:?}}}", self.range())
+        }
+    }
+}
+
 /// An item with an associated span.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Spanned<T> {
@@ -121,25 +144,7 @@ pub struct Spanned<T> {
 
 impl<T: Display> Display for Spanned<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if Session::has_current() {
-            Session::with_current(|key| {
-                if let Some((start, end)) = key.get().sm.span_extents(self.span) {
-                    write!(
-                        f,
-                        "{}{{{}:{}..{}:{}}}",
-                        self.node,
-                        start.line + 1,
-                        start.column + 1,
-                        end.line + 1,
-                        end.column + 1,
-                    )
-                } else {
-                    write!(f, "{}{{!!}}", self.node)
-                }
-            })
-        } else {
-            write!(f, "{}{{{:?}}}", self.node, self.span.range())
-        }
+        write!(f, "{}{:?}", self.node, self.span)
     }
 }
 

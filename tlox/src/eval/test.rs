@@ -1,141 +1,114 @@
-use std::fmt::Debug;
-
 use insta::assert_snapshot;
 
 use super::Interpreter;
 use crate::diag::render::render_dcx;
 use crate::session::{Session, SessionKey};
 use crate::util::test::parse_new_source;
-use crate::val::Value;
 
-const NONE_VAL: Option<Value> = None;
-
-fn eval_new_source<'s>(key: SessionKey<'s>, source: &str) -> Option<Value<'s>> {
+fn eval_new_source(key: SessionKey, source: &str) -> Option<String> {
     let tree = parse_new_source(key, source)?;
-    Interpreter.eval(&tree)
+    let mut output = Vec::new();
+    Interpreter::with_vec_output(&mut output).eval(&tree);
+    Some(String::from_utf8(output).unwrap())
 }
 
-fn test_eval<T>(key: SessionKey, source: &str, expected: Option<T>, render_diags: bool)
-where
-    for<'s> Value<'s>: PartialEq<T>,
-    T: Debug,
-{
-    let report = |val, expected| {
-        eprintln!("!! Unexpected evaluation");
-        eprintln!("--> Input:");
-        for line in source.lines() {
-            eprintln!(" | {line}");
-        }
-        eprintln!("--> Expected: {expected:?}");
-        eprintln!("--> Evaluated: {val:?}");
-        if render_diags {
-            eprintln!("--> Diagnostics:");
-            eprintln!("{}", render_dcx());
-        }
-        panic!();
-    };
-
-    let val = eval_new_source(key, source);
-
-    match (&val, &expected) {
-        (Some(v), Some(e)) if v != e => {
-            report(val, expected);
-        }
-
-        (Some(_), None) | (None, Some(_)) => {
-            report(val, expected);
-        }
-
-        _ => {}
+fn test_eval(key: SessionKey, source: &str, render_diags: bool) -> Option<String> {
+    let output = eval_new_source(key, source);
+    if render_diags {
+        eprintln!("--> Diagnostics:");
+        eprintln!("{}", render_dcx());
     }
+    output
 }
 
 #[test]
 fn eval_lits() {
     Session::with_default(|key| {
-        test_eval(key, "nil", Some(Value::Nil), true);
-        test_eval(key, "true", Some(true), true);
-        test_eval(key, "false", Some(false), true);
-        test_eval(key, "42", Some(42.0), true);
-        test_eval(key, r#""hello lol""#, Some("hello lol"), true);
+        assert_snapshot!(test_eval(key, "print nil;", true).unwrap(), @"nil");
+        assert_snapshot!(test_eval(key, "print true;", true).unwrap(), @"true");
+        assert_snapshot!(test_eval(key, "print false;", true).unwrap(), @"false");
+        assert_snapshot!(test_eval(key, "print 42;", true).unwrap(), @"42");
+        assert_snapshot!(test_eval(key, r#"print "hello lol";"#, true).unwrap(), @"hello lol");
     })
 }
 
 #[test]
 fn eval_unary() {
     Session::with_default(|key| {
-        test_eval(key, "-42", Some(-42.0), true);
-        test_eval(key, "!true", Some(false), true);
+        assert_snapshot!(test_eval(key, "print -42;", true).unwrap(), @"-42");
+        assert_snapshot!(test_eval(key, "print !true;", true).unwrap(), @"false");
     })
 }
 
 #[test]
 fn eval_binary() {
     Session::with_default(|key| {
-        test_eval(key, "3 + 4", Some(7.0), true);
-        test_eval(key, "5 == nil", Some(false), true);
-        test_eval(key, "5 == 5 == true", Some(true), true);
-        test_eval(key, "3 + 6 / 2", Some(6.0), true);
-        test_eval(key, "(3 + 6) / 2", Some(4.5), true);
-        test_eval(key, "6 % 3 == 0", Some(true), true);
-        test_eval(
-            key,
-            r#""hey" + " there" + " good lookin""#,
-            Some("hey there good lookin"),
-            true,
+        assert_snapshot!(test_eval(key, "print 3 + 4;", true).unwrap(), @"7");
+        assert_snapshot!(test_eval(key, "print 5 == nil;", true).unwrap(), @"false");
+        assert_snapshot!(test_eval(key, "print 5 == 5 == true;", true).unwrap(), @"true");
+        assert_snapshot!(test_eval(key, "print 3 + 6 / 2;", true).unwrap(), @"6");
+        assert_snapshot!(test_eval(key, "print (3 + 6) / 2;", true).unwrap(), @"4.5");
+        assert_snapshot!(test_eval(key, "print 6 % 3 == 0;", true).unwrap(), @"true");
+        assert_snapshot!(
+            test_eval(
+                key,
+                r#"print "hey" + " there" + " good lookin";"#,
+                true,
+            ).unwrap(),
+            @"hey there good lookin",
         );
-        test_eval(key, r#""hey" != "there""#, Some(true), true);
-        test_eval(key, r#"18.5 != "lol""#, Some(true), true);
-        test_eval(key, "4 > 3", Some(true), true);
+        assert_snapshot!(test_eval(key, r#"print "hey" != "there";"#, true).unwrap(), @"true");
+        assert_snapshot!(test_eval(key, r#"print 18.5 != "lol";"#, true).unwrap(), @"true");
+        assert_snapshot!(test_eval(key, "print 4 > 3;", true).unwrap(), @"true");
     })
 }
 
 #[test]
 fn eval_truthiness() {
     Session::with_default(|key| {
-        test_eval(key, "!!42", Some(true), false);
-        test_eval(key, "!!nil", Some(false), false);
-        test_eval(key, "!!false", Some(false), false);
-        test_eval(key, r#"!!"lmao""#, Some(true), false);
+        assert_snapshot!(test_eval(key, "print !!42;", false).unwrap(), @"true");
+        assert_snapshot!(test_eval(key, "print !!nil;", false).unwrap(), @"false");
+        assert_snapshot!(test_eval(key, "print !!false;", false).unwrap(), @"false");
+        assert_snapshot!(test_eval(key, r#"print !!"lmao";"#, false).unwrap(), @"true");
     })
 }
 
 #[test]
 fn err_eval_non_num() {
     Session::with_default(|key| {
-        test_eval(key, "-nil", NONE_VAL, false);
+        assert_snapshot!(test_eval(key, "print -nil;", false).unwrap(), @"");
         assert_snapshot!(render_dcx(), @r#"
         error: cannot coerce Nil to Num
-          --> %i0:1:2
+          --> %i0:1:8
           |
-        1 | -nil
-          | -^^^ expression found to be of type Nil
-          | | 
-          | value coerced due to use as an operand for this operator
+        1 | print -nil;
+          |       -^^^ expression found to be of type Nil
+          |       | 
+          |       value coerced due to use as an operand for this operator
           |
           = note: operator `-` expects operand of type Num
 
         "#);
 
-        test_eval(key, "!(5 + 10) > nil", NONE_VAL, false);
+        assert_snapshot!(test_eval(key, "print !(5 + 10) > nil;", false).unwrap(), @"");
         assert_snapshot!(render_dcx(), @r#"
         error: cannot coerce Bool to Num
-          --> %i0:1:1
+          --> %i0:1:7
           |
-        1 | !(5 + 10) > nil
-          | ^^^^^^^^^ - value coerced due to use as an operand to this operator
-          | |          
-          | expression found to be of type Bool
+        1 | print !(5 + 10) > nil;
+          |       ^^^^^^^^^ - value coerced due to use as an operand to this operator
+          |       |          
+          |       expression found to be of type Bool
           |
           = note: operator `>` expects operands of type Num
 
         error: cannot coerce Nil to Num
-          --> %i0:1:13
+          --> %i0:1:19
           |
-        1 | !(5 + 10) > nil
-          |           - ^^^ expression found to be of type Nil
-          |           |  
-          |           value coerced due to use as an operand to this operator
+        1 | print !(5 + 10) > nil;
+          |                 - ^^^ expression found to be of type Nil
+          |                 |  
+          |                 value coerced due to use as an operand to this operator
           |
           = note: operator `>` expects operands of type Num
 
@@ -146,6 +119,6 @@ fn err_eval_non_num() {
 #[test]
 fn computed_str_eq() {
     Session::with_default(|key| {
-        test_eval(key, r#""hey there" == "hey " + "there""#, Some(true), true);
+        assert_snapshot!(test_eval(key, r#"print "hey there" == "hey " + "there";"#, true).unwrap(), @"true");
     });
 }

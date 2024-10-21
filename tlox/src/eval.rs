@@ -1,10 +1,12 @@
 //! Evaluation of Lox syntax trees.
+use std::io::Write;
 use std::ops::{Add, Div, Mul, Rem, Sub};
 
 use crate::diag::Diagnostic;
 use crate::error::{join_errs, CoercionCause, RuntimeError, RuntimeResult};
+use crate::output::OutputStream;
 use crate::span::{Spannable, Spanned};
-use crate::syn::{BinopSym, Expr, ExprNode, Lit, UnopSym};
+use crate::syn::{BinopSym, Expr, ExprNode, Lit, Program, Stmt, UnopSym};
 use crate::ty::{PrimitiveTy, Ty};
 use crate::val::{StrValue, Value};
 
@@ -12,29 +14,56 @@ use crate::val::{StrValue, Value};
 mod test;
 
 /// A tree-walking Lox interpreter.
-pub struct Interpreter;
+#[derive(Default)]
+pub struct Interpreter<'out> {
+    output: OutputStream<'out>,
+}
 
-impl Interpreter {
-    /// Evaluate a Lox syntax tree.
-    pub fn eval<'s>(&self, expr: &Spanned<Expr<'s>>) -> Option<Value<'s>> {
-        match self.eval_expression(expr) {
-            Ok(val) => Some(val),
-            Err(errs) => {
+impl<'out> Interpreter<'out> {
+    pub fn with_output(output: OutputStream<'out>) -> Self {
+        Self { output }
+    }
+
+    pub fn with_vec_output(output: &'out mut Vec<u8>) -> Self {
+        Self::with_output(OutputStream::with(output))
+    }
+}
+
+impl Interpreter<'_> {
+    /// Evaluate a Lox program.
+    pub fn eval(&mut self, program: &Program) {
+        for stmt in &program.stmts {
+            if let Err(errs) = self.eval_stmt(stmt) {
                 for err in errs {
                     err.emit();
                 }
-                None
+                return;
             }
         }
     }
 
+    fn eval_stmt(&mut self, stmt: &Spanned<Stmt>) -> RuntimeResult<()> {
+        match &stmt.node {
+            Stmt::Expr { val } => {
+                self.eval_expr(val)?;
+            }
+
+            Stmt::Print { val } => {
+                let val = self.eval_expr(val)?;
+                writeln!(self.output, "{val}").unwrap();
+            }
+        }
+
+        Ok(())
+    }
+
     /// Evaluate an expression.
-    fn eval_expression<'s>(&self, expr: &Spanned<Expr<'s>>) -> RuntimeResult<Value<'s>> {
+    fn eval_expr<'s>(&mut self, expr: &Spanned<Expr<'s>>) -> RuntimeResult<Value<'s>> {
         match &*expr.node {
             ExprNode::Literal(lit) => Ok(lit.eval()),
 
             ExprNode::Unop { sym, operand } => {
-                let operand_val = self.eval_expression(operand)?;
+                let operand_val = self.eval_expr(operand)?;
                 match sym.node {
                     UnopSym::Not => Ok(Value::Bool(!operand_val.is_truthy())),
 
@@ -49,8 +78,8 @@ impl Interpreter {
             }
 
             ExprNode::Binop { sym, lhs, rhs } => {
-                let lop = self.eval_expression(lhs)?;
-                let rop = self.eval_expression(rhs)?;
+                let lop = self.eval_expr(lhs)?;
+                let rop = self.eval_expr(rhs)?;
 
                 self.eval_binop(*sym, lop.spanned(lhs.span), rop.spanned(rhs.span))
             }
@@ -59,7 +88,7 @@ impl Interpreter {
 
     /// Evaluate a binary operator expression.
     fn eval_binop<'s>(
-        &self,
+        &mut self,
         sym: Spanned<BinopSym>,
         lhs: Spanned<Value<'s>>,
         rhs: Spanned<Value<'s>>,
@@ -87,7 +116,7 @@ impl Interpreter {
     ///
     /// This is implemented as a method on the interpreter rather than on values to allow for
     /// looking up custom equality predicates on class instance values.
-    fn value_eq(&self, lhs: Spanned<Value>, rhs: Spanned<Value>) -> bool {
+    fn value_eq(&mut self, lhs: Spanned<Value>, rhs: Spanned<Value>) -> bool {
         match (lhs.node, rhs.node) {
             (Value::Nil, Value::Nil) => true,
             (Value::Bool(b1), Value::Bool(b2)) => b1 == b2,
@@ -105,7 +134,7 @@ impl Interpreter {
     ///
     /// Currently no values besides numbers can be coerced to numbers, so this is functionally just
     /// a check to make sure a value has the correct type.
-    fn coerce_to_num(&self, val: Spanned<Value>, cause: CoercionCause) -> RuntimeResult<f64> {
+    fn coerce_to_num(&mut self, val: Spanned<Value>, cause: CoercionCause) -> RuntimeResult<f64> {
         match val.node {
             Value::Num(n) => Ok(n),
             _ => Err(vec![RuntimeError::InvalidCoercion {

@@ -40,6 +40,7 @@ pub mod arena;
 pub mod diag;
 pub mod error;
 pub mod eval;
+pub mod output;
 pub mod parse;
 pub mod session;
 pub mod span;
@@ -105,8 +106,8 @@ impl TLox {
     fn run_source(name: impl Into<SourceName>, source: &str) -> Option<()> {
         Session::with_current(|key| {
             let idx = key.get().sm.add_source(name, source);
-            if let Some(res) = parse_source(key, idx).and_then(|expr| Interpreter.eval(&expr)) {
-                println!("{res}");
+            if let Some(program) = parse_source(key, idx) {
+                Interpreter::default().eval(&program);
                 Some(())
             } else {
                 if key.get().dcx.has_errors() {
