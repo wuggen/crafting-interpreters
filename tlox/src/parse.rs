@@ -429,14 +429,6 @@ impl<'s> Parser<'s> {
     /// Corresponds to the parenthesized expression arm of the `atom` grammar production.
     fn group(&mut self, oparen_span: Span) -> ParserRes<'s, Spanned<Expr<'s>>> {
         let expr = self.expr().catch_deferred(|kind| match kind {
-            // ParserErrorKind::SpuriousCloseParen { close } => {
-            //     self.push_diag(ParserDiag::early_close_paren(
-            //         oparen_span,
-            //         close,
-            //         Self::ATOM_STARTS,
-            //     ));
-            //     Err(kind.handled())
-            // }
             ParserErrorKind::Unexpected(Some(Spanned {
                 node: Token::RightParen,
                 span,
@@ -458,6 +450,7 @@ impl<'s> Parser<'s> {
                 ParserError::unexpected(tok).handled()
             })?;
 
-        Ok(expr.node.spanned(oparen_span.join(cparen_span)))
+        let span = oparen_span.join(cparen_span);
+        Ok(expr::group(expr).spanned(span))
     }
 }

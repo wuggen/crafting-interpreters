@@ -40,7 +40,7 @@ fn comp_chain() {
             "#},
         );
         assert_snapshot!(res.unwrap(), @r#"
-        ((((45 < nil) >= false) <= "wow") > 3.32);{1:1..2:22}
+        (((45 < nil) >= false) <= "wow") > 3.32;{1:1..2:22}
         "#);
         assert!(render_dcx().is_empty());
     });
@@ -51,7 +51,7 @@ fn comp_chain_with_parens() {
     Session::with_default(|key| {
         let res = parse_new_source(key, r#"45 < ("wow" >= nil);"#);
         assert_snapshot!(res.unwrap(), @r#"
-        (45 < ("wow" >= nil));{1:1..1:20}
+        45 < ("wow" >= nil);{1:1..1:20}
         "#);
         assert!(render_dcx().is_empty());
     });
@@ -67,7 +67,7 @@ fn lotsa_parens() {
             "#},
         );
         assert_snapshot!(res.unwrap(), @r#"
-        (((((true + "false") - (nil / nil)) >= (0 * "hey")) % "what") + 0);{1:1..1:65}
+        ((((true + "false") - (nil / nil)) >= 0 * "hey") % ("what")) + (0);{1:1..1:65}
         "#);
         assert!(render_dcx().is_empty());
     });
@@ -267,9 +267,9 @@ fn expr_stmts() {
         assert_snapshot!(
             parse_new_source(key, "4 + 5; false - true;").unwrap(),
             @r#"
-            (4 + 5);{1:1..1:6}
-            (false - true);{1:8..1:20}
-            "#
+        4 + 5;{1:1..1:6}
+        false - true;{1:8..1:20}
+        "#
         );
         assert!(render_dcx().is_empty());
     })

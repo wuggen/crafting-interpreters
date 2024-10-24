@@ -117,6 +117,26 @@ impl Display for BinopSym {
     }
 }
 
+impl BinopSym {
+    pub fn binding(self) -> BindingLevel {
+        match self {
+            BinopSym::Eq | BinopSym::Ne => BindingLevel::Eq,
+            BinopSym::Gt | BinopSym::Ge | BinopSym::Lt | BinopSym::Le => BindingLevel::Comp,
+            BinopSym::Sub | BinopSym::Add => BindingLevel::Add,
+            BinopSym::Div | BinopSym::Mul | BinopSym::Mod => BindingLevel::Mul,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum BindingLevel {
+    Assign,
+    Eq,
+    Comp,
+    Add,
+    Mul,
+}
+
 /// A literal value.
 #[derive(Debug, Clone, Copy)]
 pub enum Lit<'s> {
@@ -177,6 +197,9 @@ pub enum ExprNode<'s> {
     /// A literal expression
     Literal(Lit<'s>),
 
+    /// A parenthesized expression
+    Group(Spanned<Expr<'s>>),
+
     /// A unary operator expression
     Unop {
         /// Operator symbol
@@ -209,6 +232,11 @@ pub mod expr {
         Box::new(ExprNode::Literal(value))
     }
 
+    /// Create a grouped expression.
+    pub fn group(inner: Spanned<Expr>) -> Expr {
+        Box::new(ExprNode::Group(inner))
+    }
+
     /// Create a unary operator expression.
     pub fn unop(sym: Spanned<UnopSym>, operand: Spanned<Expr>) -> Spanned<Expr> {
         let span = sym.span.join(operand.span);
@@ -226,13 +254,47 @@ pub mod expr {
     }
 }
 
+impl ExprNode<'_> {
+    fn subexpr_needs_group(&self) -> bool {
+        matches!(self, ExprNode::Binop { .. })
+    }
+
+    fn opd_needs_group(&self, level: BindingLevel) -> bool {
+        match self {
+            ExprNode::Binop { sym, .. } if sym.node.binding() < level => true,
+            _ => false,
+        }
+    }
+}
+
 impl Display for ExprNode<'_> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             ExprNode::Literal(lit) => write!(f, "{lit}"),
-            ExprNode::Unop { sym, operand } => write!(f, "({} {})", sym.node, operand.node),
+            ExprNode::Group(expr) => write!(f, "({})", expr.node),
+            ExprNode::Unop { sym, operand } => {
+                write!(f, "{}", sym.node)?;
+                if operand.node.subexpr_needs_group() {
+                    write!(f, "({})", operand.node)
+                } else {
+                    write!(f, "{}", operand.node)
+                }
+            }
             ExprNode::Binop { sym, lhs, rhs } => {
-                write!(f, "({} {} {})", lhs.node, sym.node, rhs.node)
+                let level = sym.node.binding();
+                if lhs.node.subexpr_needs_group() {
+                    write!(f, "({})", lhs.node)?;
+                } else {
+                    write!(f, "{}", lhs.node)?;
+                }
+
+                write!(f, " {} ", sym.node)?;
+
+                if rhs.node.opd_needs_group(level) {
+                    write!(f, "({})", rhs.node)
+                } else {
+                    write!(f, "{}", rhs.node)
+                }
             }
         }
     }

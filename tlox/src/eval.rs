@@ -62,6 +62,8 @@ impl Interpreter<'_> {
         match &*expr.node {
             ExprNode::Literal(lit) => Ok(lit.eval()),
 
+            ExprNode::Group(expr) => self.eval_expr(expr),
+
             ExprNode::Unop { sym, operand } => {
                 let operand_val = self.eval_expr(operand)?;
                 match sym.node {
