@@ -2,6 +2,7 @@ use std::fmt::Debug;
 use std::ops::{Range, RangeInclusive};
 
 use indoc::indoc;
+use insta::assert_snapshot;
 
 use super::*;
 use crate::diag::render::render_dcx;
@@ -296,9 +297,13 @@ fn string_literal_including_comment() {
 #[test]
 fn unrecognized_token() {
     Session::with_default(|key| {
-        let source = "$^&0 lol";
-        let expected = [num(0.0), ident(key, "lol")];
-        insta::assert_snapshot!(check_and_render(key, source, expected), @r#"
+        assert_snapshot!(
+            check_and_render(
+                key,
+                "$^&0 lol",
+                [num(0.0), ident(key, "lol")],
+            ),
+            @r#"
         error: unrecognized token
           --> %i0:1:1
           |
@@ -312,20 +317,24 @@ fn unrecognized_token() {
 #[test]
 fn unterminated_string() {
     Session::with_default(|key| {
-        let source = indoc! {r#"
-    var s = "hey;
-    do(something);"#};
-        let expected = [
-            Var,
-            ident(key, "s"),
-            Equal,
-            ident(key, "do"),
-            LeftParen,
-            ident(key, "something"),
-            RightParen,
-            Semicolon,
-        ];
-        insta::assert_snapshot!(check_and_render(key, source, expected), @r#"
+        assert_snapshot!(
+            check_and_render(
+                key,
+                indoc! {r#"
+                var s = "hey;
+                do(something);"#},
+                [
+                    Var,
+                    ident(key, "s"),
+                    Equal,
+                    ident(key, "do"),
+                    LeftParen,
+                    ident(key, "something"),
+                    RightParen,
+                    Semicolon,
+                ],
+            ),
+             @r#"
         error: unterminated string literal
           --> %i0:1:9
           |
@@ -360,9 +369,13 @@ fn continued_string() {
 #[test]
 fn unrecognized_escape() {
     Session::with_default(|key| {
-        let source = r#""what \even \the \fuck""#;
-        let expected = [(strlit(key, "what ven \the uck"), (0, 0)..=(0, 22))];
-        insta::assert_snapshot!(check_and_render(key, source, expected), @r#"
+        assert_snapshot!(
+            check_and_render(
+                key,
+                r#""what \even \the \fuck""#,
+                [(strlit(key, "what ven \the uck"), (0, 0)..=(0, 22))],
+            ),
+            @r#"
         error: unrecognized escape sequence
           --> %i0:1:7
           |
@@ -419,9 +432,13 @@ fn nested_block_comments() {
 #[test]
 fn unterminated_block_comment() {
     Session::with_default(|key| {
-        let source = "ababa /* lmao";
-        let expected = [ident(key, "ababa")];
-        insta::assert_snapshot!(check_and_render(key, source, expected), @r#"
+        assert_snapshot!(
+            check_and_render(
+                key,
+                "ababa /* lmao",
+                [ident(key, "ababa")],
+            ),
+            @r#"
         error: unterminated block comment
           --> %i0:1:7
           |
@@ -435,9 +452,13 @@ fn unterminated_block_comment() {
 #[test]
 fn unterminated_nested_block_comment() {
     Session::with_default(|key| {
-        let source = "wee /* hehe /* yay */ wow";
-        let expected = [ident(key, "wee")];
-        insta::assert_snapshot!(check_and_render(key, source, expected), @r#"
+        assert_snapshot!(
+            check_and_render(
+                key,
+                "wee /* hehe /* yay */ wow",
+                [ident(key, "wee")],
+            ),
+            @r#"
         error: unterminated block comment
           --> %i0:1:5
           |

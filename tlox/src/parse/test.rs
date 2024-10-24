@@ -9,20 +9,23 @@ use crate::util::test::parse_new_source;
 #[test]
 fn literals() {
     Session::with_default(|key| {
-        let res = parse_new_source(key, "true;");
-        assert_snapshot!(res.unwrap(), @r#"
+        assert_snapshot!(
+            parse_new_source(key, "true;").unwrap(),
+            @r#"
         true;{1:1..1:5}
         "#);
         assert!(render_dcx().is_empty());
 
-        let res = parse_new_source(key, "134;");
-        assert_snapshot!(res.unwrap(), @r#"
+        assert_snapshot!(
+            parse_new_source(key, "134;").unwrap(),
+            @r#"
         134;{1:1..1:4}
         "#);
         assert!(render_dcx().is_empty());
 
-        let res = parse_new_source(key, r#""lol hey\ndude";"#);
-        assert_snapshot!(res.unwrap(), @r#"
+        assert_snapshot!(
+            parse_new_source(key, r#""lol hey\ndude";"#).unwrap(),
+            @r#"
         "lol hey\ndude";{1:1..1:16}
         "#);
         assert!(render_dcx().is_empty());
@@ -32,14 +35,15 @@ fn literals() {
 #[test]
 fn comp_chain() {
     Session::with_default(|key| {
-        let res = parse_new_source(
-            key,
-            indoc! {r#"
-            45 < nil >= false
-                <= "wow" > 003.32;
-            "#},
-        );
-        assert_snapshot!(res.unwrap(), @r#"
+        assert_snapshot!(
+            parse_new_source(
+                key,
+                indoc! {r#"
+                45 < nil >= false
+                    <= "wow" > 003.32;
+                "#},
+            ).unwrap(),
+            @r#"
         (((45 < nil) >= false) <= "wow") > 3.32;{1:1..2:22}
         "#);
         assert!(render_dcx().is_empty());
@@ -49,8 +53,9 @@ fn comp_chain() {
 #[test]
 fn comp_chain_with_parens() {
     Session::with_default(|key| {
-        let res = parse_new_source(key, r#"45 < ("wow" >= nil);"#);
-        assert_snapshot!(res.unwrap(), @r#"
+        assert_snapshot!(
+            parse_new_source(key, r#"45 < ("wow" >= nil);"#).unwrap(),
+            @r#"
         45 < ("wow" >= nil);{1:1..1:20}
         "#);
         assert!(render_dcx().is_empty());
@@ -60,13 +65,14 @@ fn comp_chain_with_parens() {
 #[test]
 fn lotsa_parens() {
     Session::with_default(|key| {
-        let res = parse_new_source(
-            key,
-            indoc! {r#"
-            (((true + "false") - (nil / nil) >= 0 * "hey") % ("what")) + (0);
-            "#},
-        );
-        assert_snapshot!(res.unwrap(), @r#"
+        assert_snapshot!(
+            parse_new_source(
+                key,
+                indoc! {r#"
+                (((true + "false") - (nil / nil) >= 0 * "hey") % ("what")) + (0);
+                "#},
+            ).unwrap(),
+            @r#"
         ((((true + "false") - (nil / nil)) >= 0 * "hey") % ("what")) + (0);{1:1..1:65}
         "#);
         assert!(render_dcx().is_empty());
@@ -76,8 +82,10 @@ fn lotsa_parens() {
 #[test]
 fn err_missing_lhs() {
     Session::with_default(|key| {
-        parse_new_source(key, "+ 4;");
-        assert_snapshot!(render_dcx(), @r#"
+        assert_snapshot!({
+            parse_new_source(key, "+ 4;");
+            render_dcx()
+        }, @r#"
         error: unexpected `+` token in input
           --> %i0:1:1
           |
@@ -88,8 +96,10 @@ fn err_missing_lhs() {
 
         "#);
 
-        parse_new_source(key, "4 + (* nil) - 5;");
-        assert_snapshot!(render_dcx(), @r#"
+        assert_snapshot!({
+            parse_new_source(key, "4 + (* nil) - 5;");
+            render_dcx()
+        }, @r#"
         error: unexpected `*` token in input
           --> %i0:1:6
           |
@@ -105,8 +115,10 @@ fn err_missing_lhs() {
 #[test]
 fn err_missing_rhs() {
     Session::with_default(|key| {
-        parse_new_source(key, "4 +;");
-        assert_snapshot!(render_dcx(), @r#"
+        assert_snapshot!({
+            parse_new_source(key, "4 +;");
+            render_dcx()
+        }, @r#"
         error: statement terminated prematurely
           --> %i0:1:4
           |
@@ -120,8 +132,10 @@ fn err_missing_rhs() {
 #[test]
 fn err_early_close_paren() {
     Session::with_default(|key| {
-        parse_new_source(key, "4 + (nil *) - 5;");
-        assert_snapshot!(render_dcx(), @r#"
+        assert_snapshot!({
+            parse_new_source(key, "4 + (nil *) - 5;");
+            render_dcx()
+        }, @r#"
         error: parentheses closed prematurely
           --> %i0:1:11
           |
@@ -137,8 +151,10 @@ fn err_early_close_paren() {
 #[test]
 fn err_unclosed_paren() {
     Session::with_default(|key| {
-        parse_new_source(key, r#""hey" + (4 - nil"#);
-        assert_snapshot!(render_dcx(), @r#"
+        assert_snapshot!({
+            parse_new_source(key, r#""hey" + (4 - nil"#);
+            render_dcx()
+        }, @r#"
         error: unclosed parentheses
           --> %i0:1:17
           |
@@ -149,16 +165,18 @@ fn err_unclosed_paren() {
 
         "#);
 
-        parse_new_source(
-            key,
-            indoc! {r#"
-            123.4 - (nil
+        assert_snapshot!({
+            parse_new_source(
+                key,
+                indoc! {r#"
+                123.4 - (nil
 
 
 
-            "whoops";"#},
-        );
-        assert_snapshot!(render_dcx(), @r#"
+                "whoops";"#},
+            );
+            render_dcx()
+        }, @r#"
         error: unclosed parentheses
           --> %i0:5:1
           |
@@ -175,8 +193,10 @@ fn err_unclosed_paren() {
 #[test]
 fn err_two_ops() {
     Session::with_default(|key| {
-        parse_new_source(key, "8 * + 4");
-        assert_snapshot!(render_dcx(), @r#"
+        assert_snapshot!({
+            parse_new_source(key, "8 * + 4");
+            render_dcx()
+        }, @r#"
         error: unexpected `+` token in input
           --> %i0:1:5
           |
@@ -192,8 +212,10 @@ fn err_two_ops() {
 #[test]
 fn err_multiple() {
     Session::with_default(|key| {
-        parse_new_source(key, "8 * + (4 - ) / (  ) + 5");
-        assert_snapshot!(render_dcx(), @r#"
+        assert_snapshot!({
+            parse_new_source(key, "8 * + (4 - ) / (  ) + 5");
+            render_dcx()
+        }, @r#"
         error: unexpected `+` token in input
           --> %i0:1:5
           |
@@ -204,14 +226,16 @@ fn err_multiple() {
 
         "#);
 
-        parse_new_source(
-            key,
-            indoc! {r#"
-            / false * (nil
-                - ) == ()
-            "#},
-        );
-        assert_snapshot!(render_dcx(), @r#"
+        assert_snapshot!({
+            parse_new_source(
+                key,
+                indoc! {r#"
+                / false * (nil
+                    - ) == ()
+                "#},
+            );
+            render_dcx()
+        }, @r#"
         error: unexpected `/` token in input
           --> %i0:1:1
           |
@@ -239,8 +263,10 @@ fn paren_spans() {
 #[test]
 fn err_spurious_close_paren() {
     Session::with_default(|key| {
-        parse_new_source(key, "45 - nil ) / false");
-        assert_snapshot!(render_dcx(), @r#"
+        assert_snapshot!({
+            parse_new_source(key, "45 - nil ) / false");
+            render_dcx()
+        }, @r#"
         error: unterminated statement
           --> %i0:1:10
           |
@@ -292,21 +318,19 @@ fn print_stmts() {
 #[test]
 fn err_multiple_stmts() {
     Session::with_default(|key| {
-        assert_snapshot!(
-            {
-                parse_new_source(
-                    key,
-                    indoc! {r#"
-                    8 /;
-                    print;
-                    false * ();
-                    print "heya lol"; // this one should be fine
-                    48 print +0;
-                    "#},
-                );
-                render_dcx()
-            },
-            @r#"
+        assert_snapshot!({
+            parse_new_source(
+                key,
+                indoc! {r#"
+                8 /;
+                print;
+                false * ();
+                print "heya lol"; // this one should be fine
+                48 print +0;
+                "#},
+            );
+            render_dcx()
+        }, @r#"
         error: statement terminated prematurely
           --> %i0:1:4
           |
