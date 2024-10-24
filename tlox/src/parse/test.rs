@@ -260,3 +260,90 @@ fn err_spurious_close_paren() {
         "#);
     });
 }
+
+#[test]
+fn expr_stmts() {
+    Session::with_default(|key| {
+        assert_snapshot!(
+            parse_new_source(key, "4 + 5; false - true;").unwrap(),
+            @r#"
+            (4 + 5);{1:1..1:6}
+            (false - true);{1:8..1:20}
+            "#
+        );
+        assert!(render_dcx().is_empty());
+    })
+}
+
+#[test]
+fn print_stmts() {
+    Session::with_default(|key| {
+        assert_snapshot!(
+            parse_new_source(key, "print 4; print false;").unwrap(),
+            @r#"
+            print 4;{1:1..1:8}
+            print false;{1:10..1:21}
+            "#
+        );
+        assert!(render_dcx().is_empty())
+    })
+}
+
+#[test]
+fn err_multiple_stmts() {
+    Session::with_default(|key| {
+        assert_snapshot!(
+            {
+                parse_new_source(
+                    key,
+                    indoc! {r#"
+                    8 /;
+                    print;
+                    false * ();
+                    print "heya lol"; // this one should be fine
+                    48 print +0;
+                    "#},
+                );
+                render_dcx()
+            },
+            @r#"
+        error: statement terminated prematurely
+          --> %i0:1:4
+          |
+        1 | 8 /;
+          |    ^ statement terminated here
+
+        error: statement terminated prematurely
+          --> %i0:2:6
+          |
+        2 | print;
+          |      ^ statement terminated here
+
+        error: parentheses closed prematurely
+          --> %i0:3:10
+          |
+        3 | false * ();
+          |         -^ parentheses closed here
+          |         | 
+          |         parentheses opened here
+
+        error: unterminated statement
+          --> %i0:5:4
+          |
+        5 | 48 print +0;
+          | -- ^^^^^ expected semicolon here
+          | |   
+          | this statement
+
+        error: unexpected `+` token in input
+          --> %i0:5:10
+          |
+        5 | 48 print +0;
+          |          ^ unexpected token here
+          |
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
+
+        "#
+        );
+    })
+}

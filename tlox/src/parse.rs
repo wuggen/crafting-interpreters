@@ -75,7 +75,7 @@ impl<'s> Parser<'s> {
     /// Returns `None` if the parser encounters syntax errors. Any such errors will have been
     /// emitted to the global session's diagnostic context.
     pub fn parse(mut self) -> Option<Program<'s>> {
-        debug_println!("=== STARTING NEW PARSE ===");
+        debug_println!(@"=== STARTING NEW PARSE ===");
         let res = self.program();
         Session::with_current(|key| {
             if key.get().dcx.has_errors() {
@@ -170,21 +170,23 @@ impl<'s> Parser<'s> {
 
     /// Advance the token stream to a synchronization point.
     ///
-    /// This will repeatedly do the following:
-    /// - Call `self.advance_until(until)`.
-    /// - Check if the next token would satisfy `next`.
-    ///   - If so, stop advancing and return.
-    ///   - If not, and the stream is at EOF, return.
-    ///   - If not, and there is a next toke, advance one token and repeat.
+    /// This will advance the input stream until it reaches a token that satisfies the given `until`
+    /// predicate, which is followed by a token that satisfies the given `next` predicate. When this
+    /// returns, it is guaranteed that:
+    ///
+    /// - The most recently advanced-over token satisfies `until`, and
+    /// - The next token to be advanced over will satisfy `next`.
     fn synchronize(&mut self, until: impl Fn(&Token) -> bool, next: impl Fn(&Token) -> bool) {
         while !self.is_at_end() {
             self.advance_until(&until);
-            if self.check_next(&next) {
-                break;
-            }
-
             self.advance();
+            if self.check_next(&next) {
+                debug_println!(@"=> found sync point");
+                return;
+            }
         }
+
+        debug_println!(@"=> reached EOF without finding sync point");
     }
 
     /// Synchronize to a statement boundary.
@@ -192,6 +194,7 @@ impl<'s> Parser<'s> {
     /// This advances until the next occurrence of a semicolon followed by a non-operator keyword or
     /// method receiver start token.
     fn sync_to_stmt_boundary(&mut self) {
+        debug_println!(@"snychronizing to stmt boundary");
         self.synchronize(
             |tok| matches!(tok, Token::Semicolon),
             |tok| tok.is_stmt_start(),
@@ -224,9 +227,7 @@ impl<'s> Parser<'s> {
     }
 
     fn stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
-        debug_println!("parsing stmt");
         let maybe_print = self.advance_or_peek(|tok| matches!(tok, Token::Print)).ok();
-        debug_println!("=> maybe print? {maybe_print:?}");
 
         let expr = self.expr().catch_deferred(|kind| match kind {
             ParserErrorKind::Unexpected(Some(Spanned {
@@ -248,7 +249,6 @@ impl<'s> Parser<'s> {
         let semi = self
             .advance_or_peek(|tok| matches!(tok, Token::Semicolon))
             .map_err(|tok| {
-                debug_println!("=> no semicolon at end of stmt");
                 let mut stmt = expr.span;
                 if let Some(print) = &maybe_print {
                     stmt = print.span.join(stmt);
@@ -275,7 +275,6 @@ impl<'s> Parser<'s> {
     ///
     /// Corresponds to the `expr` grammar production.
     fn expr(&mut self) -> ParserRes<'s, Spanned<Expr<'s>>> {
-        // debug_println!("parsing expression");
         self.equal()
     }
 
@@ -399,7 +398,6 @@ impl<'s> Parser<'s> {
     ///
     /// Corresponds to the `atom` grammar production.
     fn atom(&mut self) -> ParserRes<'s, Spanned<Expr<'s>>> {
-        debug_println!("parsing atom");
         if let Some(spanned @ Spanned { node: tok, span }) = self.advance() {
             match tok {
                 Token::Number(n) => Ok(expr::literal(Lit::Num(n)).spanned(span)),
