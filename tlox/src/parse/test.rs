@@ -78,11 +78,11 @@ fn err_missing_lhs() {
     Session::with_default(|key| {
         parse_new_source(key, "+ 4;");
         assert_snapshot!(render_dcx(), @r#"
-        error: binary operator without left-hand operand
+        error: unexpected `+` token in input
           --> %i0:1:1
           |
         1 | + 4;
-          | ^^^ this expression is missing the left-hand operand
+          | ^ unexpected token here
           |
           = note: expected number, string, `true`, `false`, `nil`, or `(`
 
@@ -90,11 +90,11 @@ fn err_missing_lhs() {
 
         parse_new_source(key, "4 + (* nil) - 5;");
         assert_snapshot!(render_dcx(), @r#"
-        error: binary operator without left-hand operand
+        error: unexpected `*` token in input
           --> %i0:1:6
           |
         1 | 4 + (* nil) - 5;
-          |      ^^^^^ this expression is missing the left-hand operand
+          |      ^ unexpected token here
           |
           = note: expected number, string, `true`, `false`, `nil`, or `(`
 
@@ -107,15 +107,11 @@ fn err_missing_rhs() {
     Session::with_default(|key| {
         parse_new_source(key, "4 +;");
         assert_snapshot!(render_dcx(), @r#"
-        error: binary operator without right-hand operand
+        error: statement terminated prematurely
           --> %i0:1:4
           |
         1 | 4 +;
-          | ---^ expected right-hand operand here
-          | |   
-          | this expression is missing the right-hand operand
-          |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
+          |    ^ statement terminated here
 
         "#);
     });
@@ -126,15 +122,13 @@ fn err_early_close_paren() {
     Session::with_default(|key| {
         parse_new_source(key, "4 + (nil *) - 5;");
         assert_snapshot!(render_dcx(), @r#"
-        error: binary operator without right-hand operand
+        error: parentheses closed prematurely
           --> %i0:1:11
           |
         1 | 4 + (nil *) - 5;
-          |      -----^ expected right-hand operand here
-          |      |     
-          |      this expression is missing the right-hand operand
-          |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
+          |     -     ^ parentheses closed here
+          |     |      
+          |     parentheses opened here
 
         "#);
     });
@@ -149,11 +143,9 @@ fn err_unclosed_paren() {
           --> %i0:1:17
           |
         1 | "hey" + (4 - nil
-          |         -       ^ parentheses should have been closed
+          |         -       ^ expected `)` here
           |         |       
           |         parentheses opened here
-          |
-          = note: expected `)`
 
         "#);
 
@@ -174,9 +166,7 @@ fn err_unclosed_paren() {
           |         - parentheses opened here
           .
         5 | "whoops";
-          | ^^^^^^^^ parentheses should have been closed
-          |
-          = note: expected `)`
+          | ^^^^^^^^ expected `)` here
 
         "#);
     });
@@ -186,7 +176,16 @@ fn err_unclosed_paren() {
 fn err_two_ops() {
     Session::with_default(|key| {
         parse_new_source(key, "8 * + 4");
-        assert_snapshot!(render_dcx(), @"");
+        assert_snapshot!(render_dcx(), @r#"
+        error: unexpected `+` token in input
+          --> %i0:1:5
+          |
+        1 | 8 * + 4
+          |     ^ unexpected token here
+          |
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
+
+        "#);
     })
 }
 
@@ -195,31 +194,11 @@ fn err_multiple() {
     Session::with_default(|key| {
         parse_new_source(key, "8 * + (4 - ) / (  ) + 5");
         assert_snapshot!(render_dcx(), @r#"
-        error: binary operator without right-hand operand
-          --> %i0:1:12
-          |
-        1 | 8 * + (4 - ) / (  ) + 5
-          |        --- ^ expected right-hand operand here
-          |        |    
-          |        this expression is missing the right-hand operand
-          |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
-
-        error: parentheses closed prematurely
-          --> %i0:1:19
-          |
-        1 | 8 * + (4 - ) / (  ) + 5
-          |                -  ^ parentheses closed here, prematurely
-          |                |   
-          |                parentheses opened here
-          |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
-
-        error: binary operator without left-hand operand
+        error: unexpected `+` token in input
           --> %i0:1:5
           |
         1 | 8 * + (4 - ) / (  ) + 5
-          |     ^^^^^^^^^^^^^^^ this expression is missing the left-hand operand
+          |     ^ unexpected token here
           |
           = note: expected number, string, `true`, `false`, `nil`, or `(`
 
@@ -233,41 +212,13 @@ fn err_multiple() {
             "#},
         );
         assert_snapshot!(render_dcx(), @r#"
-        error: binary operator without left-hand operand
+        error: unexpected `/` token in input
           --> %i0:1:1
           |
         1 | / false * (nil
-          | ^^^^^^^ this expression is missing the left-hand operand
+          | ^ unexpected token here
           |
           = note: expected number, string, `true`, `false`, `nil`, or `(`
-
-        error: binary operator without right-hand operand
-          --> %i0:2:7
-          |  
-        1 |   / false * (nil
-          | /------------'
-        2 | |     - ) == ()
-          | |       ^ expected right-hand operand here
-          | \-----' this expression is missing the right-hand operand
-          |  
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
-
-        error: parentheses closed prematurely
-          --> %i0:2:13
-          |
-        2 |     - ) == ()
-          |            -^ parentheses closed here, prematurely
-          |            | 
-          |            parentheses opened here
-          |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
-
-        error: missing semicolon after statement
-          --> %i0:1:1
-          |  
-        1 | / / false * (nil
-        2 | |     - ) == ()
-          | \-------------^ expected semicolon after this statement
 
         "#);
     });
@@ -286,12 +237,26 @@ fn paren_spans() {
 }
 
 #[test]
-// TODO Parser actually can't detect this one yet, it just assumes it's at the end of an
-// expression and quits lol
-//#[ignore = "parser not equipped to detect this condition yet"]
 fn err_spurious_close_paren() {
     Session::with_default(|key| {
         parse_new_source(key, "45 - nil ) / false");
-        assert_snapshot!(render_dcx(), @"");
+        assert_snapshot!(render_dcx(), @r#"
+        error: unterminated statement
+          --> %i0:1:10
+          |
+        1 | 45 - nil ) / false
+          | -------- ^ expected semicolon here
+          | |         
+          | this statement
+
+        error: unexpected `)` token in input
+          --> %i0:1:10
+          |
+        1 | 45 - nil ) / false
+          |          ^ unexpected token here
+          |
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
+
+        "#);
     });
 }

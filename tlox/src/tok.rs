@@ -114,6 +114,49 @@ impl Token<'_> {
                     | Token::While
             )
     }
+
+    pub fn summary(&self) -> &'static str {
+        match self {
+            Token::LeftParen => "`(`",
+            Token::RightParen => "`)`",
+            Token::LeftBrace => "`{`",
+            Token::RightBrace => "`}`",
+            Token::Comma => "`,`",
+            Token::Dot => "`.`",
+            Token::Minus => "`-`",
+            Token::Plus => "`+`",
+            Token::Semicolon => "`;`",
+            Token::Slash => "`/`",
+            Token::Star => "`*`",
+            Token::Percent => "`%`",
+            Token::Bang => "`!`",
+            Token::BangEqual => "`!=`",
+            Token::Equal => "`=`",
+            Token::EqualEqual => "`==`",
+            Token::Greater => "`>`",
+            Token::GreaterEqual => "`>=`",
+            Token::Less => "`<`",
+            Token::LessEqual => "`<=`",
+            Token::Ident(_) => "identifier",
+            Token::Str(_) => "string",
+            Token::Number(_) => "number",
+            Token::Boolean(_) => "boolean",
+            Token::And => "`and`",
+            Token::Class => "`class`",
+            Token::Else => "`else`",
+            Token::Fun => "`fun`",
+            Token::For => "`for`",
+            Token::If => "`if`",
+            Token::Nil => "`nil`",
+            Token::Or => "`or`",
+            Token::Print => "`print`",
+            Token::Return => "`return`",
+            Token::Super => "`super`",
+            Token::This => "`this`",
+            Token::Var => "`var`",
+            Token::While => "`while`",
+        }
+    }
 }
 
 /// A lexer for Lox.
