@@ -124,6 +124,21 @@ pub enum ParserDiag<'s> {
     EarlyTerminatedStmt {
         semi: Span,
     },
+
+    MissingVarName {
+        decl: Span,
+        expected_name: Span,
+    },
+}
+
+impl ParserDiag<'_> {
+    pub fn extend_expected(mut self, new_expected: impl IntoIterator<Item = &'static str>) -> Self {
+        if let Self::Unexpected { expected, .. } = &mut self {
+            expected.extend(new_expected);
+        }
+
+        self
+    }
 }
 
 impl<'s> ParserDiag<'s> {
@@ -171,9 +186,16 @@ impl<'s> ParserDiag<'s> {
     pub fn early_terminated_stmt(semi: Span) -> Self {
         Self::EarlyTerminatedStmt { semi }
     }
+
+    pub fn missing_var_name(decl: Span, expected_name: Span) -> Self {
+        Self::MissingVarName {
+            decl,
+            expected_name,
+        }
+    }
 }
 
-impl<'s> ParserDiag<'s> {
+impl ParserDiag<'_> {
     fn message(&self) -> String {
         match self {
             ParserDiag::Unexpected { tok: Some(tok), .. } => {
@@ -184,6 +206,7 @@ impl<'s> ParserDiag<'s> {
             ParserDiag::UnclosedParen { .. } => "unclosed parentheses".into(),
             ParserDiag::UnterminatedStmt { .. } => "unterminated statement".into(),
             ParserDiag::EarlyTerminatedStmt { .. } => "statement terminated prematurely".into(),
+            ParserDiag::MissingVarName { .. } => "missing name in variable declaration".into(),
         }
     }
 
@@ -225,6 +248,34 @@ impl<'s> ParserDiag<'s> {
             ParserDiag::EarlyTerminatedStmt { semi } => {
                 diag.with_primary(semi, "statement terminated here")
             }
+
+            ParserDiag::MissingVarName {
+                decl,
+                expected_name,
+            } => diag
+                .with_primary(expected_name, "expected variable name here")
+                .with_secondary(decl, "declaration requires a variable name")
+                .with_note("expected identifier"),
+        }
+    }
+
+    fn expected(&self) -> Option<String> {
+        match self {
+            ParserDiag::Unexpected { expected, .. } => {
+                if expected.is_empty() {
+                    None
+                } else {
+                    Some(oxford_or(expected).to_string())
+                }
+            }
+
+            ParserDiag::EarlyCloseParen { .. } => Some(oxford_or(&Parser::ATOM_STARTS).to_string()),
+            ParserDiag::UnclosedParen { .. } => Some("`)`".into()),
+            ParserDiag::UnterminatedStmt { .. } => Some("`;`".into()),
+            ParserDiag::EarlyTerminatedStmt { .. } => {
+                Some(oxford_or(&Parser::ATOM_STARTS).to_string())
+            }
+            ParserDiag::MissingVarName { .. } => Some("identifier".into()),
         }
     }
 }

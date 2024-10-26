@@ -371,3 +371,113 @@ fn err_multiple_stmts() {
         );
     })
 }
+
+#[test]
+fn decl_stmts() {
+    Session::with_default(|key| {
+        assert_snapshot!(
+            parse_new_source(
+                key,
+                indoc! {r#"
+                var a;
+                var b = a + 4;
+                "#},
+            ).unwrap(),
+            @r#"
+        var a;{1:1..1:6}
+        var b = a + 4;{2:1..2:14}
+        "#,
+        );
+
+        assert_snapshot!(
+            parse_new_source(
+                key,
+                indoc! {r#"
+                var hey_there = "lol";
+                print hey_there;
+                var x = y;
+                "#}
+            ).unwrap(),
+            @r#"
+        var hey_there = "lol";{1:1..1:22}
+        print hey_there;{2:1..2:16}
+        var x = y;{3:1..3:10}
+        "#,
+        );
+    })
+}
+
+#[test]
+fn err_decl_stmts() {
+    Session::with_default(|key| {
+        assert_snapshot!(
+            {
+                parse_new_source(key, "var = 4 + 4;");
+                render_dcx()
+            },
+            @r#"
+        error: missing name in variable declaration
+          --> %i0:1:5
+          |
+        1 | var = 4 + 4;
+          | --- ^ expected variable name here
+          | |    
+          | declaration requires a variable name
+          |
+          = note: expected identifier
+
+        "#,
+        );
+
+        assert_snapshot!(
+            {
+                parse_new_source(key, "var lol = ;");
+                render_dcx()
+            },
+            @r#"
+        error: statement terminated prematurely
+          --> %i0:1:11
+          |
+        1 | var lol = ;
+          |           ^ statement terminated here
+
+        "#,
+        );
+
+        assert_snapshot!(
+            {
+                parse_new_source(key, "var lmao = no");
+                render_dcx()
+            },
+            @r#"
+        error: unterminated statement
+          --> %i0:1:14
+          |
+        1 | var lmao = no
+          | -------------^ expected semicolon here
+          | |            
+          | this statement
+
+        "#,
+        );
+
+        assert_snapshot!(
+            {
+                parse_new_source(key, "var = ");
+                render_dcx()
+            },
+            @r#"
+        error: missing name in variable declaration
+          --> %i0:1:5
+          |
+        1 | var = 
+          | --- ^ expected variable name here
+          | |    
+          | declaration requires a variable name
+          |
+          = note: expected identifier
+
+        "#,
+        )
+    })
+}

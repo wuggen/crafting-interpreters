@@ -1,4 +1,5 @@
 //! Evaluation of Lox syntax trees.
+use std::collections::HashMap;
 use std::io::Write;
 use std::ops::{Add, Div, Mul, Rem, Sub};
 
@@ -6,6 +7,7 @@ use crate::diag::Diagnostic;
 use crate::error::{join_errs, CoercionCause, RuntimeError, RuntimeResult};
 use crate::output::OutputStream;
 use crate::span::{Spannable, Spanned};
+use crate::symbol::Symbol;
 use crate::syn::{BinopSym, Expr, ExprNode, Lit, Program, Stmt, UnopSym};
 use crate::ty::{PrimitiveTy, Ty};
 use crate::val::{StrValue, Value};
@@ -15,13 +17,17 @@ mod test;
 
 /// A tree-walking Lox interpreter.
 #[derive(Default)]
-pub struct Interpreter<'out> {
+pub struct Interpreter<'s, 'out> {
+    env: Env<'s>,
     output: OutputStream<'out>,
 }
 
-impl<'out> Interpreter<'out> {
+impl<'out> Interpreter<'_, 'out> {
     pub fn with_output(output: OutputStream<'out>) -> Self {
-        Self { output }
+        Self {
+            env: Env::default(),
+            output,
+        }
     }
 
     pub fn with_vec_output(output: &'out mut Vec<u8>) -> Self {
@@ -29,9 +35,9 @@ impl<'out> Interpreter<'out> {
     }
 }
 
-impl Interpreter<'_> {
+impl<'s> Interpreter<'s, '_> {
     /// Evaluate a Lox program.
-    pub fn eval(&mut self, program: &Program) {
+    pub fn eval(&mut self, program: &Program<'s>) {
         for stmt in &program.stmts {
             if let Err(errs) = self.eval_stmt(stmt) {
                 for err in errs {
@@ -42,7 +48,7 @@ impl Interpreter<'_> {
         }
     }
 
-    fn eval_stmt(&mut self, stmt: &Spanned<Stmt>) -> RuntimeResult<()> {
+    fn eval_stmt(&mut self, stmt: &Spanned<Stmt<'s>>) -> RuntimeResult<'s, ()> {
         match &stmt.node {
             Stmt::Expr { val } => {
                 self.eval_expr(val)?;
@@ -52,15 +58,31 @@ impl Interpreter<'_> {
                 let val = self.eval_expr(val)?;
                 writeln!(self.output, "{val}").unwrap();
             }
+
+            Stmt::Decl { name, init } => {
+                let init = if let Some(expr) = init {
+                    self.eval_expr(expr)?
+                } else {
+                    Value::Nil
+                };
+
+                self.env.declare(name.node, init);
+            }
         }
 
         Ok(())
     }
 
     /// Evaluate an expression.
-    fn eval_expr<'s>(&mut self, expr: &Spanned<Expr<'s>>) -> RuntimeResult<Value<'s>> {
+    fn eval_expr(&mut self, expr: &Spanned<Expr<'s>>) -> RuntimeResult<'s, Value<'s>> {
         match &*expr.node {
             ExprNode::Literal(lit) => Ok(lit.eval()),
+
+            ExprNode::Var(name) => self.env.get(*name).ok_or_else(|| {
+                vec![RuntimeError::UnboundVariable {
+                    reference: (*name).spanned(expr.span),
+                }]
+            }),
 
             ExprNode::Group(expr) => self.eval_expr(expr),
 
@@ -89,12 +111,12 @@ impl Interpreter<'_> {
     }
 
     /// Evaluate a binary operator expression.
-    fn eval_binop<'s>(
+    fn eval_binop(
         &mut self,
         sym: Spanned<BinopSym>,
         lhs: Spanned<Value<'s>>,
         rhs: Spanned<Value<'s>>,
-    ) -> RuntimeResult<Value<'s>> {
+    ) -> RuntimeResult<'s, Value<'s>> {
         match (sym.node, &lhs.node, &rhs.node) {
             (BinopSym::Add, Value::Str(lnode), Value::Str(rnode)) => {
                 Ok(Value::Str(lnode.concat(rnode)))
@@ -136,7 +158,11 @@ impl Interpreter<'_> {
     ///
     /// Currently no values besides numbers can be coerced to numbers, so this is functionally just
     /// a check to make sure a value has the correct type.
-    fn coerce_to_num(&mut self, val: Spanned<Value>, cause: CoercionCause) -> RuntimeResult<f64> {
+    fn coerce_to_num(
+        &mut self,
+        val: Spanned<Value>,
+        cause: CoercionCause,
+    ) -> RuntimeResult<'s, f64> {
         match val.node {
             Value::Num(n) => Ok(n),
             _ => Err(vec![RuntimeError::InvalidCoercion {
@@ -146,6 +172,48 @@ impl Interpreter<'_> {
                 cause: Some(cause),
             }]),
         }
+    }
+}
+
+#[derive(Debug, Default)]
+struct Env<'s> {
+    bindings: HashMap<Symbol<'s>, Value<'s>>,
+    parent: Option<Box<Env<'s>>>,
+}
+
+impl<'s> Env<'s> {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn with_parent(parent: Env<'s>) -> Self {
+        Self {
+            parent: Some(Box::new(parent)),
+            ..Default::default()
+        }
+    }
+
+    fn declare(&mut self, name: Symbol<'s>, init: Value<'s>) {
+        self.bindings.insert(name, init);
+    }
+
+    fn get(&self, name: Symbol<'s>) -> Option<Value<'s>> {
+        self.bindings
+            .get(&name)
+            .cloned()
+            .or_else(|| self.parent.as_ref().and_then(|env| env.get(name)))
+    }
+
+    fn get_mut(&mut self, name: Symbol<'s>) -> Option<&mut Value<'s>> {
+        self.bindings
+            .get_mut(&name)
+            .or_else(|| self.parent.as_mut().and_then(|env| env.get_mut(name)))
+    }
+
+    fn assign(&mut self, name: Symbol<'s>, val: Value<'s>) -> Option<()> {
+        self.get_mut(name).map(move |v| {
+            *v = val;
+        })
     }
 }
 

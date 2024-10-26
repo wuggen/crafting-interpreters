@@ -14,6 +14,12 @@ pub enum Stmt<'s> {
 
     /// A print statement.
     Print { val: Spanned<Expr<'s>> },
+
+    /// A variable declaration.
+    Decl {
+        name: Spanned<Symbol<'s>>,
+        init: Option<Spanned<Expr<'s>>>,
+    },
 }
 
 impl Display for Stmt<'_> {
@@ -21,6 +27,35 @@ impl Display for Stmt<'_> {
         match self {
             Self::Expr { val } => write!(f, "{};", val.node),
             Self::Print { val } => write!(f, "print {};", val.node),
+            Self::Decl { name, init } => {
+                write!(f, "var {}", name.node)?;
+                if let Some(val) = init {
+                    write!(f, " = {}", val.node)?;
+                }
+                write!(f, ";")
+            }
+        }
+    }
+}
+
+pub mod stmt {
+    use super::*;
+
+    pub fn expr(val: Spanned<Expr>) -> Stmt {
+        Stmt::Expr { val }
+    }
+
+    pub fn print(val: Spanned<Expr>) -> Stmt {
+        Stmt::Print { val }
+    }
+
+    pub fn decl<'s>(
+        name: Spanned<Symbol<'s>>,
+        init: impl Into<Option<Spanned<Expr<'s>>>>,
+    ) -> Stmt<'s> {
+        Stmt::Decl {
+            name,
+            init: init.into(),
         }
     }
 }
@@ -194,30 +229,33 @@ impl Eq for Lit<'_> {}
 /// An expression.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ExprNode<'s> {
-    /// A literal expression
+    /// A literal expression.
     Literal(Lit<'s>),
 
-    /// A parenthesized expression
+    /// A variable reference.
+    Var(Symbol<'s>),
+
+    /// A parenthesized expression.
     Group(Spanned<Expr<'s>>),
 
-    /// A unary operator expression
+    /// A unary operator expression.
     Unop {
-        /// Operator symbol
+        /// Operator symbol.
         sym: Spanned<UnopSym>,
 
-        /// Operand
+        /// Operand.
         operand: Spanned<Expr<'s>>,
     },
 
-    /// A binary operator expression
+    /// A binary operator expression.
     Binop {
-        /// Operator symbol
+        /// Operator symbol.
         sym: Spanned<BinopSym>,
 
-        /// Left operand
+        /// Left operand.
         lhs: Spanned<Expr<'s>>,
 
-        /// Right operand
+        /// Right operand.
         rhs: Spanned<Expr<'s>>,
     },
 }
@@ -230,6 +268,11 @@ pub mod expr {
     /// Create a literal expression.
     pub fn literal(value: Lit) -> Expr {
         Box::new(ExprNode::Literal(value))
+    }
+
+    /// Create a variable reference expression.
+    pub fn var(name: Symbol) -> Expr {
+        Box::new(ExprNode::Var(name))
     }
 
     /// Create a grouped expression.
@@ -260,10 +303,7 @@ impl ExprNode<'_> {
     }
 
     fn opd_needs_group(&self, level: BindingLevel) -> bool {
-        match self {
-            ExprNode::Binop { sym, .. } if sym.node.binding() < level => true,
-            _ => false,
-        }
+        matches!(self, ExprNode::Binop { sym, .. } if sym.node.binding() < level)
     }
 }
 
@@ -271,6 +311,7 @@ impl Display for ExprNode<'_> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             ExprNode::Literal(lit) => write!(f, "{lit}"),
+            ExprNode::Var(name) => write!(f, "{name}"),
             ExprNode::Group(expr) => write!(f, "({})", expr.node),
             ExprNode::Unop { sym, operand } => {
                 write!(f, "{}", sym.node)?;

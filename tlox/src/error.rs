@@ -2,13 +2,14 @@
 
 use crate::diag::{Diag, DiagKind, Diagnostic};
 use crate::span::{Span, Spanned};
+use crate::symbol::Symbol;
 use crate::syn::{BinopSym, UnopSym};
 use crate::ty::{PrimitiveTy, Ty};
 use crate::util::oxford_or;
 
 /// A Lox runtime error.
 #[derive(Debug, Clone)]
-pub enum RuntimeError {
+pub enum RuntimeError<'s> {
     /// An invalid type coercion was attempted.
     InvalidCoercion {
         /// Span of the coerced value.
@@ -23,16 +24,25 @@ pub enum RuntimeError {
         /// If available, the reason for the coercion.
         cause: Option<CoercionCause>,
     },
+
+    /// An unbound variable name was referenced.
+    UnboundVariable {
+        /// Span of the variable reference.
+        reference: Spanned<Symbol<'s>>,
+    },
 }
 
 /// A `Result` type specialized to runtime errors.
-pub type RuntimeResult<T> = Result<T, Vec<RuntimeError>>;
+pub type RuntimeResult<'s, T> = Result<T, Vec<RuntimeError<'s>>>;
 
 /// Join the errors of two runtime results, if any.
 ///
 /// If either of the given results is an `Err`, returns an `Err` containing the combined
 /// [`RuntimeError`]s of each. If both are `Ok`, returns their results.
-pub fn join_errs<A, B>(a: RuntimeResult<A>, b: RuntimeResult<B>) -> RuntimeResult<(A, B)> {
+pub fn join_errs<'s, A, B>(
+    a: RuntimeResult<'s, A>,
+    b: RuntimeResult<'s, B>,
+) -> RuntimeResult<'s, (A, B)> {
     match (a, b) {
         (Err(mut a_errs), Err(mut b_errs)) => {
             a_errs.append(&mut b_errs);
@@ -45,7 +55,7 @@ pub fn join_errs<A, B>(a: RuntimeResult<A>, b: RuntimeResult<B>) -> RuntimeResul
     }
 }
 
-impl Diagnostic for RuntimeError {
+impl Diagnostic for RuntimeError<'_> {
     fn into_diag(self) -> Diag {
         match self {
             RuntimeError::InvalidCoercion {
@@ -85,6 +95,12 @@ impl Diagnostic for RuntimeError {
                     None => diag,
                 }
             }
+
+            RuntimeError::UnboundVariable { reference } => Diag::new(
+                DiagKind::Error,
+                format!("reference to unbound variable `{}`", reference.node),
+            )
+            .with_primary(reference.span, "variable is not bound at this point"),
         }
     }
 }

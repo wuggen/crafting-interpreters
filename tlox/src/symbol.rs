@@ -2,6 +2,7 @@
 
 use std::borrow::Borrow;
 use std::collections::HashSet;
+use std::fmt::Display;
 use std::hash::Hash;
 use std::ops::Deref;
 use std::ptr;
@@ -72,6 +73,12 @@ impl Borrow<str> for Symbol<'_> {
 impl Hash for Symbol<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         ptr::hash(self.0, state);
+    }
+}
+
+impl Display for Symbol<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(self.0, f)
     }
 }
 
