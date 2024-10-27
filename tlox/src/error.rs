@@ -28,8 +28,25 @@ pub enum RuntimeError<'s> {
     /// An unbound variable name was referenced.
     UnboundVariable {
         /// Span of the variable reference.
-        reference: Spanned<Symbol<'s>>,
+        site: Spanned<Symbol<'s>>,
+        usage: VarUsage,
     },
+}
+
+impl<'s> RuntimeError<'s> {
+    pub fn unbound_var_ref(site: Spanned<Symbol<'s>>) -> Self {
+        Self::UnboundVariable { site, usage: VarUsage::Reference }
+    }
+
+    pub fn unbound_var_assign(site: Spanned<Symbol<'s>>) -> Self {
+        Self::UnboundVariable { site, usage: VarUsage::Assign }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum VarUsage {
+    Reference,
+    Assign,
 }
 
 /// A `Result` type specialized to runtime errors.
@@ -96,11 +113,15 @@ impl Diagnostic for RuntimeError<'_> {
                 }
             }
 
-            RuntimeError::UnboundVariable { reference } => Diag::new(
-                DiagKind::Error,
-                format!("reference to unbound variable `{}`", reference.node),
-            )
-            .with_primary(reference.span, "variable is not bound at this point"),
+            RuntimeError::UnboundVariable { site, usage } => {
+                let message = match usage {
+                    VarUsage::Reference => format!("reference to unbound variable `{}`", site.node),
+                    VarUsage::Assign => format!("assignment to unbound variable `{}`", site.node),
+                };
+
+                Diag::new(DiagKind::Error, message)
+                    .with_primary(site.span, "variable is not bound at this point")
+            }
         }
     }
 }

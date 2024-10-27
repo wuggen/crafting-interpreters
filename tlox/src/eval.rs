@@ -8,7 +8,7 @@ use crate::error::{join_errs, CoercionCause, RuntimeError, RuntimeResult};
 use crate::output::OutputStream;
 use crate::span::{Spannable, Spanned};
 use crate::symbol::Symbol;
-use crate::syn::{BinopSym, Expr, ExprNode, Lit, Program, Stmt, UnopSym};
+use crate::syn::{BinopSym, Expr, ExprNode, Lit, Place, Program, Stmt, UnopSym};
 use crate::ty::{PrimitiveTy, Ty};
 use crate::val::{StrValue, Value};
 
@@ -78,11 +78,10 @@ impl<'s> Interpreter<'s, '_> {
         match &*expr.node {
             ExprNode::Literal(lit) => Ok(lit.eval()),
 
-            ExprNode::Var(name) => self.env.get(*name).ok_or_else(|| {
-                vec![RuntimeError::UnboundVariable {
-                    reference: (*name).spanned(expr.span),
-                }]
-            }),
+            ExprNode::Var(name) => self
+                .env
+                .get(*name)
+                .ok_or_else(|| vec![RuntimeError::unbound_var_ref((*name).spanned(expr.span))]),
 
             ExprNode::Group(expr) => self.eval_expr(expr),
 
@@ -106,6 +105,12 @@ impl<'s> Interpreter<'s, '_> {
                 let rop = self.eval_expr(rhs)?;
 
                 self.eval_binop(*sym, lop.spanned(lhs.span), rop.spanned(rhs.span))
+            }
+
+            ExprNode::Assign { place, val } => {
+                let val = self.eval_expr(&val)?;
+                *self.eval_place(&place)? = val.clone();
+                Ok(val)
             }
         }
     }
@@ -133,6 +138,18 @@ impl<'s> Interpreter<'s, '_> {
                 )?;
                 Ok(sym.node.eval_num(lhs, rhs))
             }
+        }
+    }
+
+    /// Evaluate a place expression.
+    ///
+    /// Returns a mutable reference to the value currently assigned to the evaluated place.
+    fn eval_place(&mut self, place: &Spanned<Place<'s>>) -> RuntimeResult<'s, &mut Value<'s>> {
+        match place.node {
+            Place::Var(name) => self
+                .env
+                .get_mut(name)
+                .ok_or_else(|| vec![RuntimeError::unbound_var_assign(name.spanned(place.span))]),
         }
     }
 
@@ -182,10 +199,6 @@ struct Env<'s> {
 }
 
 impl<'s> Env<'s> {
-    fn new() -> Self {
-        Self::default()
-    }
-
     fn with_parent(parent: Env<'s>) -> Self {
         Self {
             parent: Some(Box::new(parent)),
@@ -208,12 +221,6 @@ impl<'s> Env<'s> {
         self.bindings
             .get_mut(&name)
             .or_else(|| self.parent.as_mut().and_then(|env| env.get_mut(name)))
-    }
-
-    fn assign(&mut self, name: Symbol<'s>, val: Value<'s>) -> Option<()> {
-        self.get_mut(name).map(move |v| {
-            *v = val;
-        })
     }
 }
 

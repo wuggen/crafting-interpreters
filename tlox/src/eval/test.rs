@@ -196,3 +196,75 @@ fn err_undeclared_vars() {
         );
     })
 }
+
+#[test]
+fn assignment() {
+    Session::with_default(|key| {
+        assert_snapshot!(
+            test_eval(
+                key,
+                indoc !{r#"
+                var a = 4;
+                print a;
+                a = 6;
+                print a;
+                print a = a + 4;
+                print a;
+                "#},
+            ),
+            @r#"
+        4
+        6
+        10
+        10
+        "#,
+        );
+
+        assert_snapshot!(
+            test_eval(
+                key,
+                indoc !{r#"
+                var a; var b; var c;
+                a = b = c = 1;
+                print a; print b; print c;
+                "#},
+            ),
+            @r#"
+        1
+        1
+        1
+        "#,
+        );
+    })
+}
+
+#[test]
+fn err_assignment_unbound_var() {
+    Session::with_default(|key| {
+        assert_snapshot!(
+            test_eval(key, "a = 45;"),
+            @r#"
+        --> Diagnostics:
+        error: assignment to unbound variable `a`
+          --> %i0:1:1
+          |
+        1 | a = 45;
+          | ^ variable is not bound at this point
+
+        "#,
+        );
+
+        assert_snapshot!(
+            test_eval(key, "var x; print x = a = x;"),
+            @r#"
+        --> Diagnostics:
+        error: assignment to unbound variable `a`
+          --> %i0:1:18
+          |
+        1 | var x; print x = a = x;
+          |                  ^ variable is not bound at this point
+
+        "#,
+        );
+    })
+}

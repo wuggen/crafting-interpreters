@@ -226,6 +226,21 @@ impl PartialEq for Lit<'_> {
 
 impl Eq for Lit<'_> {}
 
+/// A place expression.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Place<'s> {
+    /// A variable place.
+    Var(Symbol<'s>),
+}
+
+impl Display for Place<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Place::Var(name) => write!(f, "{name}"),
+        }
+    }
+}
+
 /// An expression.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ExprNode<'s> {
@@ -257,6 +272,15 @@ pub enum ExprNode<'s> {
 
         /// Right operand.
         rhs: Spanned<Expr<'s>>,
+    },
+
+    /// A variable assignment expression.
+    Assign {
+        /// The place assigned to.
+        place: Spanned<Place<'s>>,
+
+        /// The value assigned.
+        val: Spanned<Expr<'s>>,
     },
 }
 
@@ -294,6 +318,27 @@ pub mod expr {
     ) -> Spanned<Expr<'s>> {
         let span = lhs.span.join(rhs.span);
         Box::new(ExprNode::Binop { sym, lhs, rhs }).spanned(span)
+    }
+
+    /// Create a variable assignment expression.
+    pub fn assign<'s>(place: Spanned<Place<'s>>, val: Spanned<Expr<'s>>) -> Spanned<Expr<'s>> {
+        let span = place.span.join(val.span);
+        Box::new(ExprNode::Assign { place, val }).spanned(span)
+    }
+}
+
+impl<'s> ExprNode<'s> {
+    /// Is this expression a place expression?
+    pub fn is_place(&self) -> bool {
+        matches!(self, ExprNode::Var(_))
+    }
+
+    /// Convert `self` into a place expression, if possible.
+    pub fn into_place(self) -> Result<Place<'s>, Self> {
+        match self {
+            ExprNode::Var(name) => Ok(Place::Var(name)),
+            _ => Err(self),
+        }
     }
 }
 
@@ -337,6 +382,7 @@ impl Display for ExprNode<'_> {
                     write!(f, "{}", rhs.node)
                 }
             }
+            ExprNode::Assign { place, val } => write!(f, "{} = {}", place.node, val.node),
         }
     }
 }

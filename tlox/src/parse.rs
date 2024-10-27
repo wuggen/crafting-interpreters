@@ -45,6 +45,12 @@ pub struct Parser<'s> {
 //
 // expr -> equal
 //
+// ; Right-associative
+// assign -> place '=' assign
+//         | equal
+//
+// place -> IDENT
+//
 // ; Left-assoc
 // equal -> comp ( ('!=' | '==') comp )*
 //
@@ -95,10 +101,17 @@ impl<'s> Parser<'s> {
     const ATOM_STARTS: [&'static str; 6] =
         ["number", "string", "`true`", "`false`", "`nil`", "`(`"];
 
+    /// Push a diagnostic to the stack to be emitted.
+    ///
+    /// Diagnostics are emitted after attempting to parse each statement, in reverse of the order in
+    /// which they were pushed via this method. This causes them to appear to the user in order
+    /// first of statements, and then of syntactic specificity, broader (higher in the parse tree)
+    /// first.
     fn push_diag(&mut self, diag: ParserDiag<'s>) {
         self.diags.push(diag);
     }
 
+    /// Emit all diagnostics pushed via [`push_diag`], in reverse order.
     fn emit_diags(&mut self) {
         for diag in self.diags.drain(..).rev() {
             diag.emit();
@@ -111,6 +124,7 @@ impl<'s> Parser<'s> {
         source.subspan(source.len() - 1..).unwrap()
     }
 
+    /// Get the span of a spanned object, or the end-of-source span.
     fn span_or_eof<T>(&self, val: &Option<Spanned<T>>) -> Span {
         val.as_ref()
             .map(|val| val.span)
@@ -211,6 +225,9 @@ impl<'s> Parser<'s> {
         );
     }
 
+    /// Parse a program.
+    ///
+    /// Corresponds to the `program` grammar production.
     fn program(&mut self) -> Program<'s> {
         let mut stmts = Vec::new();
         while !self.is_at_end() {
@@ -236,6 +253,9 @@ impl<'s> Parser<'s> {
         Program { stmts }
     }
 
+    /// Parse a variable declaration or other statement.
+    ///
+    /// Corresponds to the `decl_or_stmt` grammar production.
     fn decl_or_stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
         if self.check_next(|tok| matches!(tok, Token::Var)) {
             let var = self.advance().unwrap();
@@ -291,6 +311,9 @@ impl<'s> Parser<'s> {
         }
     }
 
+    /// Parse a print or expression statement.
+    ///
+    /// Corresponds to the `stmt` grammar production.
     fn stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
         let maybe_print = self.advance_or_peek(|tok| matches!(tok, Token::Print)).ok();
 
@@ -336,7 +359,29 @@ impl<'s> Parser<'s> {
     ///
     /// Corresponds to the `expr` grammar production.
     fn expr(&mut self) -> ParserRes<'s, Spanned<Expr<'s>>> {
-        self.equal()
+        self.assign()
+    }
+
+    /// Parse a variable assignment or binop chain.
+    ///
+    /// Corresponds to the `assign` grammar production.
+    fn assign(&mut self) -> ParserRes<'s, Spanned<Expr<'s>>> {
+        let maybe_place = self.equal()?;
+
+        if let Ok(eq) = self.advance_or_peek(|tok| matches!(tok, Token::Equal)) {
+            match maybe_place.node.into_place() {
+                Ok(place) => {
+                    let val = self.assign()?;
+                    Ok(expr::assign(place.spanned(maybe_place.span), val))
+                }
+                Err(_) => {
+                    self.push_diag(ParserDiag::invalid_place_expr(maybe_place.span, eq.span));
+                    Err(ParserError::invalid_place_expr().handled())
+                }
+            }
+        } else {
+            Ok(maybe_place)
+        }
     }
 
     /// Parse a left-associative chain of binary operators.

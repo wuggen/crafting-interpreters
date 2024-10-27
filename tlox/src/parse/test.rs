@@ -124,6 +124,8 @@ fn err_missing_rhs() {
           |
         1 | 4 +;
           |    ^ statement terminated here
+          |
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
 
         "#);
     });
@@ -143,6 +145,8 @@ fn err_early_close_paren() {
           |     -     ^ parentheses closed here
           |     |      
           |     parentheses opened here
+          |
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
 
         "#);
     });
@@ -159,9 +163,11 @@ fn err_unclosed_paren() {
           --> %i0:1:17
           |
         1 | "hey" + (4 - nil
-          |         -       ^ expected `)` here
+          |         -       ^ parentheses should have been closed here
           |         |       
           |         parentheses opened here
+          |
+          = note: expected `)`
 
         "#);
 
@@ -184,7 +190,9 @@ fn err_unclosed_paren() {
           |         - parentheses opened here
           .
         5 | "whoops";
-          | ^^^^^^^^ expected `)` here
+          | ^^^^^^^^ parentheses should have been closed here
+          |
+          = note: expected `)`
 
         "#);
     });
@@ -271,9 +279,11 @@ fn err_spurious_close_paren() {
           --> %i0:1:10
           |
         1 | 45 - nil ) / false
-          | -------- ^ expected semicolon here
+          | -------- ^ statement should have been terminated here
           | |         
           | this statement
+          |
+          = note: expected `;`
 
         error: unexpected `)` token in input
           --> %i0:1:10
@@ -336,12 +346,16 @@ fn err_multiple_stmts() {
           |
         1 | 8 /;
           |    ^ statement terminated here
+          |
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
 
         error: statement terminated prematurely
           --> %i0:2:6
           |
         2 | print;
           |      ^ statement terminated here
+          |
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
 
         error: parentheses closed prematurely
           --> %i0:3:10
@@ -350,14 +364,18 @@ fn err_multiple_stmts() {
           |         -^ parentheses closed here
           |         | 
           |         parentheses opened here
+          |
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
 
         error: unterminated statement
           --> %i0:5:4
           |
         5 | 48 print +0;
-          | -- ^^^^^ expected semicolon here
+          | -- ^^^^^ statement should have been terminated here
           | |   
           | this statement
+          |
+          = note: expected `;`
 
         error: unexpected `+` token in input
           --> %i0:5:10
@@ -440,6 +458,8 @@ fn err_decl_stmts() {
           |
         1 | var lol = ;
           |           ^ statement terminated here
+          |
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
 
         "#,
         );
@@ -454,9 +474,11 @@ fn err_decl_stmts() {
           --> %i0:1:14
           |
         1 | var lmao = no
-          | -------------^ expected semicolon here
+          | -------------^ statement should have been terminated here
           | |            
           | this statement
+          |
+          = note: expected `;`
 
         "#,
         );
@@ -479,5 +501,100 @@ fn err_decl_stmts() {
 
         "#,
         )
+    })
+}
+
+#[test]
+fn assignment_exprs() {
+    Session::with_default(|key| {
+        assert_snapshot!(
+            parse_new_source(key, "what = 54;").unwrap(),
+            @r#"
+        what = 54;{1:1..1:10}
+        "#,
+        );
+
+        assert_snapshot!(
+            parse_new_source(key, "print (lmao = 4) + 8;").unwrap(),
+            @r#"
+        print (lmao = 4) + 8;{1:1..1:21}
+        "#,
+        );
+
+        assert_snapshot!(
+            parse_new_source(key, "print a = b = c;").unwrap(),
+            @r#"
+        print a = b = c;{1:1..1:16}
+        "#,
+        );
+
+        assert_snapshot!(
+            parse_new_source(key, "var x = y = z;").unwrap(),
+            @r#"
+        var x = y = z;{1:1..1:14}
+        "#,
+        );
+    })
+}
+
+#[test]
+fn err_invalid_place_exprs() {
+    Session::with_default(|key| {
+        assert_snapshot!(
+            {
+                parse_new_source(key, "(a = b) = c;");
+                render_dcx()
+            },
+            @r#"
+        error: invalid place expression on left side of assignment
+          --> %i0:1:1
+          |
+        1 | (a = b) = c;
+          | ^^^^^^^ - expected place expression due to assignment here
+          | |        
+          | invalid place expression
+          |
+          = note: expected identifier
+
+        "#,
+        );
+
+        assert_snapshot!(
+            {
+                parse_new_source(key, "7 + 8 = 15;");
+                render_dcx()
+            },
+            @r#"
+        error: invalid place expression on left side of assignment
+          --> %i0:1:1
+          |
+        1 | 7 + 8 = 15;
+          | ^^^^^ - expected place expression due to assignment here
+          | |      
+          | invalid place expression
+          |
+          = note: expected identifier
+
+        "#,
+        );
+
+        assert_snapshot!(
+            {
+                parse_new_source(key, "var a = b + c = d;");
+                render_dcx()
+            },
+            @r#"
+        error: invalid place expression on left side of assignment
+          --> %i0:1:9
+          |
+        1 | var a = b + c = d;
+          |         ^^^^^ - expected place expression due to assignment here
+          |         |      
+          |         invalid place expression
+          |
+          = note: expected identifier
+
+        "#,
+        );
     })
 }

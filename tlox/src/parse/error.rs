@@ -68,32 +68,39 @@ pub enum ParserErrorKind<'s> {
     /// semicolon where a statement end was expected. Either way, the parser should not sync to a
     /// statement boundary, since it is reasonable to assume it's at one.
     SpuriousStmtEnd,
+
+    /// An assignment was attempted to an invalid place expression.
+    InvalidPlaceExpr,
 }
 
 impl<'s> ParserError<'s> {
-    pub fn unexpected(tok: Option<Spanned<Token<'s>>>) -> ParserErrorKind<'s> {
+    pub const fn unexpected(tok: Option<Spanned<Token<'s>>>) -> ParserErrorKind<'s> {
         ParserErrorKind::Unexpected(tok)
     }
 
-    pub fn unexpected_tok(token: Spanned<Token<'s>>) -> ParserErrorKind<'s> {
+    pub const fn unexpected_tok(token: Spanned<Token<'s>>) -> ParserErrorKind<'s> {
         Self::unexpected(Some(token))
     }
 
-    pub fn eof() -> ParserErrorKind<'s> {
+    pub const fn eof() -> ParserErrorKind<'s> {
         Self::unexpected(None)
     }
 
-    pub fn spurious_stmt_end() -> ParserErrorKind<'s> {
+    pub const fn spurious_stmt_end() -> ParserErrorKind<'s> {
         ParserErrorKind::SpuriousStmtEnd
+    }
+
+    pub const fn invalid_place_expr() -> ParserErrorKind<'s> {
+        ParserErrorKind::InvalidPlaceExpr
     }
 }
 
 impl<'s> ParserErrorKind<'s> {
-    pub fn handled(self) -> ParserError<'s> {
+    pub const fn handled(self) -> ParserError<'s> {
         ParserError::Handled(self)
     }
 
-    pub fn deferred(self) -> ParserError<'s> {
+    pub const fn deferred(self) -> ParserError<'s> {
         ParserError::Deferred(self)
     }
 }
@@ -128,6 +135,11 @@ pub enum ParserDiag<'s> {
     MissingVarName {
         decl: Span,
         expected_name: Span,
+    },
+
+    InvalidPlaceExpr {
+        place: Span,
+        eq: Span,
     },
 }
 
@@ -165,33 +177,37 @@ impl<'s> ParserDiag<'s> {
         Self::unexpected(parser, Some(tok), expected)
     }
 
-    pub fn early_close_paren(open: Span, close: Span) -> Self {
+    pub const fn early_close_paren(open: Span, close: Span) -> Self {
         Self::EarlyCloseParen { open, close }
     }
 
-    pub fn unclosed_paren(open: Span, expected_close: Span) -> Self {
+    pub const fn unclosed_paren(open: Span, expected_close: Span) -> Self {
         Self::UnclosedParen {
             open,
             expected_close,
         }
     }
 
-    pub fn unterminated_stmt(stmt: Span, expected_semi: Span) -> Self {
+    pub const fn unterminated_stmt(stmt: Span, expected_semi: Span) -> Self {
         Self::UnterminatedStmt {
             stmt,
             expected_semi,
         }
     }
 
-    pub fn early_terminated_stmt(semi: Span) -> Self {
+    pub const fn early_terminated_stmt(semi: Span) -> Self {
         Self::EarlyTerminatedStmt { semi }
     }
 
-    pub fn missing_var_name(decl: Span, expected_name: Span) -> Self {
+    pub const fn missing_var_name(decl: Span, expected_name: Span) -> Self {
         Self::MissingVarName {
             decl,
             expected_name,
         }
+    }
+
+    pub const fn invalid_place_expr(place: Span, eq: Span) -> Self {
+        Self::InvalidPlaceExpr { place, eq }
     }
 }
 
@@ -207,55 +223,9 @@ impl ParserDiag<'_> {
             ParserDiag::UnterminatedStmt { .. } => "unterminated statement".into(),
             ParserDiag::EarlyTerminatedStmt { .. } => "statement terminated prematurely".into(),
             ParserDiag::MissingVarName { .. } => "missing name in variable declaration".into(),
-        }
-    }
-
-    fn elaborate(self, mut diag: Diag) -> Diag {
-        match self {
-            ParserDiag::Unexpected {
-                tok,
-                span,
-                expected,
-            } => {
-                if !expected.is_empty() {
-                    diag = diag.with_note(format!("expected {}", oxford_or(&expected)));
-                }
-
-                match tok {
-                    Some(_) => diag.with_primary(span, "unexpected token here"),
-                    None => diag.with_primary(span, "end of input here"),
-                }
+            ParserDiag::InvalidPlaceExpr { .. } => {
+                "invalid place expression on left side of assignment".into()
             }
-
-            ParserDiag::EarlyCloseParen { open, close } => diag
-                .with_primary(close, "parentheses closed here")
-                .with_secondary(open, "parentheses opened here"),
-
-            ParserDiag::UnclosedParen {
-                open,
-                expected_close,
-            } => diag
-                .with_primary(expected_close, "expected `)` here")
-                .with_secondary(open, "parentheses opened here"),
-
-            ParserDiag::UnterminatedStmt {
-                stmt,
-                expected_semi,
-            } => diag
-                .with_primary(expected_semi, "expected semicolon here")
-                .with_secondary(stmt, "this statement"),
-
-            ParserDiag::EarlyTerminatedStmt { semi } => {
-                diag.with_primary(semi, "statement terminated here")
-            }
-
-            ParserDiag::MissingVarName {
-                decl,
-                expected_name,
-            } => diag
-                .with_primary(expected_name, "expected variable name here")
-                .with_secondary(decl, "declaration requires a variable name")
-                .with_note("expected identifier"),
         }
     }
 
@@ -276,13 +246,59 @@ impl ParserDiag<'_> {
                 Some(oxford_or(&Parser::ATOM_STARTS).to_string())
             }
             ParserDiag::MissingVarName { .. } => Some("identifier".into()),
+            ParserDiag::InvalidPlaceExpr { .. } => Some("identifier".into()),
+        }
+    }
+
+    fn elaborate(self, diag: Diag) -> Diag {
+        match self {
+            ParserDiag::Unexpected { tok, span, .. } => match tok {
+                Some(_) => diag.with_primary(span, "unexpected token here"),
+                None => diag.with_primary(span, "end of input here"),
+            },
+
+            ParserDiag::EarlyCloseParen { open, close } => diag
+                .with_primary(close, "parentheses closed here")
+                .with_secondary(open, "parentheses opened here"),
+
+            ParserDiag::UnclosedParen {
+                open,
+                expected_close,
+            } => diag
+                .with_primary(expected_close, "parentheses should have been closed here")
+                .with_secondary(open, "parentheses opened here"),
+
+            ParserDiag::UnterminatedStmt {
+                stmt,
+                expected_semi,
+            } => diag
+                .with_primary(expected_semi, "statement should have been terminated here")
+                .with_secondary(stmt, "this statement"),
+
+            ParserDiag::EarlyTerminatedStmt { semi } => {
+                diag.with_primary(semi, "statement terminated here")
+            }
+
+            ParserDiag::MissingVarName {
+                decl,
+                expected_name,
+            } => diag
+                .with_primary(expected_name, "expected variable name here")
+                .with_secondary(decl, "declaration requires a variable name"),
+
+            ParserDiag::InvalidPlaceExpr { place, eq } => diag
+                .with_primary(place, "invalid place expression")
+                .with_secondary(eq, "expected place expression due to assignment here"),
         }
     }
 }
 
 impl Diagnostic for ParserDiag<'_> {
     fn into_diag(self) -> Diag {
-        let message = self.message();
-        self.elaborate(Diag::new(DiagKind::Error, message))
+        let mut diag = Diag::new(DiagKind::Error, self.message());
+        if let Some(expected) = self.expected() {
+            diag = diag.with_note(format!("expected {expected}"));
+        }
+        self.elaborate(diag)
     }
 }
