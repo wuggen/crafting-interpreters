@@ -8,7 +8,7 @@ use crate::diag::render::render_dcx;
 use crate::session::{Session, SessionKey};
 use crate::util::test::parse_new_source;
 
-fn eval_new_source(key: SessionKey, source: &str, output: &mut String) {
+fn eval_new_source(key: &SessionKey, source: &str, output: &mut String) {
     if let Some(tree) = parse_new_source(key, source) {
         let mut output_bytes = Vec::new();
         Interpreter::with_vec_output(&mut output_bytes).eval(&tree);
@@ -16,7 +16,7 @@ fn eval_new_source(key: SessionKey, source: &str, output: &mut String) {
     }
 }
 
-fn test_eval(key: SessionKey, source: &str) -> String {
+fn test_eval(key: &SessionKey, source: &str) -> String {
     let mut output = String::new();
     eval_new_source(key, source, &mut output);
 
@@ -31,58 +31,58 @@ fn test_eval(key: SessionKey, source: &str) -> String {
 #[test]
 fn eval_lits() {
     Session::with_default(|key| {
-        assert_snapshot!(test_eval(key, "print nil;"), @"nil");
-        assert_snapshot!(test_eval(key, "print true;"), @"true");
-        assert_snapshot!(test_eval(key, "print false;"), @"false");
-        assert_snapshot!(test_eval(key, "print 42;"), @"42");
-        assert_snapshot!(test_eval(key, r#"print "hello lol";"#), @"hello lol");
+        assert_snapshot!(test_eval(&key, "print nil;"), @"nil");
+        assert_snapshot!(test_eval(&key, "print true;"), @"true");
+        assert_snapshot!(test_eval(&key, "print false;"), @"false");
+        assert_snapshot!(test_eval(&key, "print 42;"), @"42");
+        assert_snapshot!(test_eval(&key, r#"print "hello lol";"#), @"hello lol");
     })
 }
 
 #[test]
 fn eval_unary() {
     Session::with_default(|key| {
-        assert_snapshot!(test_eval(key, "print -42;"), @"-42");
-        assert_snapshot!(test_eval(key, "print !true;"), @"false");
+        assert_snapshot!(test_eval(&key, "print -42;"), @"-42");
+        assert_snapshot!(test_eval(&key, "print !true;"), @"false");
     })
 }
 
 #[test]
 fn eval_binary() {
     Session::with_default(|key| {
-        assert_snapshot!(test_eval(key, "print 3 + 4;"), @"7");
-        assert_snapshot!(test_eval(key, "print 5 == nil;"), @"false");
-        assert_snapshot!(test_eval(key, "print 5 == 5 == true;"), @"true");
-        assert_snapshot!(test_eval(key, "print 3 + 6 / 2;"), @"6");
-        assert_snapshot!(test_eval(key, "print (3 + 6) / 2;"), @"4.5");
-        assert_snapshot!(test_eval(key, "print 6 % 3 == 0;"), @"true");
+        assert_snapshot!(test_eval(&key, "print 3 + 4;"), @"7");
+        assert_snapshot!(test_eval(&key, "print 5 == nil;"), @"false");
+        assert_snapshot!(test_eval(&key, "print 5 == 5 == true;"), @"true");
+        assert_snapshot!(test_eval(&key, "print 3 + 6 / 2;"), @"6");
+        assert_snapshot!(test_eval(&key, "print (3 + 6) / 2;"), @"4.5");
+        assert_snapshot!(test_eval(&key, "print 6 % 3 == 0;"), @"true");
         assert_snapshot!(
             test_eval(
-                key,
+                &key,
                 r#"print "hey" + " there" + " good lookin";"#,
             ),
             @"hey there good lookin",
         );
-        assert_snapshot!(test_eval(key, r#"print "hey" != "there";"#), @"true");
-        assert_snapshot!(test_eval(key, r#"print 18.5 != "lol";"#), @"true");
-        assert_snapshot!(test_eval(key, "print 4 > 3;"), @"true");
+        assert_snapshot!(test_eval(&key, r#"print "hey" != "there";"#), @"true");
+        assert_snapshot!(test_eval(&key, r#"print 18.5 != "lol";"#), @"true");
+        assert_snapshot!(test_eval(&key, "print 4 > 3;"), @"true");
     })
 }
 
 #[test]
 fn eval_truthiness() {
     Session::with_default(|key| {
-        assert_snapshot!(test_eval(key, "print !!42;"), @"true");
-        assert_snapshot!(test_eval(key, "print !!nil;"), @"false");
-        assert_snapshot!(test_eval(key, "print !!false;"), @"false");
-        assert_snapshot!(test_eval(key, r#"print !!"lmao";"#), @"true");
+        assert_snapshot!(test_eval(&key, "print !!42;"), @"true");
+        assert_snapshot!(test_eval(&key, "print !!nil;"), @"false");
+        assert_snapshot!(test_eval(&key, "print !!false;"), @"false");
+        assert_snapshot!(test_eval(&key, r#"print !!"lmao";"#), @"true");
     })
 }
 
 #[test]
 fn err_eval_non_num() {
     Session::with_default(|key| {
-        assert_snapshot!(test_eval(key, "print -nil;"), @r#"
+        assert_snapshot!(test_eval(&key, "print -nil;"), @r#"
         --> Diagnostics:
         error: cannot coerce Nil to Num
           --> %i0:1:8
@@ -96,7 +96,7 @@ fn err_eval_non_num() {
 
         "#);
 
-        assert_snapshot!(test_eval(key, "print !(5 + 10) > nil;"), @r#"
+        assert_snapshot!(test_eval(&key, "print !(5 + 10) > nil;"), @r#"
         --> Diagnostics:
         error: cannot coerce Bool to Num
           --> %i0:1:7
@@ -125,7 +125,7 @@ fn err_eval_non_num() {
 #[test]
 fn computed_str_eq() {
     Session::with_default(|key| {
-        assert_snapshot!(test_eval(key, r#"print "hey there" == "hey " + "there";"#), @"true");
+        assert_snapshot!(test_eval(&key, r#"print "hey there" == "hey " + "there";"#), @"true");
     });
 }
 
@@ -134,7 +134,7 @@ fn global_vars() {
     Session::with_default(|key| {
         assert_snapshot!(
             test_eval(
-                key,
+                &key,
                 indoc! {r#"
                 var a = 4;
                 print a;
@@ -149,7 +149,7 @@ fn global_vars() {
 
         assert_snapshot!(
             test_eval(
-                key,
+                &key,
                 indoc! {r#"
                 var a;
                 print a;
@@ -170,7 +170,7 @@ fn global_vars() {
 fn err_undeclared_vars() {
     Session::with_default(|key| {
         assert_snapshot!(
-            test_eval(key, "print 4 + nope;"),
+            test_eval(&key, "print 4 + nope;"),
             @r#"
         --> Diagnostics:
         error: reference to unbound variable `nope`
@@ -183,7 +183,7 @@ fn err_undeclared_vars() {
         );
 
         assert_snapshot!(
-            test_eval(key, "var a = 8; print a + b;"),
+            test_eval(&key, "var a = 8; print a + b;"),
             @r#"
         --> Diagnostics:
         error: reference to unbound variable `b`
@@ -202,7 +202,7 @@ fn assignment() {
     Session::with_default(|key| {
         assert_snapshot!(
             test_eval(
-                key,
+                &key,
                 indoc !{r#"
                 var a = 4;
                 print a;
@@ -222,7 +222,7 @@ fn assignment() {
 
         assert_snapshot!(
             test_eval(
-                key,
+                &key,
                 indoc !{r#"
                 var a; var b; var c;
                 a = b = c = 1;
@@ -242,7 +242,7 @@ fn assignment() {
 fn err_assignment_unbound_var() {
     Session::with_default(|key| {
         assert_snapshot!(
-            test_eval(key, "a = 45;"),
+            test_eval(&key, "a = 45;"),
             @r#"
         --> Diagnostics:
         error: assignment to unbound variable `a`
@@ -255,7 +255,7 @@ fn err_assignment_unbound_var() {
         );
 
         assert_snapshot!(
-            test_eval(key, "var x; print x = a = x;"),
+            test_eval(&key, "var x; print x = a = x;"),
             @r#"
         --> Diagnostics:
         error: assignment to unbound variable `a`

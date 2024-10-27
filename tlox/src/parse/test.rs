@@ -10,21 +10,21 @@ use crate::util::test::parse_new_source;
 fn literals() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_new_source(key, "true;").unwrap(),
+            parse_new_source(&key, "true;").unwrap(),
             @r#"
         true;{1:1..1:5}
         "#);
         assert!(render_dcx().is_empty());
 
         assert_snapshot!(
-            parse_new_source(key, "134;").unwrap(),
+            parse_new_source(&key, "134;").unwrap(),
             @r#"
         134;{1:1..1:4}
         "#);
         assert!(render_dcx().is_empty());
 
         assert_snapshot!(
-            parse_new_source(key, r#""lol hey\ndude";"#).unwrap(),
+            parse_new_source(&key, r#""lol hey\ndude";"#).unwrap(),
             @r#"
         "lol hey\ndude";{1:1..1:16}
         "#);
@@ -37,7 +37,7 @@ fn comp_chain() {
     Session::with_default(|key| {
         assert_snapshot!(
             parse_new_source(
-                key,
+                &key,
                 indoc! {r#"
                 45 < nil >= false
                     <= "wow" > 003.32;
@@ -54,7 +54,7 @@ fn comp_chain() {
 fn comp_chain_with_parens() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_new_source(key, r#"45 < ("wow" >= nil);"#).unwrap(),
+            parse_new_source(&key, r#"45 < ("wow" >= nil);"#).unwrap(),
             @r#"
         45 < ("wow" >= nil);{1:1..1:20}
         "#);
@@ -67,7 +67,7 @@ fn lotsa_parens() {
     Session::with_default(|key| {
         assert_snapshot!(
             parse_new_source(
-                key,
+                &key,
                 indoc! {r#"
                 (((true + "false") - (nil / nil) >= 0 * "hey") % ("what")) + (0);
                 "#},
@@ -83,7 +83,7 @@ fn lotsa_parens() {
 fn err_missing_lhs() {
     Session::with_default(|key| {
         assert_snapshot!({
-            parse_new_source(key, "+ 4;");
+            parse_new_source(&key, "+ 4;");
             render_dcx()
         }, @r#"
         error: unexpected `+` token in input
@@ -97,7 +97,7 @@ fn err_missing_lhs() {
         "#);
 
         assert_snapshot!({
-            parse_new_source(key, "4 + (* nil) - 5;");
+            parse_new_source(&key, "4 + (* nil) - 5;");
             render_dcx()
         }, @r#"
         error: unexpected `*` token in input
@@ -116,7 +116,7 @@ fn err_missing_lhs() {
 fn err_missing_rhs() {
     Session::with_default(|key| {
         assert_snapshot!({
-            parse_new_source(key, "4 +;");
+            parse_new_source(&key, "4 +;");
             render_dcx()
         }, @r#"
         error: statement terminated prematurely
@@ -135,7 +135,7 @@ fn err_missing_rhs() {
 fn err_early_close_paren() {
     Session::with_default(|key| {
         assert_snapshot!({
-            parse_new_source(key, "4 + (nil *) - 5;");
+            parse_new_source(&key, "4 + (nil *) - 5;");
             render_dcx()
         }, @r#"
         error: parentheses closed prematurely
@@ -156,7 +156,7 @@ fn err_early_close_paren() {
 fn err_unclosed_paren() {
     Session::with_default(|key| {
         assert_snapshot!({
-            parse_new_source(key, r#""hey" + (4 - nil"#);
+            parse_new_source(&key, r#""hey" + (4 - nil"#);
             render_dcx()
         }, @r#"
         error: unclosed parentheses
@@ -173,7 +173,7 @@ fn err_unclosed_paren() {
 
         assert_snapshot!({
             parse_new_source(
-                key,
+                &key,
                 indoc! {r#"
                 123.4 - (nil
 
@@ -202,7 +202,7 @@ fn err_unclosed_paren() {
 fn err_two_ops() {
     Session::with_default(|key| {
         assert_snapshot!({
-            parse_new_source(key, "8 * + 4");
+            parse_new_source(&key, "8 * + 4");
             render_dcx()
         }, @r#"
         error: unexpected `+` token in input
@@ -221,7 +221,7 @@ fn err_two_ops() {
 fn err_multiple() {
     Session::with_default(|key| {
         assert_snapshot!({
-            parse_new_source(key, "8 * + (4 - ) / (  ) + 5");
+            parse_new_source(&key, "8 * + (4 - ) / (  ) + 5");
             render_dcx()
         }, @r#"
         error: unexpected `+` token in input
@@ -236,7 +236,7 @@ fn err_multiple() {
 
         assert_snapshot!({
             parse_new_source(
-                key,
+                &key,
                 indoc! {r#"
                 / false * (nil
                     - ) == ()
@@ -260,7 +260,7 @@ fn err_multiple() {
 #[test]
 fn paren_spans() {
     Session::with_default(|key| {
-        let program = parse_new_source(key, "(4 + 10);").unwrap();
+        let program = parse_new_source(&key, "(4 + 10);").unwrap();
         match &program.stmts[0].node {
             Stmt::Expr { val } => assert_eq!(val.span.range(), 0..8),
             stmt => panic!("should have parsed to expression statement, got {stmt:?} instead"),
@@ -272,7 +272,7 @@ fn paren_spans() {
 fn err_spurious_close_paren() {
     Session::with_default(|key| {
         assert_snapshot!({
-            parse_new_source(key, "45 - nil ) / false");
+            parse_new_source(&key, "45 - nil ) / false");
             render_dcx()
         }, @r#"
         error: unterminated statement
@@ -301,7 +301,7 @@ fn err_spurious_close_paren() {
 fn expr_stmts() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_new_source(key, "4 + 5; false - true;").unwrap(),
+            parse_new_source(&key, "4 + 5; false - true;").unwrap(),
             @r#"
         4 + 5;{1:1..1:6}
         false - true;{1:8..1:20}
@@ -315,7 +315,7 @@ fn expr_stmts() {
 fn print_stmts() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_new_source(key, "print 4; print false;").unwrap(),
+            parse_new_source(&key, "print 4; print false;").unwrap(),
             @r#"
             print 4;{1:1..1:8}
             print false;{1:10..1:21}
@@ -330,7 +330,7 @@ fn err_multiple_stmts() {
     Session::with_default(|key| {
         assert_snapshot!({
             parse_new_source(
-                key,
+                &key,
                 indoc! {r#"
                 8 /;
                 print;
@@ -395,7 +395,7 @@ fn decl_stmts() {
     Session::with_default(|key| {
         assert_snapshot!(
             parse_new_source(
-                key,
+                &key,
                 indoc! {r#"
                 var a;
                 var b = a + 4;
@@ -409,7 +409,7 @@ fn decl_stmts() {
 
         assert_snapshot!(
             parse_new_source(
-                key,
+                &key,
                 indoc! {r#"
                 var hey_there = "lol";
                 print hey_there;
@@ -430,7 +430,7 @@ fn err_decl_stmts() {
     Session::with_default(|key| {
         assert_snapshot!(
             {
-                parse_new_source(key, "var = 4 + 4;");
+                parse_new_source(&key, "var = 4 + 4;");
                 render_dcx()
             },
             @r#"
@@ -449,7 +449,7 @@ fn err_decl_stmts() {
 
         assert_snapshot!(
             {
-                parse_new_source(key, "var lol = ;");
+                parse_new_source(&key, "var lol = ;");
                 render_dcx()
             },
             @r#"
@@ -466,7 +466,7 @@ fn err_decl_stmts() {
 
         assert_snapshot!(
             {
-                parse_new_source(key, "var lmao = no");
+                parse_new_source(&key, "var lmao = no");
                 render_dcx()
             },
             @r#"
@@ -485,7 +485,7 @@ fn err_decl_stmts() {
 
         assert_snapshot!(
             {
-                parse_new_source(key, "var = ");
+                parse_new_source(&key, "var = ");
                 render_dcx()
             },
             @r#"
@@ -508,28 +508,28 @@ fn err_decl_stmts() {
 fn assignment_exprs() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_new_source(key, "what = 54;").unwrap(),
+            parse_new_source(&key, "what = 54;").unwrap(),
             @r#"
         what = 54;{1:1..1:10}
         "#,
         );
 
         assert_snapshot!(
-            parse_new_source(key, "print (lmao = 4) + 8;").unwrap(),
+            parse_new_source(&key, "print (lmao = 4) + 8;").unwrap(),
             @r#"
         print (lmao = 4) + 8;{1:1..1:21}
         "#,
         );
 
         assert_snapshot!(
-            parse_new_source(key, "print a = b = c;").unwrap(),
+            parse_new_source(&key, "print a = b = c;").unwrap(),
             @r#"
         print a = b = c;{1:1..1:16}
         "#,
         );
 
         assert_snapshot!(
-            parse_new_source(key, "var x = y = z;").unwrap(),
+            parse_new_source(&key, "var x = y = z;").unwrap(),
             @r#"
         var x = y = z;{1:1..1:14}
         "#,
@@ -542,7 +542,7 @@ fn err_invalid_place_exprs() {
     Session::with_default(|key| {
         assert_snapshot!(
             {
-                parse_new_source(key, "(a = b) = c;");
+                parse_new_source(&key, "(a = b) = c;");
                 render_dcx()
             },
             @r#"
@@ -561,7 +561,7 @@ fn err_invalid_place_exprs() {
 
         assert_snapshot!(
             {
-                parse_new_source(key, "7 + 8 = 15;");
+                parse_new_source(&key, "7 + 8 = 15;");
                 render_dcx()
             },
             @r#"
@@ -580,7 +580,7 @@ fn err_invalid_place_exprs() {
 
         assert_snapshot!(
             {
-                parse_new_source(key, "var a = b + c = d;");
+                parse_new_source(&key, "var a = b + c = d;");
                 render_dcx()
             },
             @r#"

@@ -106,7 +106,7 @@ impl TLox {
     fn run_source(name: impl Into<SourceName>, source: &str) -> Option<()> {
         Session::with_current(|key| {
             let idx = key.get().sm.add_source(name, source);
-            if let Some(program) = parse_source(key, idx) {
+            if let Some(program) = parse_source(&key, idx) {
                 Interpreter::default().eval(&program);
                 Some(())
             } else {

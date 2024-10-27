@@ -35,11 +35,17 @@ pub enum RuntimeError<'s> {
 
 impl<'s> RuntimeError<'s> {
     pub fn unbound_var_ref(site: Spanned<Symbol<'s>>) -> Self {
-        Self::UnboundVariable { site, usage: VarUsage::Reference }
+        Self::UnboundVariable {
+            site,
+            usage: VarUsage::Reference,
+        }
     }
 
     pub fn unbound_var_assign(site: Spanned<Symbol<'s>>) -> Self {
-        Self::UnboundVariable { site, usage: VarUsage::Assign }
+        Self::UnboundVariable {
+            site,
+            usage: VarUsage::Assign,
+        }
     }
 }
 

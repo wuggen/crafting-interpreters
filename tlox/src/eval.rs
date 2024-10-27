@@ -108,8 +108,8 @@ impl<'s> Interpreter<'s, '_> {
             }
 
             ExprNode::Assign { place, val } => {
-                let val = self.eval_expr(&val)?;
-                *self.eval_place(&place)? = val.clone();
+                let val = self.eval_expr(val)?;
+                *self.eval_place(place)? = val.clone();
                 Ok(val)
             }
         }

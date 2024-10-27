@@ -57,7 +57,7 @@ pub mod test {
     use crate::syn::Program;
 
     /// Add a new source to the current session and parse it.
-    pub fn parse_new_source<'s>(key: SessionKey<'s>, source: &str) -> Option<Program<'s>> {
+    pub fn parse_new_source<'s>(key: &'s SessionKey<'s>, source: &str) -> Option<Program<'s>> {
         let source_idx = key.get().sm.add_source(0, source);
         parse_source(key, source_idx)
     }

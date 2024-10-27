@@ -22,7 +22,7 @@ pub struct Session {
 /// `SessionKey`s are used in [`Session::with`], [`Session::with_current`], and
 /// [`Session::with_default`] to denote the lifetime for which a given `Session` is global to a
 /// thread. Unlike a reference, it is zero-sized.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct SessionKey<'s>(
     PhantomData<&'s mut Session>, /* mutable for invariance */
 );
@@ -57,7 +57,7 @@ impl SessionKey<'_> {
 }
 
 impl<'s> SessionKey<'s> {
-    pub fn get(self) -> &'s Session {
+    pub fn get(&self) -> &'s Session {
         debug_assert!(SESSION.is_set());
         // Safety: SessionKey is only constructed in the various Session::with_* methods, with a
         // lifetime tied to an object local to those methods. A reference constructed with that
@@ -73,8 +73,26 @@ impl Session {
     /// [`Session::with_current`]. Once the closure returns, the previous global session, if any,
     /// becomes current again for the thread.
     pub fn with<T>(&self, f: impl FnOnce(SessionKey) -> T) -> T {
+        assert!(
+            !SESSION.is_set(),
+            "already a current session; use `Session::replace_current` instead"
+        );
         let key = unsafe { SessionKey::with_lifetime(&self) };
         SESSION.set(self, || f(key))
+    }
+
+    /// Do something in the context of this session, temporarily replacing the current session.
+    ///
+    /// This will take temporary ownership of the current session's key, ensuring that it can't be
+    /// used to unsoundly exfiltrate borrowed data from this session.
+    pub fn replace_current<'s, T>(
+        &self,
+        prev_key: SessionKey<'s>,
+        f: impl FnOnce(SessionKey) -> T,
+    ) -> (T, SessionKey<'s>) {
+        let new_key = unsafe { SessionKey::with_lifetime(&self) };
+        let val = SESSION.set(self, || f(new_key));
+        (val, prev_key)
     }
 
     /// Do something with the current session.
@@ -109,5 +127,45 @@ impl Session {
     /// if any, becomes current again for the thread.
     pub fn with_default<T>(f: impl FnOnce(SessionKey) -> T) -> T {
         Self::default().with(f)
+    }
+
+    /// Do something with a fresh session, temporarily replacing the current one.
+    ///
+    /// This takes temporary ownership of the current session's key, ensuring that it cannot be used
+    /// to unsoundly exfitrate borrowed data from the fresh session.
+    pub fn replace_with_default<T>(
+        prev_key: SessionKey,
+        f: impl FnOnce(SessionKey) -> T,
+    ) -> (T, SessionKey) {
+        Self::default().replace_current(prev_key, f)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::sym;
+
+    #[test]
+    #[should_panic]
+    fn escape() {
+        Session::with_default(|key1| {
+            let sym = Session::with_default(|_| sym!(key1, "lol"));
+
+            println!("{sym}");
+        })
+    }
+
+    #[test]
+    fn replace() {
+        Session::with_default(|key1| {
+            let sym1 = sym!(key1, "lol");
+
+            let (sym2, _) = Session::replace_with_default(key1, |key2| {
+                format!("{} ({sym1})", sym!(key2, "lmao"))
+            });
+
+            println!("{sym1}, {sym2}");
+        })
     }
 }
