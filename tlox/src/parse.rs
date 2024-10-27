@@ -148,8 +148,7 @@ impl<'s> Parser<'s> {
 
     /// Advance the token stream, applying the given function to the advanced-over token.
     fn advance_map<T>(&mut self, f: impl FnOnce(Token) -> T) -> Option<Spanned<T>> {
-        let tok = self.advance()?;
-        Some(f(tok.node).spanned(tok.span))
+        Some(self.advance()?.map(f))
     }
 
     /// Test the next token in the stream, without advancing.
@@ -263,7 +262,7 @@ impl<'s> Parser<'s> {
             let name = self
                 .advance_or_peek(|tok| matches!(tok, Token::Ident(_)))
                 .map(|tok| match tok.node {
-                    Token::Ident(name) => name.spanned(tok.span),
+                    Token::Ident(name) => tok.with_node(name),
                     _ => unreachable!(),
                 })
                 .map_err(|tok| {
@@ -504,23 +503,23 @@ impl<'s> Parser<'s> {
     ///
     /// Corresponds to the `atom` grammar production.
     fn atom(&mut self) -> ParserRes<'s, Spanned<Expr<'s>>> {
-        if let Some(spanned @ Spanned { node: tok, span }) = self.advance() {
-            match tok {
-                Token::Number(n) => Ok(expr::literal(Lit::Num(n)).spanned(span)),
-                Token::Str(s) => Ok(expr::literal(Lit::Str(s)).spanned(span)),
-                Token::Boolean(b) => Ok(expr::literal(Lit::Bool(b)).spanned(span)),
-                Token::Nil => Ok(expr::literal(Lit::Nil).spanned(span)),
-                Token::Ident(name) => Ok(expr::var(name).spanned(span)),
-                Token::LeftParen => self.group(span),
+        if let Some(tok) = self.advance() {
+            match tok.node {
+                Token::Number(n) => Ok(tok.with_node(expr::literal(Lit::Num(n)))),
+                Token::Str(s) => Ok(tok.with_node(expr::literal(Lit::Str(s)))),
+                Token::Boolean(b) => Ok(tok.with_node(expr::literal(Lit::Bool(b)))),
+                Token::Nil => Ok(tok.with_node(expr::literal(Lit::Nil))),
+                Token::Ident(name) => Ok(tok.with_node(expr::var(name))),
+                Token::LeftParen => self.group(tok.span),
 
                 // Error productions
                 Token::RightParen | Token::Semicolon => {
-                    Err(ParserError::unexpected_tok(spanned).deferred())
+                    Err(ParserError::unexpected_tok(tok).deferred())
                 }
 
                 _ => {
-                    self.push_diag(ParserDiag::unexpected_tok(self, spanned, Self::ATOM_STARTS));
-                    Err(ParserError::unexpected_tok(spanned).handled())
+                    self.push_diag(ParserDiag::unexpected_tok(self, tok, Self::ATOM_STARTS));
+                    Err(ParserError::unexpected_tok(tok).handled())
                 }
             }
         } else {

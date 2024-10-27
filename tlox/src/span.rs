@@ -148,6 +148,32 @@ impl<T: Display> Display for Spanned<T> {
     }
 }
 
+impl<T> AsRef<T> for Spanned<T> {
+    fn as_ref(&self) -> &T {
+        &self.node
+    }
+}
+
+impl<T> Spanned<T> {
+    pub fn map<S>(self, f: impl FnOnce(T) -> S) -> Spanned<S> {
+        Spanned {
+            node: f(self.node),
+            span: self.span,
+        }
+    }
+
+    pub fn with_node<S>(self, node: S) -> Spanned<S> {
+        self.map(|_| node)
+    }
+
+    pub fn with_span(self, span: Span) -> Spanned<T> {
+        Spanned {
+            node: self.node,
+            span,
+        }
+    }
+}
+
 /// Types to which a [`Span`] can be attached.
 ///
 /// This is blanket implemented for all [`Sized`] types.
