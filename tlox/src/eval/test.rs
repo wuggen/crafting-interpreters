@@ -268,3 +268,95 @@ fn err_assignment_unbound_var() {
         );
     })
 }
+
+// A previous error read as follows:
+//
+//    error: cannot coerce Str to Num
+//      --> %i11:1:7
+//      |
+//    1 | print a + b;
+//      |       ^ - value coerced due to use as an operand to this operator
+//      |       |
+//      |       expression found to be of type Str
+//      |
+//      = note: operator `+` expects operands of type Num or Str
+//
+// This is not especially illuminating about why the coercion was attempted or what it expects. In
+// particular:
+//
+// - This doesn't explain the reason for the coercion at all (`b` is of type Num).
+// - The note is poorly phrased, and seems to imply that either operand can be either type
+//   independent of the other.
+//
+// Conversely, we don't want something like this:
+//
+//    error: cannot coerce Bool to Num
+//      --> %i0:1:7
+//      |
+//    1 | print !(5 + 10) > nil;
+//      |       ^^^^^^^^^ - --- other operand found to be of type Nil
+//      |       |         |
+//      |       |         value coerced due to use as an operand to this operator
+//      |       expression found to be of type Bool
+//      |
+//      = note: operator `>` expects operands of type Num
+//
+// Pointing out the type of the other operand is irrelevant and confusing here, since neither
+// operand's type is compatible with the operator.
+#[test]
+fn err_binop_tys() {
+    Session::with_default(|key| {
+        assert_snapshot!(
+            test_eval(&key, indoc! {r#"
+            var a = "lol";
+            var b = 20;
+            print a + b;
+            "#}),
+            @r#"
+        --> Diagnostics:
+        error: cannot coerce Num to Str
+          --> %i0:3:11
+          |
+        3 | print a + b;
+          |       - - ^ expression found to be of type Num
+          |       | |  
+          |       | operands to this operator are incompatible
+          |       other operand found to be of type Str
+          |
+          = note: operator `+` expects both operands to be of type Num, or of type Str
+
+        "#,
+        );
+
+        assert_snapshot!(
+            test_eval(&key, indoc! {r#"
+            var a = false;
+            var b;
+            print a < b;
+            "#}),
+            @r#"
+        --> Diagnostics:
+        error: cannot coerce Bool to Num
+          --> %i0:3:7
+          |
+        3 | print a < b;
+          |       ^ - value coerced due to use as an operand to this operator
+          |       |  
+          |       expression found to be of type Bool
+          |
+          = note: operator `<` expects operands of type Num
+
+        error: cannot coerce Nil to Num
+          --> %i0:3:11
+          |
+        3 | print a < b;
+          |         - ^ expression found to be of type Nil
+          |         |  
+          |         value coerced due to use as an operand to this operator
+          |
+          = note: operator `<` expects operands of type Num
+
+        "#,
+        );
+    })
+}

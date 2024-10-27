@@ -5,7 +5,6 @@ use crate::span::{Span, Spanned};
 use crate::symbol::Symbol;
 use crate::syn::{BinopSym, UnopSym};
 use crate::ty::{PrimitiveTy, Ty};
-use crate::util::oxford_or;
 
 /// A Lox runtime error.
 #[derive(Debug, Clone)]
@@ -110,9 +109,25 @@ impl Diagnostic for RuntimeError<'_> {
                             "value coerced due to use as an operand to this operator",
                         )
                         .with_note(format!(
-                            "operator `{}` expects operands of type {}",
+                            "operator `{}` expects {}",
                             sym.node,
                             sym.node.expected_tys()
+                        )),
+
+                    Some(CoercionCause::BinopOperand {
+                        sym,
+                        operand,
+                        operand_ty,
+                    }) => diag
+                        .with_secondary(sym.span, "operands to this operator are incompatible")
+                        .with_secondary(
+                            operand,
+                            format!("other operand found to be of type {operand_ty}"),
+                        )
+                        .with_note(format!(
+                            "operator `{}` expects {}",
+                            sym.node,
+                            sym.node.expected_tys(),
                         )),
 
                     None => diag,
@@ -135,11 +150,18 @@ impl Diagnostic for RuntimeError<'_> {
 /// The reason a type coercion was attemtped.
 #[derive(Debug, Clone, Copy)]
 pub enum CoercionCause {
-    /// Attempted to coerce the operand of a unary operator to the correct type.
+    /// Operand to a unop was of a type unsupported by the operator.
     Unop { sym: Spanned<UnopSym> },
 
-    /// Attempted to coerce an operand of a binary operator to the correct type.
+    /// Operand to a binop was of a type unsupported by the operator.
     Binop { sym: Spanned<BinopSym> },
+
+    /// Operand to a binop was of an incompatible type to the other operand.
+    BinopOperand {
+        sym: Spanned<BinopSym>,
+        operand: Span,
+        operand_ty: Ty,
+    },
 }
 
 impl UnopSym {
@@ -154,13 +176,17 @@ impl UnopSym {
 impl BinopSym {
     fn expected_tys(self) -> String {
         match self {
-            BinopSym::Eq | BinopSym::Ne => "any".into(),
+            BinopSym::Eq | BinopSym::Ne => "operands of any type".to_string(),
             BinopSym::Gt | BinopSym::Ge | BinopSym::Lt | BinopSym::Le => {
-                PrimitiveTy::Num.to_string()
+                format!("operands of type {}", PrimitiveTy::Num)
             }
-            BinopSym::Add => oxford_or(&[PrimitiveTy::Num, PrimitiveTy::Str]).to_string(),
+            BinopSym::Add => format!(
+                "both operands to be of type {}, or of type {}",
+                PrimitiveTy::Num,
+                PrimitiveTy::Str
+            ),
             BinopSym::Sub | BinopSym::Div | BinopSym::Mul | BinopSym::Mod => {
-                PrimitiveTy::Num.to_string()
+                format!("operands of type {}", PrimitiveTy::Num)
             }
         }
     }

@@ -1,7 +1,7 @@
 //! Evaluation of Lox syntax trees.
 use std::collections::HashMap;
 use std::io::Write;
-use std::ops::{Add, Div, Mul, Rem, Sub};
+use std::ops::{Div, Mul, Rem, Sub};
 
 use crate::diag::Diagnostic;
 use crate::error::{join_errs, CoercionCause, RuntimeError, RuntimeResult};
@@ -95,7 +95,7 @@ impl<'s> Interpreter<'s, '_> {
             ExprNode::Var(name) => self
                 .env
                 .get(*name)
-                .ok_or_else(|| vec![RuntimeError::unbound_var_ref((*name).spanned(expr.span))]),
+                .ok_or_else(|| vec![RuntimeError::unbound_var_ref(expr.with_node(*name))]),
 
             ExprNode::Group(expr) => self.eval_expr(expr),
 
@@ -106,7 +106,7 @@ impl<'s> Interpreter<'s, '_> {
 
                     UnopSym::Neg => {
                         let operand_val = self.coerce_to_num(
-                            operand_val.spanned(operand.span),
+                            operand.with_node(operand_val),
                             CoercionCause::Unop { sym: *sym },
                         )?;
                         Ok(Value::Num(-operand_val))
@@ -118,7 +118,7 @@ impl<'s> Interpreter<'s, '_> {
                 let lop = self.eval_expr(lhs)?;
                 let rop = self.eval_expr(rhs)?;
 
-                self.eval_binop(*sym, lop.spanned(lhs.span), rop.spanned(rhs.span))
+                self.eval_binop(*sym, lhs.with_node(lop), rhs.with_node(rop))
             }
 
             ExprNode::Assign { place, val } => {
@@ -136,13 +136,38 @@ impl<'s> Interpreter<'s, '_> {
         lhs: Spanned<Value<'s>>,
         rhs: Spanned<Value<'s>>,
     ) -> RuntimeResult<'s, Value<'s>> {
-        match (sym.node, &lhs.node, &rhs.node) {
-            (BinopSym::Add, Value::Str(lnode), Value::Str(rnode)) => {
-                Ok(Value::Str(lnode.concat(rnode)))
-            }
+        match sym.node {
+            BinopSym::Eq => Ok(Value::Bool(self.value_eq(lhs, rhs))),
+            BinopSym::Ne => Ok(Value::Bool(!self.value_eq(lhs, rhs))),
 
-            (BinopSym::Eq, _, _) => Ok(Value::Bool(self.value_eq(lhs, rhs))),
-            (BinopSym::Ne, _, _) => Ok(Value::Bool(!self.value_eq(lhs, rhs))),
+            BinopSym::Add => match (&lhs.node, &rhs.node) {
+                (Value::Num(lhs), Value::Num(rhs)) => Ok(Value::Num(*lhs + *rhs)),
+                (Value::Str(lhs), Value::Str(rhs)) => Ok(Value::Str(lhs.concat(rhs))),
+
+                (Value::Str(_) | Value::Num(_), _) => {
+                    let lhs_ty = lhs.node.ty();
+                    let cause = Some(CoercionCause::BinopOperand {
+                        sym,
+                        operand: lhs.span,
+                        operand_ty: lhs.node.ty(),
+                    });
+                    Err(vec![RuntimeError::InvalidCoercion {
+                        val: rhs.span,
+                        val_ty: rhs.node.ty(),
+                        coerced_ty: lhs_ty,
+                        cause,
+                    }])
+                }
+
+                _ => {
+                    let cause = CoercionCause::Binop { sym };
+                    Err(join_errs(
+                        self.coerce_to_num(lhs, cause),
+                        self.coerce_to_num(rhs, cause),
+                    )
+                    .unwrap_err())
+                }
+            },
 
             _ => {
                 let cause = CoercionCause::Binop { sym };
@@ -260,7 +285,7 @@ impl BinopSym {
     fn num_num_op(self) -> fn(f64, f64) -> f64 {
         match self {
             BinopSym::Sub => Sub::sub,
-            BinopSym::Add => Add::add,
+            // BinopSym::Add => Add::add, // This case is handled in Interpreter::eval_binop
             BinopSym::Div => Div::div,
             BinopSym::Mul => Mul::mul,
             BinopSym::Mod => Rem::rem,

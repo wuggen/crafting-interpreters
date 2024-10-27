@@ -162,8 +162,8 @@ impl<T> Spanned<T> {
         }
     }
 
-    pub fn with_node<S>(self, node: S) -> Spanned<S> {
-        self.map(|_| node)
+    pub fn with_node<S>(&self, node: S) -> Spanned<S> {
+        node.spanned(self.span)
     }
 
     pub fn with_span(self, span: Span) -> Spanned<T> {
