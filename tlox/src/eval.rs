@@ -6,6 +6,7 @@ use std::ops::{Add, Div, Mul, Rem, Sub};
 use crate::diag::Diagnostic;
 use crate::error::{join_errs, CoercionCause, RuntimeError, RuntimeResult};
 use crate::output::OutputStream;
+use crate::session::SessionKey;
 use crate::span::{Spannable, Spanned};
 use crate::symbol::Symbol;
 use crate::syn::{BinopSym, Expr, ExprNode, Lit, Place, Program, Stmt, UnopSym};
@@ -16,22 +17,35 @@ use crate::val::{StrValue, Value};
 mod test;
 
 /// A tree-walking Lox interpreter.
-#[derive(Default)]
 pub struct Interpreter<'s, 'out> {
+    key: &'s SessionKey<'s>,
     env: Env<'s>,
     output: OutputStream<'out>,
 }
 
-impl<'out> Interpreter<'_, 'out> {
-    pub fn with_output(output: OutputStream<'out>) -> Self {
+impl<'s, 'out> Interpreter<'s, 'out> {
+    pub fn new(key: &'s SessionKey<'s>) -> Self {
         Self {
+            key,
+            env: Env::default(),
+            output: OutputStream::default(),
+        }
+    }
+
+    pub fn with_output(key: &'s SessionKey<'s>, output: OutputStream<'out>) -> Self {
+        Self {
+            key,
             env: Env::default(),
             output,
         }
     }
 
-    pub fn with_vec_output(output: &'out mut Vec<u8>) -> Self {
-        Self::with_output(OutputStream::with(output))
+    pub fn with_vec_output(key: &'s SessionKey<'s>, output: &'out mut Vec<u8>) -> Self {
+        Self::with_output(key, OutputStream::with(output))
+    }
+
+    pub fn key(&self) -> &'s SessionKey<'s> {
+        self.key
     }
 }
 

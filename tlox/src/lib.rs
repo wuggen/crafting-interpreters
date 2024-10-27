@@ -63,7 +63,8 @@ impl TLox {
             if let Some(path) = script {
                 match fs::read_to_string(&path) {
                     Ok(content) => {
-                        if Self::run_source(path, &content).is_some() {
+                        let mut interpreter = Interpreter::new(&key);
+                        if Self::run_source(&mut interpreter, path, &content).is_some() {
                             ExitCode::SUCCESS
                         } else {
                             ExitCode::FAILURE
@@ -80,6 +81,7 @@ impl TLox {
                 let reader = io::stdin();
                 let mut buffer = String::new();
                 let mut next_input = 0;
+                let mut interpreter = Interpreter::new(&key);
                 loop {
                     let current_input = next_input;
                     next_input += 1;
@@ -96,26 +98,30 @@ impl TLox {
                     if buffer.trim().is_empty() {
                         break ExitCode::SUCCESS;
                     } else {
-                        Self::run_source(current_input, &buffer);
+                        Self::run_source(&mut interpreter, current_input, &buffer);
                     }
                 }
             }
         })
     }
 
-    fn run_source(name: impl Into<SourceName>, source: &str) -> Option<()> {
-        Session::with_current(|key| {
-            let idx = key.get().sm.add_source(name, source);
-            if let Some(program) = parse_source(&key, idx) {
-                Interpreter::default().eval(&program);
-                Some(())
-            } else {
-                if key.get().dcx.has_errors() {
-                    key.get().dcx.report();
-                }
-                None
-            }
-        })
+    fn run_source(
+        interpreter: &mut Interpreter,
+        name: impl Into<SourceName>,
+        source: &str,
+    ) -> Option<()> {
+        let key = interpreter.key();
+        let idx = key.get().sm.add_source(name, source);
+        if let Some(program) = parse_source(key, idx) {
+            interpreter.eval(&program);
+        }
+
+        if key.get().dcx.has_errors() {
+            key.get().dcx.report();
+            None
+        } else {
+            Some(())
+        }
     }
 }
 
