@@ -1,6 +1,5 @@
 use std::fmt::Write;
 
-use codespan_reporting::term::termcolor::ParseColorError;
 use indoc::indoc;
 use insta::assert_snapshot;
 
@@ -104,7 +103,7 @@ fn err_missing_lhs() {
         1 | + 4;
           | ^ unexpected token here
           |
-          = note: expected `var`, `print`, `if`, `{`, number, string, `true`, `false`, `nil`, or `(`
+          = note: expected statement
 
         "#);
 
@@ -119,7 +118,7 @@ fn err_missing_lhs() {
         1 | 4 + (* nil) - 5;
           |      ^ unexpected token here
           |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
+          = note: expected expression
 
         "#);
     });
@@ -139,7 +138,7 @@ fn err_missing_rhs() {
         1 | 4 +;
           |    ^ statement terminated here
           |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
+          = note: expected expression
 
         "#);
     });
@@ -161,7 +160,7 @@ fn err_early_close_paren() {
           |     |      
           |     parentheses opened here
           |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
+          = note: expected expression
 
         "#);
     });
@@ -229,7 +228,7 @@ fn err_two_ops() {
         1 | 8 * + 4
           |     ^ unexpected token here
           |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
+          = note: expected expression
 
         "#);
     })
@@ -249,7 +248,7 @@ fn err_multiple() {
         1 | 8 * + (4 - ) / (  ) + 5
           |     ^ unexpected token here
           |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
+          = note: expected expression
 
         "#);
 
@@ -270,7 +269,7 @@ fn err_multiple() {
         1 | / false * (nil
           | ^ unexpected token here
           |
-          = note: expected `var`, `print`, `if`, `{`, number, string, `true`, `false`, `nil`, or `(`
+          = note: expected statement
 
         "#);
     });
@@ -312,7 +311,7 @@ fn err_spurious_close_paren() {
         1 | 45 - nil ) / false
           |          ^ unexpected token here
           |
-          = note: expected `var`, `print`, `if`, `{`, number, string, `true`, `false`, `nil`, or `(`
+          = note: expected statement
 
         "#);
     });
@@ -367,7 +366,7 @@ fn err_multiple_stmts() {
         1 | 8 /;
           |    ^ statement terminated here
           |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
+          = note: expected expression
 
         error: statement terminated prematurely
           --> %i0:2:6
@@ -375,7 +374,7 @@ fn err_multiple_stmts() {
         2 | print;
           |      ^ statement terminated here
           |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
+          = note: expected expression
 
         error: parentheses closed prematurely
           --> %i0:3:10
@@ -385,7 +384,7 @@ fn err_multiple_stmts() {
           |         | 
           |         parentheses opened here
           |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
+          = note: expected expression
 
         error: unterminated statement
           --> %i0:5:4
@@ -403,7 +402,7 @@ fn err_multiple_stmts() {
         5 | 48 print +0;
           |          ^ unexpected token here
           |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
+          = note: expected expression
 
         "#
         );
@@ -477,7 +476,7 @@ fn err_decl_stmts() {
         1 | var lol = ;
           |           ^ statement terminated here
           |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
+          = note: expected expression
 
         "#,
         );
@@ -667,7 +666,7 @@ fn err_block_stmts() {
         1 | var x = { 4; };
           |         ^ unexpected token here
           |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
+          = note: expected expression
 
         "#,
         );
@@ -711,7 +710,7 @@ fn err_block_stmts() {
         1 | { lol; + 4; }
           |        ^ unexpected token here
           |
-          = note: expected `var`, `print`, `if`, `{`, number, string, `true`, `false`, `nil`, or `(`
+          = note: expected statement
 
         "#,
         );
@@ -737,7 +736,7 @@ fn err_block_stmts() {
         1 | {;}
           |  ^ unexpected token here
           |
-          = note: expected `var`, `print`, `if`, `{`, number, string, `true`, `false`, `nil`, or `(`
+          = note: expected statement
 
         "#,
         );
@@ -792,7 +791,7 @@ fn err_if_else_stmts() {
         1 | if (a == b) lol else lmao; print + 4;
           |                 ^^^^ unexpected token here
           |
-          = note: expected `var`, `print`, `if`, `{`, number, string, `true`, `false`, `nil`, or `(`
+          = note: expected statement
 
         error: unexpected `+` token in input
           --> %i0:1:34
@@ -800,7 +799,7 @@ fn err_if_else_stmts() {
         1 | if (a == b) lol else lmao; print + 4;
           |                                  ^ unexpected token here
           |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
+          = note: expected expression
 
         "#,
         );

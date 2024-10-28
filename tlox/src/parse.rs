@@ -101,9 +101,6 @@ impl<'s> Parser<'s> {
     }
 }
 
-const ATOM_STARTS: [&str; 6] = ["number", "string", "`true`", "`false`", "`nil`", "`(`"];
-const STMT_STARTS: [&str; 4] = ["`var`", "`print`", "`if`", "`{`"];
-
 impl<'s> Parser<'s> {
     /// Push a diagnostic to the stack to be emitted.
     ///
@@ -267,11 +264,7 @@ impl<'s> Parser<'s> {
             Token::If => self.if_stmt(),
             tok if tok.is_stmt_start() => self.expr_or_print_stmt(),
             _ => {
-                self.push_diag(ParserDiag::unexpected_tok(
-                    self,
-                    peeked,
-                    STMT_STARTS.into_iter().chain(ATOM_STARTS),
-                ));
+                self.push_diag(ParserDiag::unexpected_tok(self, peeked, "statement"));
                 Err(ParserError::unexpected_tok(peeked).handled())
             }
         }
@@ -290,7 +283,7 @@ impl<'s> Parser<'s> {
         let oparen = self
             .advance_or_peek(|tok| matches!(tok, Token::LeftParen))
             .map_err(|tok| {
-                self.push_diag(ParserDiag::unexpected(self, tok, Some("`(`")));
+                self.push_diag(ParserDiag::unexpected(self, tok, "`(`"));
                 ParserError::unexpected(tok).handled()
             })?;
 
@@ -441,7 +434,7 @@ impl<'s> Parser<'s> {
             }
 
             ParserErrorKind::Unexpected(tok) => {
-                self.push_diag(ParserDiag::unexpected(self, tok, ATOM_STARTS));
+                self.push_diag(ParserDiag::unexpected(self, tok, "expression"));
                 Err(kind.handled())
             }
 
@@ -633,7 +626,7 @@ impl<'s> Parser<'s> {
                 }
 
                 _ => {
-                    self.push_diag(ParserDiag::unexpected_tok(self, tok, ATOM_STARTS));
+                    self.push_diag(ParserDiag::unexpected_tok(self, tok, "expression"));
                     Err(ParserError::unexpected_tok(tok).handled())
                 }
             }

@@ -125,7 +125,11 @@ impl<'s> Interpreter<'s, '_> {
                 self.env.pop_scope();
             }
 
-            Stmt::IfElse { cond, body, else_body } => {
+            Stmt::IfElse {
+                cond,
+                body,
+                else_body,
+            } => {
                 let cond = self.eval_expr(cond)?;
                 if cond.is_truthy() {
                     res = self.eval_stmt(body)?;

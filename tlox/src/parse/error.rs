@@ -7,7 +7,6 @@ use super::Parser;
 use crate::diag::{Diag, DiagKind, Diagnostic};
 use crate::span::{Span, Spanned};
 use crate::tok::Token;
-use crate::util::oxford_or;
 
 /// Result type for parser errors.
 pub type ParserRes<'s, T> = Result<T, ParserError<'s>>;
@@ -142,7 +141,7 @@ pub enum ParserDiag<'s> {
     Unexpected {
         tok: Option<Token<'s>>,
         span: Span,
-        expected: Vec<&'static str>,
+        expected: Option<&'static str>,
     },
 
     EarlyClosePair {
@@ -181,7 +180,7 @@ impl<'s> ParserDiag<'s> {
     pub fn unexpected(
         parser: &Parser<'s>,
         maybe_tok: Option<Spanned<Token<'s>>>,
-        expected: impl IntoIterator<Item = &'static str>,
+        expected: impl Into<Option<&'static str>>,
     ) -> Self {
         let (tok, span) = maybe_tok
             .map(|tok| (Some(tok.node), tok.span))
@@ -189,14 +188,14 @@ impl<'s> ParserDiag<'s> {
         Self::Unexpected {
             tok,
             span,
-            expected: expected.into_iter().collect(),
+            expected: expected.into(),
         }
     }
 
     pub fn unexpected_tok(
         parser: &Parser<'s>,
         tok: Spanned<Token<'s>>,
-        expected: impl IntoIterator<Item = &'static str>,
+        expected: impl Into<Option<&'static str>>,
     ) -> Self {
         Self::unexpected(parser, Some(tok), expected)
     }
@@ -272,24 +271,16 @@ impl ParserDiag<'_> {
         }
     }
 
-    fn expected(&self) -> Option<String> {
+    fn expected(&mut self) -> Option<&'static str> {
         match self {
-            ParserDiag::Unexpected { expected, .. } => {
-                if expected.is_empty() {
-                    None
-                } else {
-                    Some(oxford_or(expected).to_string())
-                }
-            }
+            ParserDiag::Unexpected { expected, .. } => expected.take(),
 
-            ParserDiag::EarlyClosePair { .. } => Some(oxford_or(&super::ATOM_STARTS).to_string()),
-            ParserDiag::UnclosedPair { kind, .. } => Some(kind.close_tok().summary().into()),
-            ParserDiag::UnterminatedStmt { .. } => Some("`;`".into()),
-            ParserDiag::EarlyTerminatedStmt { .. } => {
-                Some(oxford_or(&super::ATOM_STARTS).to_string())
-            }
-            ParserDiag::MissingVarName { .. } => Some("identifier".into()),
-            ParserDiag::InvalidPlaceExpr { .. } => Some("identifier".into()),
+            ParserDiag::EarlyClosePair { .. } => Some("expression"),
+            ParserDiag::UnclosedPair { kind, .. } => Some(kind.close_tok().summary()),
+            ParserDiag::UnterminatedStmt { .. } => Some("`;`"),
+            ParserDiag::EarlyTerminatedStmt { .. } => Some("expression"),
+            ParserDiag::MissingVarName { .. } => Some("identifier"),
+            ParserDiag::InvalidPlaceExpr { .. } => Some("identifier"),
         }
     }
 
@@ -341,7 +332,7 @@ impl ParserDiag<'_> {
 }
 
 impl Diagnostic for ParserDiag<'_> {
-    fn into_diag(self) -> Diag {
+    fn into_diag(mut self) -> Diag {
         let mut diag = Diag::new(DiagKind::Error, self.message());
         if let Some(expected) = self.expected() {
             diag = diag.with_note(format!("expected {expected}"));
