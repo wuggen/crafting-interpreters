@@ -99,10 +99,10 @@ impl<'s> Parser<'s> {
     }
 }
 
-impl<'s> Parser<'s> {
-    const ATOM_STARTS: [&'static str; 6] =
-        ["number", "string", "`true`", "`false`", "`nil`", "`(`"];
+const ATOM_STARTS: [&'static str; 6] = ["number", "string", "`true`", "`false`", "`nil`", "`(`"];
+const STMT_STARTS: [&'static str; 3] = ["`var`", "`print`", "`{`"];
 
+impl<'s> Parser<'s> {
     /// Push a diagnostic to the stack to be emitted.
     ///
     /// Diagnostics are emitted after attempting to parse each statement, in reverse of the order in
@@ -258,10 +258,19 @@ impl<'s> Parser<'s> {
     ///
     /// Corresponds to the `stmt` grammar production.
     fn stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
-        match self.peek().unwrap().node {
+        let peeked = self.peek().unwrap();
+        match peeked.node {
             Token::Var => self.decl_stmt(),
             Token::LeftBrace => self.block_stmt(),
-            _ => self.expr_or_print_stmt(),
+            tok if tok.is_stmt_start() => self.expr_or_print_stmt(),
+            _ => {
+                self.push_diag(ParserDiag::unexpected_tok(
+                    self,
+                    peeked,
+                    STMT_STARTS.into_iter().chain(ATOM_STARTS),
+                ));
+                Err(ParserError::unexpected_tok(peeked).handled())
+            }
         }
     }
 
@@ -386,7 +395,7 @@ impl<'s> Parser<'s> {
             }
 
             ParserErrorKind::Unexpected(tok) => {
-                self.push_diag(ParserDiag::unexpected(self, tok, Self::ATOM_STARTS));
+                self.push_diag(ParserDiag::unexpected(self, tok, ATOM_STARTS));
                 Err(kind.handled())
             }
 
@@ -578,7 +587,7 @@ impl<'s> Parser<'s> {
                 }
 
                 _ => {
-                    self.push_diag(ParserDiag::unexpected_tok(self, tok, Self::ATOM_STARTS));
+                    self.push_diag(ParserDiag::unexpected_tok(self, tok, ATOM_STARTS));
                     Err(ParserError::unexpected_tok(tok).handled())
                 }
             }

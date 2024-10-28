@@ -103,7 +103,7 @@ fn err_missing_lhs() {
         1 | + 4;
           | ^ unexpected token here
           |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
+          = note: expected `var`, `print`, `{`, number, string, `true`, `false`, `nil`, or `(`
 
         "#);
 
@@ -269,7 +269,7 @@ fn err_multiple() {
         1 | / false * (nil
           | ^ unexpected token here
           |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
+          = note: expected `var`, `print`, `{`, number, string, `true`, `false`, `nil`, or `(`
 
         "#);
     });
@@ -311,7 +311,7 @@ fn err_spurious_close_paren() {
         1 | 45 - nil ) / false
           |          ^ unexpected token here
           |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
+          = note: expected `var`, `print`, `{`, number, string, `true`, `false`, `nil`, or `(`
 
         "#);
     });
@@ -710,7 +710,7 @@ fn err_block_stmts() {
         1 | { lol; + 4; }
           |        ^ unexpected token here
           |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
+          = note: expected `var`, `print`, `{`, number, string, `true`, `false`, `nil`, or `(`
 
         "#,
         );
@@ -730,21 +730,13 @@ fn err_block_stmts() {
           |
           = note: expected `}`
 
-        error: statement terminated prematurely
+        error: unexpected `;` token in input
           --> %i0:1:2
           |
         1 | {;}
-          |  ^ statement terminated here
+          |  ^ unexpected token here
           |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
-
-        error: unexpected `}` token in input
-          --> %i0:1:3
-          |
-        1 | {;}
-          |   ^ unexpected token here
-          |
-          = note: expected number, string, `true`, `false`, `nil`, or `(`
+          = note: expected `var`, `print`, `{`, number, string, `true`, `false`, `nil`, or `(`
 
         "#,
         );

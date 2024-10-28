@@ -282,11 +282,11 @@ impl ParserDiag<'_> {
                 }
             }
 
-            ParserDiag::EarlyClosePair { .. } => Some(oxford_or(&Parser::ATOM_STARTS).to_string()),
+            ParserDiag::EarlyClosePair { .. } => Some(oxford_or(&super::ATOM_STARTS).to_string()),
             ParserDiag::UnclosedPair { kind, .. } => Some(kind.close_tok().summary().into()),
             ParserDiag::UnterminatedStmt { .. } => Some("`;`".into()),
             ParserDiag::EarlyTerminatedStmt { .. } => {
-                Some(oxford_or(&Parser::ATOM_STARTS).to_string())
+                Some(oxford_or(&super::ATOM_STARTS).to_string())
             }
             ParserDiag::MissingVarName { .. } => Some("identifier".into()),
             ParserDiag::InvalidPlaceExpr { .. } => Some("identifier".into()),
