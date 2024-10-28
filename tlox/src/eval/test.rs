@@ -11,7 +11,9 @@ use crate::util::test::parse_new_source;
 fn eval_new_source(key: &SessionKey, source: &str, output: &mut String) {
     if let Some(tree) = parse_new_source(key, source) {
         let mut output_bytes = Vec::new();
-        Interpreter::with_vec_output(key, &mut output_bytes).eval(&tree);
+        Interpreter::new(key)
+            .with_vec_output(&mut output_bytes)
+            .eval(&tree);
         output.push_str(std::str::from_utf8(&output_bytes).unwrap());
     }
 }

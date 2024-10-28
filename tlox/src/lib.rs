@@ -81,7 +81,7 @@ impl TLox {
                 let reader = io::stdin();
                 let mut buffer = String::new();
                 let mut next_input = 0;
-                let mut interpreter = Interpreter::new(&key);
+                let mut interpreter = Interpreter::new_repl(&key);
                 loop {
                     let current_input = next_input;
                     next_input += 1;

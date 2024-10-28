@@ -21,27 +21,34 @@ pub struct Interpreter<'s, 'out> {
     key: &'s SessionKey<'s>,
     env: Env<'s>,
     output: OutputStream<'out>,
+    repl: bool,
 }
 
-impl<'s, 'out> Interpreter<'s, 'out> {
-    pub fn new(key: &'s SessionKey<'s>) -> Self {
-        Self {
+impl<'s> Interpreter<'s, '_> {
+    pub fn new(key: &'s SessionKey<'s>) -> Interpreter<'s, 'static> {
+        Interpreter {
             key,
             env: Env::default(),
             output: OutputStream::default(),
+            repl: false,
         }
     }
 
-    pub fn with_output(key: &'s SessionKey<'s>, output: OutputStream<'out>) -> Self {
-        Self {
+    pub fn new_repl(key: &'s SessionKey<'s>) -> Interpreter<'s, 'static> {
+        Interpreter {
             key,
             env: Env::default(),
-            output,
+            output: OutputStream::default(),
+            repl: true,
         }
     }
 
-    pub fn with_vec_output(key: &'s SessionKey<'s>, output: &'out mut Vec<u8>) -> Self {
-        Self::with_output(key, OutputStream::with(output))
+    pub fn with_output<'out>(self, output: OutputStream<'out>) -> Interpreter<'s, 'out> {
+        Interpreter { output, ..self }
+    }
+
+    pub fn with_vec_output<'out>(self, output: &'out mut Vec<u8>) -> Interpreter<'s, 'out> {
+        self.with_output(OutputStream::with(output))
     }
 
     pub fn key(&self) -> &'s SessionKey<'s> {
@@ -52,25 +59,41 @@ impl<'s, 'out> Interpreter<'s, 'out> {
 impl<'s> Interpreter<'s, '_> {
     /// Evaluate a Lox program.
     pub fn eval(&mut self, program: &Program<'s>) {
+        let mut res = None;
         for stmt in &program.stmts {
-            if let Err(errs) = self.eval_stmt(stmt) {
-                for err in errs {
-                    err.emit();
+            match self.eval_stmt(stmt) {
+                Ok(val) => {
+                    res = val;
                 }
-                return;
+
+                Err(errs) => {
+                    for err in errs {
+                        err.emit();
+                    }
+                    return;
+                }
+            }
+        }
+
+        if self.repl {
+            if let Some(val) = res {
+                writeln!(self.output, "{val}").unwrap();
             }
         }
     }
 
-    fn eval_stmt(&mut self, stmt: &Spanned<Stmt<'s>>) -> RuntimeResult<'s, ()> {
+    fn eval_stmt(&mut self, stmt: &Spanned<Stmt<'s>>) -> RuntimeResult<'s, Option<Value<'s>>> {
+        let mut res = None;
+
         match &stmt.node {
             Stmt::Expr { val } => {
-                self.eval_expr(val)?;
+                res = Some(self.eval_expr(val)?);
             }
 
             Stmt::Print { val } => {
                 let val = self.eval_expr(val)?;
                 writeln!(self.output, "{val}").unwrap();
+                res = None;
             }
 
             Stmt::Decl { name, init } => {
@@ -80,16 +103,22 @@ impl<'s> Interpreter<'s, '_> {
                     Value::Nil
                 };
 
-                self.env.declare(name.node, init);
+                self.env.declare(name.node, init.clone());
+                res = Some(init);
             }
 
             Stmt::Block { stmts } => {
                 self.env.push_scope();
 
                 for stmt in stmts {
-                    if let Err(errs) = self.eval_stmt(stmt) {
-                        self.env.pop_scope();
-                        return Err(errs);
+                    match self.eval_stmt(stmt) {
+                        Ok(val) => {
+                            res = val;
+                        }
+                        Err(errs) => {
+                            self.env.pop_scope();
+                            return Err(errs);
+                        }
                     }
                 }
 
@@ -97,7 +126,7 @@ impl<'s> Interpreter<'s, '_> {
             }
         }
 
-        Ok(())
+        Ok(res)
     }
 
     /// Evaluate an expression.
