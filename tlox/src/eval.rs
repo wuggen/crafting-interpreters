@@ -82,6 +82,19 @@ impl<'s> Interpreter<'s, '_> {
 
                 self.env.declare(name.node, init);
             }
+
+            Stmt::Block { stmts } => {
+                self.env.push_scope();
+
+                for stmt in stmts {
+                    if let Err(errs) = self.eval_stmt(stmt) {
+                        self.env.pop_scope();
+                        return Err(errs);
+                    }
+                }
+
+                self.env.pop_scope();
+            }
         }
 
         Ok(())
@@ -238,11 +251,15 @@ struct Env<'s> {
 }
 
 impl<'s> Env<'s> {
-    fn with_parent(parent: Env<'s>) -> Self {
-        Self {
-            parent: Some(Box::new(parent)),
-            ..Default::default()
-        }
+    fn push_scope(&mut self) {
+        let mut env = Env::default();
+        std::mem::swap(self, &mut env);
+        self.parent = Some(Box::new(env));
+    }
+
+    fn pop_scope(&mut self) {
+        let env = self.parent.take().expect("cannot pop the global scope");
+        *self = *env;
     }
 
     fn declare(&mut self, name: Symbol<'s>, init: Value<'s>) {

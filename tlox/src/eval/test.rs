@@ -360,3 +360,50 @@ fn err_binop_tys() {
         );
     })
 }
+
+#[test]
+fn scopes() {
+    Session::with_default(|key| {
+        assert_snapshot!(
+            test_eval(&key, indoc! {r#"
+            var a = 4;
+            {
+                print a;
+                var a = 6;
+                print a;
+            }
+            print a;
+            "#}),
+            @r#"
+        4
+        6
+        4
+        "#,
+        );
+    })
+}
+
+#[test]
+fn err_scopes() {
+    Session::with_default(|key| {
+        assert_snapshot!(
+            test_eval(&key, indoc! {r#"
+            {
+                var a = "lol";
+                print a;
+            }
+            var b = a + 1;
+            "#}),
+            @r#"
+        lol
+        --> Diagnostics:
+        error: reference to unbound variable `a`
+          --> %i0:5:9
+          |
+        5 | var b = a + 1;
+          |         ^ variable is not bound at this point
+
+        "#,
+        );
+    })
+}

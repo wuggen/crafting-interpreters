@@ -103,7 +103,8 @@ impl Token<'_> {
         self.is_receiver_expr_start()
             || matches!(
                 self,
-                Token::Class
+                Token::LeftBrace
+                    | Token::Class
                     | Token::Fun
                     | Token::For
                     | Token::If

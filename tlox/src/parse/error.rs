@@ -69,6 +69,12 @@ pub enum ParserErrorKind<'s> {
     /// statement boundary, since it is reasonable to assume it's at one.
     SpuriousStmtEnd,
 
+    /// A spurious block statement end.
+    ///
+    /// This is caused by an unexpected closing brace while parsing a block statement. As for
+    /// `SpuriousStmtEnd`, synchronization is not needed outside of the block statement.
+    SpuriousBlockEnd,
+
     /// An assignment was attempted to an invalid place expression.
     InvalidPlaceExpr,
 }
@@ -90,6 +96,10 @@ impl<'s> ParserError<'s> {
         ParserErrorKind::SpuriousStmtEnd
     }
 
+    pub const fn spurious_block_end() -> ParserErrorKind<'s> {
+        ParserErrorKind::SpuriousBlockEnd
+    }
+
     pub const fn invalid_place_expr() -> ParserErrorKind<'s> {
         ParserErrorKind::InvalidPlaceExpr
     }
@@ -106,6 +116,28 @@ impl<'s> ParserErrorKind<'s> {
 }
 
 #[derive(Debug)]
+pub enum Pair {
+    Parens,
+    Braces,
+}
+
+impl Pair {
+    fn close_tok(&self) -> Token<'static> {
+        match self {
+            Pair::Parens => Token::RightParen,
+            Pair::Braces => Token::RightBrace,
+        }
+    }
+
+    fn desc(&self) -> &'static str {
+        match self {
+            Pair::Parens => "parentheses",
+            Pair::Braces => "braces",
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum ParserDiag<'s> {
     Unexpected {
         tok: Option<Token<'s>>,
@@ -113,12 +145,14 @@ pub enum ParserDiag<'s> {
         expected: Vec<&'static str>,
     },
 
-    EarlyCloseParen {
+    EarlyClosePair {
+        kind: Pair,
         open: Span,
         close: Span,
     },
 
-    UnclosedParen {
+    UnclosedPair {
+        kind: Pair,
         open: Span,
         expected_close: Span,
     },
@@ -141,16 +175,6 @@ pub enum ParserDiag<'s> {
         place: Span,
         eq: Span,
     },
-}
-
-impl ParserDiag<'_> {
-    pub fn extend_expected(mut self, new_expected: impl IntoIterator<Item = &'static str>) -> Self {
-        if let Self::Unexpected { expected, .. } = &mut self {
-            expected.extend(new_expected);
-        }
-
-        self
-    }
 }
 
 impl<'s> ParserDiag<'s> {
@@ -177,15 +201,32 @@ impl<'s> ParserDiag<'s> {
         Self::unexpected(parser, Some(tok), expected)
     }
 
-    pub const fn early_close_paren(open: Span, close: Span) -> Self {
-        Self::EarlyCloseParen { open, close }
+    pub const fn early_close_pair(kind: Pair, open: Span, close: Span) -> Self {
+        Self::EarlyClosePair { kind, open, close }
     }
 
-    pub const fn unclosed_paren(open: Span, expected_close: Span) -> Self {
-        Self::UnclosedParen {
+    pub const fn early_close_paren(open: Span, close: Span) -> Self {
+        Self::early_close_pair(Pair::Parens, open, close)
+    }
+
+    pub const fn early_close_brace(open: Span, close: Span) -> Self {
+        Self::early_close_pair(Pair::Braces, open, close)
+    }
+
+    pub const fn unclosed_pair(kind: Pair, open: Span, expected_close: Span) -> Self {
+        Self::UnclosedPair {
+            kind,
             open,
             expected_close,
         }
+    }
+
+    pub const fn unclosed_paren(open: Span, expected_close: Span) -> Self {
+        Self::unclosed_pair(Pair::Parens, open, expected_close)
+    }
+
+    pub const fn unclosed_brace(open: Span, expected_close: Span) -> Self {
+        Self::unclosed_pair(Pair::Braces, open, expected_close)
     }
 
     pub const fn unterminated_stmt(stmt: Span, expected_semi: Span) -> Self {
@@ -218,8 +259,10 @@ impl ParserDiag<'_> {
                 format!("unexpected {} token in input", tok.summary())
             }
             ParserDiag::Unexpected { tok: None, .. } => "unexpected end of input".into(),
-            ParserDiag::EarlyCloseParen { .. } => "parentheses closed prematurely".into(),
-            ParserDiag::UnclosedParen { .. } => "unclosed parentheses".into(),
+            ParserDiag::EarlyClosePair { kind, .. } => {
+                format!("{} closed prematurely", kind.desc())
+            }
+            ParserDiag::UnclosedPair { kind, .. } => format!("unclosed {}", kind.desc()),
             ParserDiag::UnterminatedStmt { .. } => "unterminated statement".into(),
             ParserDiag::EarlyTerminatedStmt { .. } => "statement terminated prematurely".into(),
             ParserDiag::MissingVarName { .. } => "missing name in variable declaration".into(),
@@ -239,8 +282,8 @@ impl ParserDiag<'_> {
                 }
             }
 
-            ParserDiag::EarlyCloseParen { .. } => Some(oxford_or(&Parser::ATOM_STARTS).to_string()),
-            ParserDiag::UnclosedParen { .. } => Some("`)`".into()),
+            ParserDiag::EarlyClosePair { .. } => Some(oxford_or(&Parser::ATOM_STARTS).to_string()),
+            ParserDiag::UnclosedPair { kind, .. } => Some(kind.close_tok().summary().into()),
             ParserDiag::UnterminatedStmt { .. } => Some("`;`".into()),
             ParserDiag::EarlyTerminatedStmt { .. } => {
                 Some(oxford_or(&Parser::ATOM_STARTS).to_string())
@@ -257,16 +300,20 @@ impl ParserDiag<'_> {
                 None => diag.with_primary(span, "end of input here"),
             },
 
-            ParserDiag::EarlyCloseParen { open, close } => diag
-                .with_primary(close, "parentheses closed here")
-                .with_secondary(open, "parentheses opened here"),
+            ParserDiag::EarlyClosePair { kind, open, close } => diag
+                .with_primary(close, format!("{} closed here", kind.desc()))
+                .with_secondary(open, format!("{} opened here", kind.desc())),
 
-            ParserDiag::UnclosedParen {
+            ParserDiag::UnclosedPair {
+                kind,
                 open,
                 expected_close,
             } => diag
-                .with_primary(expected_close, "parentheses should have been closed here")
-                .with_secondary(open, "parentheses opened here"),
+                .with_primary(
+                    expected_close,
+                    format!("{} should have been closed here", kind.desc()),
+                )
+                .with_secondary(open, format!("{} opened here", kind.desc())),
 
             ParserDiag::UnterminatedStmt {
                 stmt,

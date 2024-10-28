@@ -20,21 +20,40 @@ pub enum Stmt<'s> {
         name: Spanned<Symbol<'s>>,
         init: Option<Spanned<Expr<'s>>>,
     },
+
+    /// A block statement.
+    Block { stmts: Vec<Spanned<Stmt<'s>>> },
 }
 
-impl Display for Stmt<'_> {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+impl Stmt<'_> {
+    fn display_indented(&self, f: &mut Formatter, level: usize) -> fmt::Result {
+        let indent = level * 4;
+        write!(f, "{:indent$}", "")?;
         match self {
-            Self::Expr { val } => write!(f, "{};", val.node),
-            Self::Print { val } => write!(f, "print {};", val.node),
-            Self::Decl { name, init } => {
+            Stmt::Expr { val } => write!(f, "{};", val.node),
+            Stmt::Print { val } => write!(f, "print {};", val.node),
+            Stmt::Decl { name, init } => {
                 write!(f, "var {}", name.node)?;
                 if let Some(val) = init {
                     write!(f, " = {}", val.node)?;
                 }
                 write!(f, ";")
             }
+            Stmt::Block { stmts } => {
+                writeln!(f, "{{")?;
+                for stmt in stmts {
+                    stmt.node.display_indented(f, level + 1)?;
+                    writeln!(f, "")?;
+                }
+                write!(f, "{:indent$}}}", "")
+            }
         }
+    }
+}
+
+impl Display for Stmt<'_> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        self.display_indented(f, 0)
     }
 }
 
@@ -57,6 +76,10 @@ pub mod stmt {
             name,
             init: init.into(),
         }
+    }
+
+    pub fn block(stmts: Vec<Spanned<Stmt>>) -> Stmt {
+        Stmt::Block { stmts }
     }
 }
 

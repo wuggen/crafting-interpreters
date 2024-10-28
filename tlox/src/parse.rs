@@ -31,13 +31,15 @@ pub struct Parser<'s> {
 
 // Grammar:
 //
-// program -> decl_or_stmt* EOF
+// program -> stmt* EOF
 //
-// decl_or_stmt -> var_decl | stmt
+// stmt -> decl_stmt | block_stmt | expr_or_print_stmt
 //
-// var_decl -> 'var' IDENT ('=' expr)? ';'
+// decl_stmt -> 'var' IDENT ('=' expr)? ';'
 //
-// stmt -> expr_stmt | print_stmt
+// block_stmt -> '{' stmt* '}'
+//
+// expr_or_print_stmt -> expr_stmt | print_stmt
 //
 // expr_stmt -> expr ';'
 //
@@ -231,7 +233,7 @@ impl<'s> Parser<'s> {
         let mut stmts = Vec::new();
         while !self.is_at_end() {
             match self
-                .decl_or_stmt()
+                .stmt()
                 .catch_deferred(|kind| panic!("uncaught deferred parser error {kind:?}"))
                 .map_err(ParserError::into_kind)
             {
@@ -252,68 +254,126 @@ impl<'s> Parser<'s> {
         Program { stmts }
     }
 
-    /// Parse a variable declaration or other statement.
+    /// Parse a statement.
     ///
-    /// Corresponds to the `decl_or_stmt` grammar production.
-    fn decl_or_stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
-        if self.check_next(|tok| matches!(tok, Token::Var)) {
-            let var = self.advance().unwrap();
-
-            let name = self
-                .advance_or_peek(|tok| matches!(tok, Token::Ident(_)))
-                .map(|tok| match tok.node {
-                    Token::Ident(name) => tok.with_node(name),
-                    _ => unreachable!(),
-                })
-                .map_err(|tok| {
-                    self.push_diag(ParserDiag::missing_var_name(
-                        var.span,
-                        self.span_or_eof(&tok),
-                    ));
-                    ParserError::unexpected(tok).handled()
-                })?;
-
-            let init = if self
-                .advance_or_peek(|tok| matches!(tok, Token::Equal))
-                .is_ok()
-            {
-                let expr = self.expr().catch_deferred(|err| match err {
-                    ParserErrorKind::Unexpected(Some(Spanned {
-                        node: Token::Semicolon,
-                        span,
-                    })) => {
-                        self.push_diag(ParserDiag::early_terminated_stmt(span));
-                        Err(err.handled())
-                    }
-                    _ => Err(err.deferred()),
-                })?;
-                Some(expr)
-            } else {
-                None
-            };
-
-            let semi = self
-                .advance_or_peek(|tok| matches!(tok, Token::Semicolon))
-                .map_err(|tok| {
-                    let expected_semi = self.span_or_eof(&tok);
-                    let stmt_span = var
-                        .span
-                        .join(init.as_ref().map(|expr| expr.span).unwrap_or(name.span));
-                    self.push_diag(ParserDiag::unterminated_stmt(stmt_span, expected_semi));
-                    ParserError::unexpected(tok).handled()
-                })?;
-
-            let span = var.span.join(semi.span);
-            Ok(stmt::decl(name, init).spanned(span))
-        } else {
-            self.stmt()
+    /// Corresponds to the `stmt` grammar production.
+    fn stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
+        match self.peek().unwrap().node {
+            Token::Var => self.decl_stmt(),
+            Token::LeftBrace => self.block_stmt(),
+            _ => self.expr_or_print_stmt(),
         }
+    }
+
+    /// Parse a variable declaration statement.
+    ///
+    /// This expects the next token in the stream to be `Token::Var`. In debug builds, it will panic
+    /// if this is not the case.
+    ///
+    /// This corresponds to the `decl_stmt` grammar production.
+    fn decl_stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
+        let var = self.advance().unwrap();
+        debug_assert!(matches!(var.node, Token::Var));
+
+        let name = self
+            .advance_or_peek(|tok| matches!(tok, Token::Ident(_)))
+            .map(|tok| match tok.node {
+                Token::Ident(name) => tok.with_node(name),
+                _ => unreachable!(),
+            })
+            .map_err(|tok| {
+                self.push_diag(ParserDiag::missing_var_name(
+                    var.span,
+                    self.span_or_eof(&tok),
+                ));
+                ParserError::unexpected(tok).handled()
+            })?;
+
+        let init = if self
+            .advance_or_peek(|tok| matches!(tok, Token::Equal))
+            .is_ok()
+        {
+            let expr = self.expr().catch_deferred(|err| match err {
+                ParserErrorKind::Unexpected(Some(Spanned {
+                    node: Token::Semicolon,
+                    span,
+                })) => {
+                    self.push_diag(ParserDiag::early_terminated_stmt(span));
+                    Err(err.handled())
+                }
+                _ => Err(err.deferred()),
+            })?;
+            Some(expr)
+        } else {
+            None
+        };
+
+        let semi = self
+            .advance_or_peek(|tok| matches!(tok, Token::Semicolon))
+            .map_err(|tok| {
+                let expected_semi = self.span_or_eof(&tok);
+                let stmt_span = var
+                    .span
+                    .join(init.as_ref().map(|expr| expr.span).unwrap_or(name.span));
+                self.push_diag(ParserDiag::unterminated_stmt(stmt_span, expected_semi));
+                ParserError::unexpected(tok).handled()
+            })?;
+
+        let span = var.span.join(semi.span);
+        Ok(stmt::decl(name, init).spanned(span))
+    }
+
+    fn block_stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
+        let obrace = self.advance().unwrap();
+        debug_assert!(matches!(obrace.node, Token::LeftBrace));
+
+        let mut stmts = Vec::new();
+
+        while self.check_next(|tok| tok.is_stmt_start()) {
+            match self
+                .stmt()
+                .catch_deferred(|kind| match kind {
+                    ParserErrorKind::Unexpected(Some(tok))
+                        if matches!(tok.node, Token::RightBrace) =>
+                    {
+                        self.push_diag(ParserDiag::early_close_brace(obrace.span, tok.span));
+                        Err(ParserError::spurious_block_end().handled())
+                    }
+                    _ => Err(kind.deferred()),
+                })
+                .map_err(ParserError::into_kind)
+            {
+                Ok(stmt) => {
+                    stmts.push(stmt);
+                }
+
+                Err(ParserErrorKind::SpuriousBlockEnd) => {
+                    return Err(ParserError::spurious_stmt_end().handled());
+                }
+
+                Err(ParserErrorKind::SpuriousStmtEnd) => {}
+
+                _ => self.sync_to_stmt_boundary(),
+            }
+        }
+
+        let cbrace = self
+            .advance_or_peek(|tok| matches!(tok, Token::RightBrace))
+            .map_err(|tok| {
+                self.push_diag(ParserDiag::unclosed_brace(
+                    obrace.span,
+                    self.span_or_eof(&tok),
+                ));
+                ParserError::spurious_stmt_end().handled()
+            })?;
+
+        Ok(stmt::block(stmts).spanned(obrace.span.join(cbrace.span)))
     }
 
     /// Parse a print or expression statement.
     ///
-    /// Corresponds to the `stmt` grammar production.
-    fn stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
+    /// Corresponds to the `expr_or_print_stmt` grammar production.
+    fn expr_or_print_stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
         let maybe_print = self.advance_or_peek(|tok| matches!(tok, Token::Print)).ok();
 
         let expr = self.expr().catch_deferred(|kind| match kind {

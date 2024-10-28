@@ -1,7 +1,7 @@
+use std::fmt::Write;
+
 use indoc::indoc;
 use insta::assert_snapshot;
-
-use std::fmt::Write;
 
 use super::Stmt;
 use crate::diag::render::render_dcx;
@@ -605,6 +605,146 @@ fn err_invalid_place_exprs() {
           |         invalid place expression
           |
           = note: expected identifier
+
+        "#,
+        );
+    })
+}
+
+#[test]
+fn block_stmts() {
+    Session::with_default(|key| {
+        assert_snapshot!(
+            parse_test(&key, "{ var a = 4; print a + 6; }"),
+            @r#"
+        {
+            var a = 4;
+            print a + 6;
+        }{1:1..1:27}
+        "#,
+        );
+
+        assert_snapshot!(
+            parse_test(&key, indoc! {r#"
+            {
+                a = b;
+                {
+                    print b;
+                    var c;
+                }
+                print a;
+                {}
+            }
+            "#}),
+            @r#"
+        {
+            a = b;
+            {
+                print b;
+                var c;
+            }
+            print a;
+            {
+            }
+        }{1:1..9:1}
+        "#,
+        );
+    })
+}
+
+#[test]
+fn err_block_stmts() {
+    Session::with_default(|key| {
+        assert_snapshot!(
+            parse_test(&key, "var x = { 4; };"),
+            @r#"
+
+        --> Diagnostics:
+        error: unexpected `{` token in input
+          --> %i0:1:9
+          |
+        1 | var x = { 4; };
+          |         ^ unexpected token here
+          |
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
+
+        "#,
+        );
+
+        assert_snapshot!(
+            parse_test(&key, "{ a; b; c }"),
+            @r#"
+
+        --> Diagnostics:
+        error: unterminated statement
+          --> %i0:1:11
+          |
+        1 | { a; b; c }
+          |         - ^ statement should have been terminated here
+          |         |  
+          |         this statement
+          |
+          = note: expected `;`
+
+        "#,
+        );
+
+        assert_snapshot!(
+            parse_test(&key, "{ lol; + 4; }"),
+            @r#"
+
+        --> Diagnostics:
+        error: unclosed braces
+          --> %i0:1:8
+          |
+        1 | { lol; + 4; }
+          | -      ^ braces should have been closed here
+          | |       
+          | braces opened here
+          |
+          = note: expected `}`
+
+        error: unexpected `+` token in input
+          --> %i0:1:8
+          |
+        1 | { lol; + 4; }
+          |        ^ unexpected token here
+          |
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
+
+        "#,
+        );
+
+        assert_snapshot!(
+            parse_test(&key, "{;}"),
+            @r#"
+
+        --> Diagnostics:
+        error: unclosed braces
+          --> %i0:1:2
+          |
+        1 | {;}
+          | -^ braces should have been closed here
+          | | 
+          | braces opened here
+          |
+          = note: expected `}`
+
+        error: statement terminated prematurely
+          --> %i0:1:2
+          |
+        1 | {;}
+          |  ^ statement terminated here
+          |
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
+
+        error: unexpected `}` token in input
+          --> %i0:1:3
+          |
+        1 | {;}
+          |   ^ unexpected token here
+          |
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
 
         "#,
         );
