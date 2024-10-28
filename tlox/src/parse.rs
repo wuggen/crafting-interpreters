@@ -303,11 +303,8 @@ impl<'s> Parser<'s> {
             .is_ok()
         {
             let expr = self.expr().catch_deferred(|err| match err {
-                ParserErrorKind::Unexpected(Some(Spanned {
-                    node: Token::Semicolon,
-                    span,
-                })) => {
-                    self.push_diag(ParserDiag::early_terminated_stmt(span));
+                ParserErrorKind::Unexpected(Some(tok)) if matches!(tok.node, Token::Semicolon) => {
+                    self.push_diag(ParserDiag::early_terminated_stmt(tok.span));
                     Err(err.handled())
                 }
                 _ => Err(err.deferred()),
@@ -386,11 +383,8 @@ impl<'s> Parser<'s> {
         let maybe_print = self.advance_or_peek(|tok| matches!(tok, Token::Print)).ok();
 
         let expr = self.expr().catch_deferred(|kind| match kind {
-            ParserErrorKind::Unexpected(Some(Spanned {
-                node: Token::Semicolon,
-                span,
-            })) => {
-                self.push_diag(ParserDiag::early_terminated_stmt(span));
+            ParserErrorKind::Unexpected(Some(tok)) if matches!(tok.node, Token::Semicolon) => {
+                self.push_diag(ParserDiag::early_terminated_stmt(tok.span));
                 Err(ParserError::spurious_stmt_end().handled())
             }
 
@@ -604,11 +598,8 @@ impl<'s> Parser<'s> {
     /// Corresponds to the parenthesized expression arm of the `atom` grammar production.
     fn group(&mut self, oparen_span: Span) -> ParserRes<'s, Spanned<Expr<'s>>> {
         let expr = self.expr().catch_deferred(|kind| match kind {
-            ParserErrorKind::Unexpected(Some(Spanned {
-                node: Token::RightParen,
-                span,
-            })) => {
-                self.push_diag(ParserDiag::early_close_paren(oparen_span, span));
+            ParserErrorKind::Unexpected(Some(tok)) if matches!(tok.node, Token::RightParen) => {
+                self.push_diag(ParserDiag::early_close_paren(oparen_span, tok.span));
                 Err(kind.handled())
             }
             _ => Err(kind.deferred()),
