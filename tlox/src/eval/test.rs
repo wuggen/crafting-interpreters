@@ -409,3 +409,65 @@ fn err_scopes() {
         );
     })
 }
+
+#[test]
+fn if_else_stmts() {
+    Session::with_default(|key| {
+        assert_snapshot!(
+            test_eval(&key, indoc! {r#"
+            var a = 4;
+            if (a < 10)
+                var b = 12;
+            else
+                var b = "lol";
+            print b;
+            "#}),
+            @r#"
+        12
+        "#,
+        );
+
+        assert_snapshot!(
+            test_eval(&key, indoc! {r#"
+            var x;
+            if (nil) x = 12;
+            print x; // nil
+
+            if (true) {
+                var x = "scoped!";
+                print x;
+            } else {
+                var x = "scoped again!";
+                print x; // shouldn't print
+            }
+            print x; // nil again
+            "#}),
+            @r#"
+        nil
+        scoped!
+        nil
+        "#,
+        );
+    })
+}
+
+#[test]
+fn err_if_else_stmts() {
+    Session::with_default(|key| {
+        assert_snapshot!(
+            test_eval(&key, indoc! {r#"
+            if (false) var x = "hey";
+            print x;
+            "#}),
+            @r#"
+        --> Diagnostics:
+        error: reference to unbound variable `x`
+          --> %i0:2:7
+          |
+        2 | print x;
+          |       ^ variable is not bound at this point
+
+        "#,
+        );
+    })
+}

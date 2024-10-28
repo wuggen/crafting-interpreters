@@ -23,37 +23,88 @@ pub enum Stmt<'s> {
 
     /// A block statement.
     Block { stmts: Vec<Spanned<Stmt<'s>>> },
+
+    /// An if-else statement.
+    IfElse {
+        cond: Spanned<Expr<'s>>,
+        body: Box<Spanned<Stmt<'s>>>,
+        else_body: Option<Box<Spanned<Stmt<'s>>>>,
+    },
 }
 
 impl Stmt<'_> {
-    fn display_indented(&self, f: &mut Formatter, level: usize) -> fmt::Result {
-        let indent = level * 4;
-        write!(f, "{:indent$}", "")?;
-        match self {
-            Stmt::Expr { val } => write!(f, "{};", val.node),
-            Stmt::Print { val } => write!(f, "print {};", val.node),
-            Stmt::Decl { name, init } => {
-                write!(f, "var {}", name.node)?;
-                if let Some(val) = init {
-                    write!(f, " = {}", val.node)?;
+    fn display_indented_level(&self, level: usize, omit_first: bool) -> impl Display + use<'_> {
+        struct DisplayIndented<'s> {
+            node: &'s Stmt<'s>,
+            level: usize,
+            omit_first: bool,
+        }
+        impl Display for DisplayIndented<'_> {
+            fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+                let indent = self.level * 4;
+                let first = if self.omit_first { 0 } else { indent };
+
+                match self.node {
+                    Stmt::Expr { val } => write!(f, "{:first$}{};", "", val.node),
+                    Stmt::Print { val } => write!(f, "{:first$}print {};", "", val.node),
+                    Stmt::Decl { name, init } => {
+                        write!(f, "{:first$}var {}", "", name.node)?;
+                        if let Some(init) = init {
+                            write!(f, " = {}", init.node)?;
+                        }
+                        write!(f, ";")
+                    }
+                    Stmt::Block { stmts } => {
+                        writeln!(f, "{:first$}{{", "")?;
+                        for stmt in stmts {
+                            writeln!(
+                                f,
+                                "{}",
+                                stmt.node.display_indented_level(self.level + 1, false)
+                            )?;
+                        }
+                        write!(f, "{:indent$}}}", "")
+                    }
+                    Stmt::IfElse {
+                        cond,
+                        body,
+                        else_body,
+                    } => {
+                        write!(
+                            f,
+                            "{:first$}if ({}) {}",
+                            "",
+                            cond.node,
+                            body.node.display_indented_level(self.level, true),
+                        )?;
+                        if let Some(else_body) = else_body {
+                            write!(
+                                f,
+                                "\nelse {}",
+                                else_body.node.display_indented_level(self.level, true),
+                            )?;
+                        }
+                        Ok(())
+                    }
                 }
-                write!(f, ";")
-            }
-            Stmt::Block { stmts } => {
-                writeln!(f, "{{")?;
-                for stmt in stmts {
-                    stmt.node.display_indented(f, level + 1)?;
-                    writeln!(f)?;
-                }
-                write!(f, "{:indent$}}}", "")
             }
         }
+
+        DisplayIndented {
+            node: self,
+            level,
+            omit_first,
+        }
+    }
+
+    fn display_indented(&self) -> impl Display + use<'_> {
+        self.display_indented_level(0, false)
     }
 }
 
 impl Display for Stmt<'_> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        self.display_indented(f, 0)
+        Display::fmt(&self.display_indented(), f)
     }
 }
 
@@ -80,6 +131,18 @@ pub mod stmt {
 
     pub fn block(stmts: Vec<Spanned<Stmt>>) -> Stmt {
         Stmt::Block { stmts }
+    }
+
+    pub fn if_else<'s>(
+        cond: Spanned<Expr<'s>>,
+        body: Spanned<Stmt<'s>>,
+        else_body: Option<Spanned<Stmt<'s>>>,
+    ) -> Stmt<'s> {
+        Stmt::IfElse {
+            cond,
+            body: Box::new(body),
+            else_body: else_body.map(Box::new),
+        }
     }
 }
 

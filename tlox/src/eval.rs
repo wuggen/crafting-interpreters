@@ -124,6 +124,17 @@ impl<'s> Interpreter<'s, '_> {
 
                 self.env.pop_scope();
             }
+
+            Stmt::IfElse { cond, body, else_body } => {
+                let cond = self.eval_expr(cond)?;
+                if cond.is_truthy() {
+                    res = self.eval_stmt(body)?;
+                } else if let Some(else_body) = else_body {
+                    res = self.eval_stmt(else_body)?;
+                } else {
+                    res = None;
+                }
+            }
         }
 
         Ok(res)

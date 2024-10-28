@@ -1,5 +1,6 @@
 use std::fmt::Write;
 
+use codespan_reporting::term::termcolor::ParseColorError;
 use indoc::indoc;
 use insta::assert_snapshot;
 
@@ -103,7 +104,7 @@ fn err_missing_lhs() {
         1 | + 4;
           | ^ unexpected token here
           |
-          = note: expected `var`, `print`, `{`, number, string, `true`, `false`, `nil`, or `(`
+          = note: expected `var`, `print`, `if`, `{`, number, string, `true`, `false`, `nil`, or `(`
 
         "#);
 
@@ -269,7 +270,7 @@ fn err_multiple() {
         1 | / false * (nil
           | ^ unexpected token here
           |
-          = note: expected `var`, `print`, `{`, number, string, `true`, `false`, `nil`, or `(`
+          = note: expected `var`, `print`, `if`, `{`, number, string, `true`, `false`, `nil`, or `(`
 
         "#);
     });
@@ -311,7 +312,7 @@ fn err_spurious_close_paren() {
         1 | 45 - nil ) / false
           |          ^ unexpected token here
           |
-          = note: expected `var`, `print`, `{`, number, string, `true`, `false`, `nil`, or `(`
+          = note: expected `var`, `print`, `if`, `{`, number, string, `true`, `false`, `nil`, or `(`
 
         "#);
     });
@@ -710,7 +711,7 @@ fn err_block_stmts() {
         1 | { lol; + 4; }
           |        ^ unexpected token here
           |
-          = note: expected `var`, `print`, `{`, number, string, `true`, `false`, `nil`, or `(`
+          = note: expected `var`, `print`, `if`, `{`, number, string, `true`, `false`, `nil`, or `(`
 
         "#,
         );
@@ -736,7 +737,104 @@ fn err_block_stmts() {
         1 | {;}
           |  ^ unexpected token here
           |
-          = note: expected `var`, `print`, `{`, number, string, `true`, `false`, `nil`, or `(`
+          = note: expected `var`, `print`, `if`, `{`, number, string, `true`, `false`, `nil`, or `(`
+
+        "#,
+        );
+    })
+}
+
+#[test]
+fn if_else_stmts() {
+    Session::with_default(|key| {
+        assert_snapshot!(
+            parse_test(&key, "if (a == b) lol; else lmao;"),
+            @r#"
+        if (a == b) lol;
+        else lmao;{1:1..1:27}
+        "#,
+        );
+
+        assert_snapshot!(
+            parse_test(&key, "if (nope) { print what; } else if (yeah) print lol; else 4;"),
+            @r#"
+        if (nope) {
+            print what;
+        }
+        else if (yeah) print lol;
+        else 4;{1:1..1:59}
+        "#,
+        );
+    })
+}
+
+#[test]
+fn err_if_else_stmts() {
+    Session::with_default(|key| {
+        assert_snapshot!(
+            parse_test(&key, "if (a == b) lol else lmao; print + 4;"),
+            @r#"
+
+        --> Diagnostics:
+        error: unterminated statement
+          --> %i0:1:17
+          |
+        1 | if (a == b) lol else lmao; print + 4;
+          |             --- ^^^^ statement should have been terminated here
+          |             |    
+          |             this statement
+          |
+          = note: expected `;`
+
+        error: unexpected `else` token in input
+          --> %i0:1:17
+          |
+        1 | if (a == b) lol else lmao; print + 4;
+          |                 ^^^^ unexpected token here
+          |
+          = note: expected `var`, `print`, `if`, `{`, number, string, `true`, `false`, `nil`, or `(`
+
+        error: unexpected `+` token in input
+          --> %i0:1:34
+          |
+        1 | if (a == b) lol else lmao; print + 4;
+          |                                  ^ unexpected token here
+          |
+          = note: expected number, string, `true`, `false`, `nil`, or `(`
+
+        "#,
+        );
+
+        assert_snapshot!(
+            parse_test(&key, "if nope { 4 - 1; } print lolol - + 4;"),
+            @r#"
+
+        --> Diagnostics:
+        error: unexpected identifier token in input
+          --> %i0:1:4
+          |
+        1 | if nope { 4 - 1; } print lolol - + 4;
+          |    ^^^^ unexpected token here
+          |
+          = note: expected `(`
+
+        "#,
+        );
+
+        assert_snapshot!(
+            parse_test(&key, "if (what { print what the; }"),
+            @r#"
+
+        --> Diagnostics:
+        error: unclosed parentheses
+          --> %i0:1:10
+          |
+        1 | if (what { print what the; }
+          |    -     ^ parentheses should have been closed here
+          |    |      
+          |    parentheses opened here
+          |
+          = note: expected `)`
 
         "#,
         );

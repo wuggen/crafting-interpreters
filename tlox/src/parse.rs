@@ -33,7 +33,9 @@ pub struct Parser<'s> {
 //
 // program -> stmt* EOF
 //
-// stmt -> decl_stmt | block_stmt | expr_or_print_stmt
+// stmt -> if_stmt | decl_stmt | block_stmt | expr_or_print_stmt
+//
+// if_stmt -> 'if' '(' expr ')' stmt ('else' stmt)?
 //
 // decl_stmt -> 'var' IDENT ('=' expr)? ';'
 //
@@ -100,7 +102,7 @@ impl<'s> Parser<'s> {
 }
 
 const ATOM_STARTS: [&str; 6] = ["number", "string", "`true`", "`false`", "`nil`", "`(`"];
-const STMT_STARTS: [&str; 3] = ["`var`", "`print`", "`{`"];
+const STMT_STARTS: [&str; 4] = ["`var`", "`print`", "`if`", "`{`"];
 
 impl<'s> Parser<'s> {
     /// Push a diagnostic to the stack to be emitted.
@@ -262,6 +264,7 @@ impl<'s> Parser<'s> {
         match peeked.node {
             Token::Var => self.decl_stmt(),
             Token::LeftBrace => self.block_stmt(),
+            Token::If => self.if_stmt(),
             tok if tok.is_stmt_start() => self.expr_or_print_stmt(),
             _ => {
                 self.push_diag(ParserDiag::unexpected_tok(
@@ -272,6 +275,55 @@ impl<'s> Parser<'s> {
                 Err(ParserError::unexpected_tok(peeked).handled())
             }
         }
+    }
+
+    /// Parse an if-else statement.
+    ///
+    /// This expects the next token to be `Token::If`. In debug builds, it will panic if this is not
+    /// the case.
+    ///
+    /// This corresponds to the `if_stmt` grammar production.
+    fn if_stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
+        let if_kw = self.advance().unwrap();
+        debug_assert!(matches!(if_kw.node, Token::If));
+
+        let oparen = self
+            .advance_or_peek(|tok| matches!(tok, Token::LeftParen))
+            .map_err(|tok| {
+                self.push_diag(ParserDiag::unexpected(self, tok, Some("`(`")));
+                ParserError::unexpected(tok).handled()
+            })?;
+
+        let cond = self.expr().catch_deferred(|err| match err {
+            ParserErrorKind::Unexpected(Some(tok)) if matches!(tok.node, Token::RightParen) => {
+                self.push_diag(ParserDiag::early_close_paren(oparen.span, tok.span));
+                Err(err.handled())
+            }
+            _ => Err(err.deferred()),
+        })?;
+
+        let _cparen = self
+            .advance_or_peek(|tok| matches!(tok, Token::RightParen))
+            .map_err(|tok| {
+                self.push_diag(ParserDiag::unclosed_paren(
+                    oparen.span,
+                    self.span_or_eof(&tok),
+                ));
+                ParserError::unexpected(tok).handled()
+            })?;
+
+        let body = self.stmt()?;
+
+        let (else_body, span) =
+            if let Ok(_else_kw) = self.advance_or_peek(|tok| matches!(tok, Token::Else)) {
+                let else_body = self.stmt()?;
+                let span = if_kw.span.join(else_body.span);
+                (Some(else_body), span)
+            } else {
+                (None, if_kw.span.join(body.span))
+            };
+
+        Ok(stmt::if_else(cond, body, else_body).spanned(span))
     }
 
     /// Parse a variable declaration statement.
