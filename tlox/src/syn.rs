@@ -43,7 +43,7 @@ impl Stmt<'_> {
                 writeln!(f, "{{")?;
                 for stmt in stmts {
                     stmt.node.display_indented(f, level + 1)?;
-                    writeln!(f, "")?;
+                    writeln!(f)?;
                 }
                 write!(f, "{:indent$}}}", "")
             }

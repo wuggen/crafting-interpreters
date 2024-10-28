@@ -99,8 +99,8 @@ impl<'s> Parser<'s> {
     }
 }
 
-const ATOM_STARTS: [&'static str; 6] = ["number", "string", "`true`", "`false`", "`nil`", "`(`"];
-const STMT_STARTS: [&'static str; 3] = ["`var`", "`print`", "`{`"];
+const ATOM_STARTS: [&str; 6] = ["number", "string", "`true`", "`false`", "`nil`", "`(`"];
+const STMT_STARTS: [&str; 3] = ["`var`", "`print`", "`{`"];
 
 impl<'s> Parser<'s> {
     /// Push a diagnostic to the stack to be emitted.
