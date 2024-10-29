@@ -18,7 +18,7 @@ impl<T: SynEq> SynEq for Spanned<T> {
 
 impl<T: SynEq> SynEq for Box<T> {
     fn syn_eq(&self, other: &Self) -> bool {
-        (&**self).syn_eq(&**other)
+        (**self).syn_eq(&**other)
     }
 }
 

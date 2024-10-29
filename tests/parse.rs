@@ -29,7 +29,10 @@ fn file_parse_test_err(path: PathBuf, content: &str) {
         let name = path.file_name().unwrap().to_string_lossy().into_owned();
         let idx = key.get().sm.add_source(path, content);
 
-        parse_source(key, idx).map(|res| panic!("{name} parsed without error:\n{res}"));
+        if let Some(res) = parse_source(key, idx) {
+            panic!("{name} parsed without error:\n{res}");
+        }
+
         assert!(
             key.get().dcx.has_errors(),
             "dcx has no errors after failing to parse {name}"
