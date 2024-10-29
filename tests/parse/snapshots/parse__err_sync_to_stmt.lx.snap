@@ -1,0 +1,40 @@
+---
+source: tests/parse.rs
+description: "// Parser should catch an error on every non-empty line.\n{;}\nvar (x);\nprint var;\n"
+expression: render_dcx()
+---
+error: unclosed braces
+  --> tests/parse/err_sync_to_stmt.lx:2:2
+  |
+2 | {;}
+  | -^ braces should have been closed here
+  | | 
+  | braces opened here
+  |
+  = note: expected `}`
+
+error: unexpected `;` token in input
+  --> tests/parse/err_sync_to_stmt.lx:2:2
+  |
+2 | {;}
+  |  ^ unexpected token here
+  |
+  = note: expected statement
+
+error: missing name in variable declaration
+  --> tests/parse/err_sync_to_stmt.lx:3:5
+  |
+3 | var (x);
+  | --- ^ expected variable name here
+  | |    
+  | declaration requires a variable name
+  |
+  = note: expected identifier
+
+error: unexpected `var` token in input
+  --> tests/parse/err_sync_to_stmt.lx:4:7
+  |
+4 | print var;
+  |       ^^^ unexpected token here
+  |
+  = note: expected expression

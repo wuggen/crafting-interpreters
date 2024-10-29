@@ -220,7 +220,7 @@ impl<'s> Parser<'s> {
     fn sync_to_stmt_boundary(&mut self) {
         debug_println!(@"snychronizing to stmt boundary");
         self.synchronize(
-            |tok| matches!(tok, Token::Semicolon),
+            |tok| matches!(tok, Token::Semicolon | Token::RightBrace),
             |tok| tok.is_stmt_start(),
         );
     }
@@ -350,7 +350,7 @@ impl<'s> Parser<'s> {
             let expr = self.expr().catch_deferred(|err| match err {
                 ParserErrorKind::Unexpected(Some(tok)) if matches!(tok.node, Token::Semicolon) => {
                     self.push_diag(ParserDiag::early_terminated_stmt(tok.span));
-                    Err(err.handled())
+                    Err(ParserError::spurious_stmt_end().handled())
                 }
                 _ => Err(err.deferred()),
             })?;
@@ -367,7 +367,7 @@ impl<'s> Parser<'s> {
                     .span
                     .join(init.as_ref().map(|expr| expr.span).unwrap_or(name.span));
                 self.push_diag(ParserDiag::unterminated_stmt(stmt_span, expected_semi));
-                ParserError::unexpected(tok).handled()
+                ParserError::spurious_stmt_end().handled()
             })?;
 
         let span = var.span.join(semi.span);

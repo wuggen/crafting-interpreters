@@ -1,0 +1,64 @@
+---
+source: tests/parse.rs
+description: "if (a == b) lol else lmao;\nprint + 4;\n\nif nope {\n    4 - 1;\n}\nprint lolol - + 4;\n\nif (what {\n    print what the;\n}\n\n4+; // Extra little error to make sure it syncs\n"
+expression: render_dcx()
+---
+error: unterminated statement
+  --> tests/parse/err_if_else_stmts.lx:1:17
+  |
+1 | if (a == b) lol else lmao;
+  |             --- ^^^^ statement should have been terminated here
+  |             |    
+  |             this statement
+  |
+  = note: expected `;`
+
+error: unexpected `else` token in input
+  --> tests/parse/err_if_else_stmts.lx:1:17
+  |
+1 | if (a == b) lol else lmao;
+  |                 ^^^^ unexpected token here
+  |
+  = note: expected statement
+
+error: unexpected `+` token in input
+  --> tests/parse/err_if_else_stmts.lx:2:7
+  |
+2 | print + 4;
+  |       ^ unexpected token here
+  |
+  = note: expected expression
+
+error: unexpected identifier token in input
+  --> tests/parse/err_if_else_stmts.lx:4:4
+  |
+4 | if nope {
+  |    ^^^^ unexpected token here
+  |
+  = note: expected `(`
+
+error: unexpected `+` token in input
+  --> tests/parse/err_if_else_stmts.lx:7:15
+  |
+7 | print lolol - + 4;
+  |               ^ unexpected token here
+  |
+  = note: expected expression
+
+error: unclosed parentheses
+  --> tests/parse/err_if_else_stmts.lx:9:10
+  |
+9 | if (what {
+  |    -     ^ parentheses should have been closed here
+  |    |      
+  |    parentheses opened here
+  |
+  = note: expected `)`
+
+error: statement terminated prematurely
+   --> tests/parse/err_if_else_stmts.lx:13:3
+   |
+13 | 4+; // Extra little error to make sure it syncs
+   |   ^ statement terminated here
+   |
+   = note: expected expression

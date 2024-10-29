@@ -1,0 +1,4 @@
+// Parser should catch an error on every non-empty line.
+{;}
+var (x);
+print var;
