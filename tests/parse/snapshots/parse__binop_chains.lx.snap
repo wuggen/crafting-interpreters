@@ -1,0 +1,10 @@
+---
+source: tests/parse.rs
+description: "45 < nil >= false\n    <= \"wow\" > 003.32;\n\n45 < (\"wow\" >= nil);\n\n(((true + \"false\") - (nil / nil) >= 0 * \"hey\") % (\"what\")) + (0);\n\n4 + 5;\n\nfalse - true;\n"
+expression: first_parse
+---
+45 < nil >= false <= "wow" > 3.32;
+45 < ("wow" >= nil);
+(((true + "false") - (nil / nil) >= 0 * "hey") % ("what")) + (0);
+4 + 5;
+false - true;

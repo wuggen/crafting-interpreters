@@ -1,0 +1,9 @@
+if (a == b)
+    lol;
+else
+    lmao;
+
+if (nope) {
+    print what;
+} else if (yeah) print lol;
+else 4;

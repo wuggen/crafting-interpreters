@@ -1,0 +1,9 @@
+---
+source: tests/parse.rs
+description: "what = 54;\nprint (lmao = 4) + 8;\nprint a = b = c;\nvar x = y = z;\n"
+expression: first_parse
+---
+what = 54;
+print (lmao = 4) + 8;
+print a = b = c;
+var x = y = z;

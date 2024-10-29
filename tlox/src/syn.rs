@@ -1,10 +1,54 @@
 //! Abstract syntax tree.
 
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
 
 use crate::span::{Spannable, Spanned};
 use crate::symbol::Symbol;
+
+pub trait SynEq<T: ?Sized = Self> {
+    fn syn_eq(&self, other: &T) -> bool;
+}
+
+impl<T: SynEq> SynEq for Spanned<T> {
+    fn syn_eq(&self, other: &Self) -> bool {
+        self.node.syn_eq(&other.node)
+    }
+}
+
+impl<T: SynEq> SynEq for Box<T> {
+    fn syn_eq(&self, other: &Self) -> bool {
+        (&**self).syn_eq(&**other)
+    }
+}
+
+impl<T: SynEq> SynEq for &T {
+    fn syn_eq(&self, other: &Self) -> bool {
+        T::syn_eq(self, other)
+    }
+}
+
+impl<T: SynEq> SynEq for Option<T> {
+    fn syn_eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Some(a), Some(b)) => a.syn_eq(b),
+            (None, None) => true,
+            _ => false,
+        }
+    }
+}
+
+impl<T: SynEq> SynEq for [T] {
+    fn syn_eq(&self, other: &Self) -> bool {
+        self.len() == other.len() && self.iter().zip(other.iter()).all(|(a, b)| a.syn_eq(b))
+    }
+}
+
+impl SynEq for Symbol<'_> {
+    fn syn_eq(&self, other: &Self) -> bool {
+        self == other
+    }
+}
 
 /// A Lox statement.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,6 +74,36 @@ pub enum Stmt<'s> {
         body: Box<Spanned<Stmt<'s>>>,
         else_body: Option<Box<Spanned<Stmt<'s>>>>,
     },
+}
+
+impl SynEq for Stmt<'_> {
+    fn syn_eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Stmt::Expr { val: v1 }, Stmt::Expr { val: v2 }) => v1.syn_eq(v2),
+            (Stmt::Print { val: v1 }, Stmt::Print { val: v2 }) => v1.syn_eq(v2),
+
+            (Stmt::Decl { name: n1, init: i1 }, Stmt::Decl { name: n2, init: i2 }) => {
+                n1.syn_eq(n2) && i1.syn_eq(i2)
+            }
+
+            (Stmt::Block { stmts: s1 }, Stmt::Block { stmts: s2 }) => s1.syn_eq(s2),
+
+            (
+                Stmt::IfElse {
+                    cond: c1,
+                    body: b1,
+                    else_body: eb1,
+                },
+                Stmt::IfElse {
+                    cond: c2,
+                    body: b2,
+                    else_body: eb2,
+                },
+            ) => c1.syn_eq(c2) && b1.syn_eq(b2) && eb1.syn_eq(eb2),
+
+            _ => false,
+        }
+    }
 }
 
 impl Stmt<'_> {
@@ -154,10 +228,16 @@ pub struct Program<'s> {
     pub stmts: Vec<Spanned<Stmt<'s>>>,
 }
 
+impl SynEq for Program<'_> {
+    fn syn_eq(&self, other: &Self) -> bool {
+        self.stmts.syn_eq(&other.stmts)
+    }
+}
+
 impl Display for Program<'_> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         for stmt in &self.stmts {
-            writeln!(f, "{stmt}")?;
+            writeln!(f, "{}", stmt.node)?;
         }
         Ok(())
     }
@@ -171,6 +251,12 @@ pub enum UnopSym {
 
     /// Numerical negation, `-`
     Neg,
+}
+
+impl SynEq for UnopSym {
+    fn syn_eq(&self, other: &Self) -> bool {
+        self == other
+    }
 }
 
 impl Display for UnopSym {
@@ -217,6 +303,12 @@ pub enum BinopSym {
 
     /// Modulo, `%`
     Mod,
+}
+
+impl SynEq for BinopSym {
+    fn syn_eq(&self, other: &Self) -> bool {
+        self == other
+    }
 }
 
 impl Display for BinopSym {
@@ -312,11 +404,25 @@ impl PartialEq for Lit<'_> {
 
 impl Eq for Lit<'_> {}
 
+impl SynEq for Lit<'_> {
+    fn syn_eq(&self, other: &Self) -> bool {
+        self == other
+    }
+}
+
 /// A place expression.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Place<'s> {
     /// A variable place.
     Var(Symbol<'s>),
+}
+
+impl SynEq for Place<'_> {
+    fn syn_eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Var(a), Self::Var(b)) => a.syn_eq(b),
+        }
+    }
 }
 
 impl Display for Place<'_> {
@@ -328,7 +434,7 @@ impl Display for Place<'_> {
 }
 
 /// An expression.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum ExprNode<'s> {
     /// A literal expression.
     Literal(Lit<'s>),
@@ -368,6 +474,63 @@ pub enum ExprNode<'s> {
         /// The value assigned.
         val: Spanned<Expr<'s>>,
     },
+}
+
+impl Debug for ExprNode<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ExprNode::Literal(lit) => Debug::fmt(lit, f),
+            ExprNode::Var(symbol) => f.debug_tuple("Var").field(&symbol).finish(),
+            ExprNode::Group(expr) => f.debug_tuple("Group").field(&expr).finish(),
+            ExprNode::Unop { sym, operand } => {
+                f.debug_tuple(&format!("{sym:?}")).field(&operand).finish()
+            }
+            ExprNode::Binop { sym, lhs, rhs } => f
+                .debug_tuple(&format!("{sym:?}"))
+                .field(&lhs)
+                .field(&rhs)
+                .finish(),
+            ExprNode::Assign { place, val } => {
+                f.debug_tuple("Assign").field(&place).field(&val).finish()
+            }
+        }
+    }
+}
+
+impl SynEq for ExprNode<'_> {
+    fn syn_eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Literal(a), Self::Literal(b)) => a.syn_eq(b),
+            (Self::Var(a), Self::Var(b)) => a.syn_eq(b),
+            (Self::Group(a), Self::Group(b)) => a.syn_eq(b),
+            (
+                Self::Unop {
+                    sym: s1,
+                    operand: o1,
+                },
+                Self::Unop {
+                    sym: s2,
+                    operand: o2,
+                },
+            ) => s1.syn_eq(s2) && o1.syn_eq(o2),
+            (
+                Self::Binop {
+                    sym: s1,
+                    lhs: l1,
+                    rhs: r1,
+                },
+                Self::Binop {
+                    sym: s2,
+                    lhs: l2,
+                    rhs: r2,
+                },
+            ) => s1.syn_eq(s2) && l1.syn_eq(l2) && r1.syn_eq(r2),
+            (Self::Assign { place: p1, val: v1 }, Self::Assign { place: p2, val: v2 }) => {
+                p1.syn_eq(p2) && v1.syn_eq(v2)
+            }
+            _ => false,
+        }
+    }
 }
 
 pub type Expr<'s> = Box<ExprNode<'s>>;
@@ -433,8 +596,12 @@ impl ExprNode<'_> {
         matches!(self, ExprNode::Binop { .. })
     }
 
-    fn opd_needs_group(&self, level: BindingLevel) -> bool {
+    fn lhs_needs_group(&self, level: BindingLevel) -> bool {
         matches!(self, ExprNode::Binop { sym, .. } if sym.node.binding() < level)
+    }
+
+    fn rhs_needs_group(&self, level: BindingLevel) -> bool {
+        matches!(self, ExprNode::Binop { sym, .. } if sym.node.binding() <= level)
     }
 }
 
@@ -454,7 +621,7 @@ impl Display for ExprNode<'_> {
             }
             ExprNode::Binop { sym, lhs, rhs } => {
                 let level = sym.node.binding();
-                if lhs.node.subexpr_needs_group() {
+                if lhs.node.lhs_needs_group(level) {
                     write!(f, "({})", lhs.node)?;
                 } else {
                     write!(f, "{}", lhs.node)?;
@@ -462,7 +629,7 @@ impl Display for ExprNode<'_> {
 
                 write!(f, " {} ", sym.node)?;
 
-                if rhs.node.opd_needs_group(level) {
+                if rhs.node.rhs_needs_group(level) {
                     write!(f, "({})", rhs.node)
                 } else {
                     write!(f, "{}", rhs.node)

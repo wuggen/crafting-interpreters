@@ -1,0 +1,8 @@
+---
+source: tests/parse.rs
+description: "true;\n134;\n\"lol hey\\ndude\";\n"
+expression: first_parse
+---
+true;
+134;
+"lol hey\ndude";

@@ -1,12 +1,75 @@
 use std::fmt::Write;
+use std::fs;
+use std::path::PathBuf;
 
 use indoc::indoc;
 use insta::assert_snapshot;
 
-use super::Stmt;
+use super::{parse_source, Stmt};
 use crate::diag::render::render_dcx;
 use crate::session::{Session, SessionKey};
+use crate::syn::SynEq;
 use crate::util::test::parse_new_source;
+
+fn file_parse_test(path: PathBuf) {
+    let name = path.file_name().unwrap().to_str().unwrap();
+    let content = fs::read_to_string(&path)
+        .inspect_err(|_| eprintln!("error reading {}", path.display()))
+        .unwrap();
+
+    if name.starts_with("err_") {
+        file_parse_test_err(path, &content);
+    } else {
+        file_parse_test_success(path, &content);
+    }
+}
+
+fn file_parse_test_err(path: PathBuf, content: &str) {
+    Session::with_default(|key| {
+        let idx = key.get().sm.add_source(path, content);
+        let name = key.get().sm.source(idx).name().clone();
+
+        parse_source(key, idx).map(|res| panic!("{name} parsed without error:\n{res}"));
+        assert!(
+            key.get().dcx.has_errors(),
+            "dcx has no errors after failing to parse {name}"
+        );
+
+        insta::with_settings!({ description => content }, {
+            assert_snapshot!(name.to_string(), render_dcx())
+        });
+    })
+}
+
+fn file_parse_test_success(path: PathBuf, content: &str) {
+    Session::with_default(|key| {
+        let idx = key.get().sm.add_source(path, content);
+        let name = key.get().sm.source(idx).name().clone();
+        let first_parse = parse_source(key, idx)
+            .or_else(|| panic!("failed to parse {name}"))
+            .unwrap();
+
+        let first_parse_printed = first_parse.to_string();
+        let idx = key
+            .get()
+            .sm
+            .add_source(name.to_string() + "@reparse", &first_parse_printed);
+        let reparse = parse_source(key, idx)
+            .or_else(|| panic!("failed to reparse {name} after pretty-printing"))
+            .unwrap();
+
+        assert!(first_parse.syn_eq(&reparse), "{name} failed reparse check");
+        assert!(
+            !key.get().dcx.has_errors(),
+            "dcx has errors after {name}:\n{}",
+            render_dcx()
+        );
+
+        insta::with_settings!({ description => content }, {
+            assert_snapshot!(name.to_string(), reparse);
+        });
+    })
+}
 
 fn parse_test(key: SessionKey, source: &str) -> String {
     let mut res = String::new();

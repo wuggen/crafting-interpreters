@@ -153,7 +153,6 @@ pub mod render {
     use super::*;
     use crate::session::Session;
 
-    #[cfg(test)]
     /// Render the current session's `DiagContext` to a string.
     pub fn render_dcx() -> String {
         use codespan_reporting::term::termcolor::NoColor;

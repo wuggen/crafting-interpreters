@@ -1,0 +1,13 @@
+if (a == b) lol else lmao;
+print + 4;
+
+if nope {
+    4 - 1;
+}
+print lolol - + 4;
+
+if (what {
+    print what the;
+}
+
+4+; // Extra little error to make sure it syncs

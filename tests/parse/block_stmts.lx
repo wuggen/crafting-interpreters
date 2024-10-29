@@ -1,0 +1,16 @@
+{
+    var a = 4;
+    print a + 6;
+}
+
+{
+    a = b;
+    {
+        print b;
+        var c;
+    }
+
+    print a;
+
+    {}
+}

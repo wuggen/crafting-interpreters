@@ -2,7 +2,7 @@
 
 use std::borrow::Borrow;
 use std::collections::HashSet;
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::ops::Deref;
 use std::ptr;
@@ -45,8 +45,17 @@ impl<'s> UnlockedSymbolInterner<'s> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialOrd, Ord)]
 pub struct Symbol<'s>(&'s str);
+
+impl Debug for Symbol<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Symbol")
+            .field(&self.0)
+            .field(&(self.0 as *const str))
+            .finish()
+    }
+}
 
 impl PartialEq for Symbol<'_> {
     fn eq(&self, other: &Self) -> bool {

@@ -1,0 +1,4 @@
+what = 54;
+print (lmao = 4) + 8;
+print a = b = c;
+var x = y = z;

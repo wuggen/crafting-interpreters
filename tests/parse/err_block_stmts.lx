@@ -1,0 +1,10 @@
+// Parser should sync and find errors on all of these lines!
+var x = { 4; };
+
+{ a; b; c }
+
+{ lol; + 4; }
+
+{;}
+
+print { x };

@@ -1,0 +1,8 @@
+---
+source: tests/parse.rs
+description: "print 4 + \"hey\";\nprint false;\nprint \"hey there\" - 64 / nil;\n"
+expression: first_parse
+---
+print 4 + "hey";
+print false;
+print "hey there" - 64 / nil;

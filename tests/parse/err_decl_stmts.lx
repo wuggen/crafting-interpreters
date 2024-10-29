@@ -1,0 +1,7 @@
+var = 4 + 4;
+
+var lol = ;
+
+var lmao = no // Should sync correctly and continue reporting errors
+
+var = ;

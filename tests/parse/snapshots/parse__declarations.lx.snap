@@ -1,0 +1,8 @@
+---
+source: tests/parse.rs
+description: "var a;\nvar b = a + 4;\nvar _lol_ = \"hey\" + \"what\" + nope / yep;\n"
+expression: first_parse
+---
+var a;
+var b = a + 4;
+var _lol_ = "hey" + "what" + nope / yep;

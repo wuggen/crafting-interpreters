@@ -136,15 +136,21 @@ impl Debug for Span {
 }
 
 /// An item with an associated span.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Spanned<T> {
     pub node: T,
     pub span: Span,
 }
 
+impl<T: Debug> Debug for Spanned<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Debug::fmt(&self.node, f)
+    }
+}
+
 impl<T: Display> Display for Spanned<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{:?}", self.node, self.span)
+        Display::fmt(&self.node, f)
     }
 }
 
@@ -223,6 +229,12 @@ impl Display for SourceName {
 impl From<PathBuf> for SourceName {
     fn from(value: PathBuf) -> Self {
         Self::File(value)
+    }
+}
+
+impl From<String> for SourceName {
+    fn from(value: String) -> Self {
+        Self::from(PathBuf::from(value))
     }
 }
 

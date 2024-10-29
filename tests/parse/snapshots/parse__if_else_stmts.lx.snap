@@ -1,0 +1,12 @@
+---
+source: tests/parse.rs
+description: "if (a == b)\n    lol;\nelse\n    lmao;\n\nif (nope) {\n    print what;\n} else if (yeah) print lol;\nelse 4;\n"
+expression: first_parse
+---
+if (a == b) lol;
+else lmao;
+if (nope) {
+    print what;
+}
+else if (yeah) print lol;
+else 4;
