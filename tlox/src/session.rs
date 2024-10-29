@@ -25,7 +25,7 @@ pub struct Session {
 ///
 /// Many interfaces elsewhere in the interpreter take session keys as arguments, to allow data to be
 /// borrowed from the current session.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct SessionKey<'s>(
     PhantomData<&'s mut Session>, /* mutable for invariance */
 );

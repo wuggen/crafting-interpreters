@@ -163,7 +163,7 @@ impl Token<'_> {
 /// A lexer for Lox.
 #[derive(Debug, Clone)]
 pub struct Lexer<'s> {
-    key: &'s SessionKey<'s>,
+    key: SessionKey<'s>,
     cursor: Cursor<'s>,
     span_start: Cursor<'s>,
     buffer: String,
@@ -171,7 +171,7 @@ pub struct Lexer<'s> {
 
 impl<'s> Lexer<'s> {
     /// Create a new lexer for the given source.
-    pub fn new(key: &'s SessionKey<'s>, source: Source<'s>) -> Self {
+    pub fn new(key: SessionKey<'s>, source: Source<'s>) -> Self {
         Self {
             key,
             cursor: source.cursor(),
@@ -186,7 +186,7 @@ impl<'s> Lexer<'s> {
     }
 
     /// Get the session key for this lexer.
-    pub fn key(&self) -> &'s SessionKey<'s> {
+    pub fn key(&self) -> SessionKey<'s> {
         self.key
     }
 }

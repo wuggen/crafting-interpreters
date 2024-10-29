@@ -18,14 +18,14 @@ mod test;
 
 /// A tree-walking Lox interpreter.
 pub struct Interpreter<'s, 'out> {
-    key: &'s SessionKey<'s>,
+    key: SessionKey<'s>,
     env: Env<'s>,
     output: OutputStream<'out>,
     repl: bool,
 }
 
 impl<'s> Interpreter<'s, '_> {
-    pub fn new(key: &'s SessionKey<'s>) -> Interpreter<'s, 'static> {
+    pub fn new(key: SessionKey<'s>) -> Interpreter<'s, 'static> {
         Interpreter {
             key,
             env: Env::default(),
@@ -34,7 +34,7 @@ impl<'s> Interpreter<'s, '_> {
         }
     }
 
-    pub fn new_repl(key: &'s SessionKey<'s>) -> Interpreter<'s, 'static> {
+    pub fn new_repl(key: SessionKey<'s>) -> Interpreter<'s, 'static> {
         Interpreter {
             key,
             env: Env::default(),
@@ -51,7 +51,7 @@ impl<'s> Interpreter<'s, '_> {
         self.with_output(OutputStream::with(output))
     }
 
-    pub fn key(&self) -> &'s SessionKey<'s> {
+    pub fn key(&self) -> SessionKey<'s> {
         self.key
     }
 }

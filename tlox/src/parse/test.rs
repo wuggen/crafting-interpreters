@@ -8,7 +8,7 @@ use crate::diag::render::render_dcx;
 use crate::session::{Session, SessionKey};
 use crate::util::test::parse_new_source;
 
-fn parse_test(key: &SessionKey, source: &str) -> String {
+fn parse_test(key: SessionKey, source: &str) -> String {
     let mut res = String::new();
     if let Some(tree) = parse_new_source(key, source) {
         write!(res, "{tree}").unwrap();
@@ -26,19 +26,19 @@ fn parse_test(key: &SessionKey, source: &str) -> String {
 fn literals() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_test(&key, "true;"),
+            parse_test(key, "true;"),
             @r#"
         true;{1:1..1:5}
         "#);
 
         assert_snapshot!(
-            parse_test(&key, "134;"),
+            parse_test(key, "134;"),
             @r#"
         134;{1:1..1:4}
         "#);
 
         assert_snapshot!(
-            parse_test(&key, r#""lol hey\ndude";"#),
+            parse_test(key, r#""lol hey\ndude";"#),
             @r#"
         "lol hey\ndude";{1:1..1:16}
         "#);
@@ -50,7 +50,7 @@ fn comp_chain() {
     Session::with_default(|key| {
         assert_snapshot!(
             parse_test(
-                &key,
+                key,
                 indoc! {r#"
                 45 < nil >= false
                     <= "wow" > 003.32;
@@ -66,7 +66,7 @@ fn comp_chain() {
 fn comp_chain_with_parens() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_test(&key, r#"45 < ("wow" >= nil);"#),
+            parse_test(key, r#"45 < ("wow" >= nil);"#),
             @r#"
         45 < ("wow" >= nil);{1:1..1:20}
         "#);
@@ -78,7 +78,7 @@ fn lotsa_parens() {
     Session::with_default(|key| {
         assert_snapshot!(
             parse_test(
-                &key,
+                key,
                 indoc! {r#"
                 (((true + "false") - (nil / nil) >= 0 * "hey") % ("what")) + (0);
                 "#},
@@ -93,7 +93,7 @@ fn lotsa_parens() {
 fn err_missing_lhs() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_test(&key, "+ 4;"),
+            parse_test(key, "+ 4;"),
             @r#"
 
         --> Diagnostics:
@@ -108,7 +108,7 @@ fn err_missing_lhs() {
         "#);
 
         assert_snapshot!(
-            parse_test(&key, "4 + (* nil) - 5;"),
+            parse_test(key, "4 + (* nil) - 5;"),
             @r#"
 
         --> Diagnostics:
@@ -128,7 +128,7 @@ fn err_missing_lhs() {
 fn err_missing_rhs() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_test(&key, "4 +;"),
+            parse_test(key, "4 +;"),
             @r#"
 
         --> Diagnostics:
@@ -148,7 +148,7 @@ fn err_missing_rhs() {
 fn err_early_close_paren() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_test(&key, "4 + (nil *) - 5;"),
+            parse_test(key, "4 + (nil *) - 5;"),
             @r#"
 
         --> Diagnostics:
@@ -170,7 +170,7 @@ fn err_early_close_paren() {
 fn err_unclosed_paren() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_test(&key, r#""hey" + (4 - nil"#),
+            parse_test(key, r#""hey" + (4 - nil"#),
             @r#"
 
         --> Diagnostics:
@@ -188,7 +188,7 @@ fn err_unclosed_paren() {
 
         assert_snapshot!(
             parse_test(
-                &key,
+                key,
                 indoc! {r#"
                 123.4 - (nil
 
@@ -218,7 +218,7 @@ fn err_unclosed_paren() {
 fn err_two_ops() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_test(&key, "8 * + 4"),
+            parse_test(key, "8 * + 4"),
             @r#"
 
         --> Diagnostics:
@@ -238,7 +238,7 @@ fn err_two_ops() {
 fn err_multiple() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_test(&key, "8 * + (4 - ) / (  ) + 5"),
+            parse_test(key, "8 * + (4 - ) / (  ) + 5"),
             @r#"
 
         --> Diagnostics:
@@ -254,7 +254,7 @@ fn err_multiple() {
 
         assert_snapshot!(
             parse_test(
-                &key,
+                key,
                 indoc! {r#"
                 / false * (nil
                     - ) == ()
@@ -279,7 +279,7 @@ fn err_multiple() {
 #[test]
 fn paren_spans() {
     Session::with_default(|key| {
-        let program = parse_new_source(&key, "(4 + 10);").unwrap();
+        let program = parse_new_source(key, "(4 + 10);").unwrap();
         match &program.stmts[0].node {
             Stmt::Expr { val } => assert_eq!(val.span.range(), 0..8),
             stmt => panic!("should have parsed to expression statement, got {stmt:?} instead"),
@@ -291,7 +291,7 @@ fn paren_spans() {
 fn err_spurious_close_paren() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_test(&key, "45 - nil ) / false"),
+            parse_test(key, "45 - nil ) / false"),
              @r#"
 
         --> Diagnostics:
@@ -321,7 +321,7 @@ fn err_spurious_close_paren() {
 fn expr_stmts() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_test(&key, "4 + 5; false - true;"),
+            parse_test(key, "4 + 5; false - true;"),
             @r#"
         4 + 5;{1:1..1:6}
         false - true;{1:8..1:20}
@@ -334,7 +334,7 @@ fn expr_stmts() {
 fn print_stmts() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_test(&key, "print 4; print false;"),
+            parse_test(key, "print 4; print false;"),
             @r#"
             print 4;{1:1..1:8}
             print false;{1:10..1:21}
@@ -348,7 +348,7 @@ fn err_multiple_stmts() {
     Session::with_default(|key| {
         assert_snapshot!(
             parse_test(
-                &key,
+                key,
                 indoc! {r#"
                 8 /;
                 print;
@@ -414,7 +414,7 @@ fn decl_stmts() {
     Session::with_default(|key| {
         assert_snapshot!(
             parse_test(
-                &key,
+                key,
                 indoc! {r#"
                 var a;
                 var b = a + 4;
@@ -428,7 +428,7 @@ fn decl_stmts() {
 
         assert_snapshot!(
             parse_test(
-                &key,
+                key,
                 indoc! {r#"
                 var hey_there = "lol";
                 print hey_there;
@@ -448,7 +448,7 @@ fn decl_stmts() {
 fn err_decl_stmts() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_test(&key, "var = 4 + 4;"),
+            parse_test(key, "var = 4 + 4;"),
             @r#"
 
         --> Diagnostics:
@@ -466,7 +466,7 @@ fn err_decl_stmts() {
         );
 
         assert_snapshot!(
-            parse_test(&key, "var lol = ;"),
+            parse_test(key, "var lol = ;"),
             @r#"
 
         --> Diagnostics:
@@ -482,7 +482,7 @@ fn err_decl_stmts() {
         );
 
         assert_snapshot!(
-            parse_test(&key, "var lmao = no"),
+            parse_test(key, "var lmao = no"),
             @r#"
 
         --> Diagnostics:
@@ -500,7 +500,7 @@ fn err_decl_stmts() {
         );
 
         assert_snapshot!(
-            parse_test(&key, "var = "),
+            parse_test(key, "var = "),
             @r#"
 
         --> Diagnostics:
@@ -523,28 +523,28 @@ fn err_decl_stmts() {
 fn assignment_exprs() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_test(&key, "what = 54;"),
+            parse_test(key, "what = 54;"),
             @r#"
         what = 54;{1:1..1:10}
         "#,
         );
 
         assert_snapshot!(
-            parse_test(&key, "print (lmao = 4) + 8;"),
+            parse_test(key, "print (lmao = 4) + 8;"),
             @r#"
         print (lmao = 4) + 8;{1:1..1:21}
         "#,
         );
 
         assert_snapshot!(
-            parse_test(&key, "print a = b = c;"),
+            parse_test(key, "print a = b = c;"),
             @r#"
         print a = b = c;{1:1..1:16}
         "#,
         );
 
         assert_snapshot!(
-            parse_test(&key, "var x = y = z;"),
+            parse_test(key, "var x = y = z;"),
             @r#"
         var x = y = z;{1:1..1:14}
         "#,
@@ -556,7 +556,7 @@ fn assignment_exprs() {
 fn err_invalid_place_exprs() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_test(&key, "(a = b) = c;"),
+            parse_test(key, "(a = b) = c;"),
             @r#"
 
         --> Diagnostics:
@@ -574,7 +574,7 @@ fn err_invalid_place_exprs() {
         );
 
         assert_snapshot!(
-            parse_test(&key, "7 + 8 = 15;"),
+            parse_test(key, "7 + 8 = 15;"),
             @r#"
 
         --> Diagnostics:
@@ -592,7 +592,7 @@ fn err_invalid_place_exprs() {
         );
 
         assert_snapshot!(
-            parse_test(&key, "var a = b + c = d;"),
+            parse_test(key, "var a = b + c = d;"),
             @r#"
 
         --> Diagnostics:
@@ -615,7 +615,7 @@ fn err_invalid_place_exprs() {
 fn block_stmts() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_test(&key, "{ var a = 4; print a + 6; }"),
+            parse_test(key, "{ var a = 4; print a + 6; }"),
             @r#"
         {
             var a = 4;
@@ -625,7 +625,7 @@ fn block_stmts() {
         );
 
         assert_snapshot!(
-            parse_test(&key, indoc! {r#"
+            parse_test(key, indoc! {r#"
             {
                 a = b;
                 {
@@ -656,7 +656,7 @@ fn block_stmts() {
 fn err_block_stmts() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_test(&key, "var x = { 4; };"),
+            parse_test(key, "var x = { 4; };"),
             @r#"
 
         --> Diagnostics:
@@ -672,7 +672,7 @@ fn err_block_stmts() {
         );
 
         assert_snapshot!(
-            parse_test(&key, "{ a; b; c }"),
+            parse_test(key, "{ a; b; c }"),
             @r#"
 
         --> Diagnostics:
@@ -690,7 +690,7 @@ fn err_block_stmts() {
         );
 
         assert_snapshot!(
-            parse_test(&key, "{ lol; + 4; }"),
+            parse_test(key, "{ lol; + 4; }"),
             @r#"
 
         --> Diagnostics:
@@ -716,7 +716,7 @@ fn err_block_stmts() {
         );
 
         assert_snapshot!(
-            parse_test(&key, "{;}"),
+            parse_test(key, "{;}"),
             @r#"
 
         --> Diagnostics:
@@ -747,7 +747,7 @@ fn err_block_stmts() {
 fn if_else_stmts() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_test(&key, "if (a == b) lol; else lmao;"),
+            parse_test(key, "if (a == b) lol; else lmao;"),
             @r#"
         if (a == b) lol;
         else lmao;{1:1..1:27}
@@ -755,7 +755,7 @@ fn if_else_stmts() {
         );
 
         assert_snapshot!(
-            parse_test(&key, "if (nope) { print what; } else if (yeah) print lol; else 4;"),
+            parse_test(key, "if (nope) { print what; } else if (yeah) print lol; else 4;"),
             @r#"
         if (nope) {
             print what;
@@ -771,7 +771,7 @@ fn if_else_stmts() {
 fn err_if_else_stmts() {
     Session::with_default(|key| {
         assert_snapshot!(
-            parse_test(&key, "if (a == b) lol else lmao; print + 4;"),
+            parse_test(key, "if (a == b) lol else lmao; print + 4;"),
             @r#"
 
         --> Diagnostics:
@@ -805,7 +805,7 @@ fn err_if_else_stmts() {
         );
 
         assert_snapshot!(
-            parse_test(&key, "if nope { 4 - 1; } print lolol - + 4;"),
+            parse_test(key, "if nope { 4 - 1; } print lolol - + 4;"),
             @r#"
 
         --> Diagnostics:
@@ -821,7 +821,7 @@ fn err_if_else_stmts() {
         );
 
         assert_snapshot!(
-            parse_test(&key, "if (what { print what the; }"),
+            parse_test(key, "if (what { print what the; }"),
             @r#"
 
         --> Diagnostics:

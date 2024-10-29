@@ -23,7 +23,7 @@ impl SymbolInterner {
         Self::default()
     }
 
-    pub fn with_key<'s>(&'s self, _: &SessionKey<'s>) -> UnlockedSymbolInterner<'s> {
+    pub fn with_key<'s>(&'s self, _: SessionKey<'s>) -> UnlockedSymbolInterner<'s> {
         UnlockedSymbolInterner { interner: self }
     }
 }
@@ -83,7 +83,7 @@ impl Display for Symbol<'_> {
 }
 
 impl Symbol<'_> {
-    pub fn intern<'s>(key: &SessionKey<'s>, val: &str) -> Symbol<'s> {
+    pub fn intern<'s>(key: SessionKey<'s>, val: &str) -> Symbol<'s> {
         key.get().syms.with_key(key).intern(val)
     }
 
@@ -95,7 +95,7 @@ impl Symbol<'_> {
 #[macro_export]
 macro_rules! sym {
     ($key:expr, $s:expr) => {
-        $crate::symbol::Symbol::intern(&$key, $s)
+        $crate::symbol::Symbol::intern($key, $s)
     };
 }
 

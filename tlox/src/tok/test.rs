@@ -57,7 +57,7 @@ where
     }
 }
 
-fn check_scan<'s, I, T>(key: &'s SessionKey<'s>, source: &str, expected: I)
+fn check_scan<'s, I, T>(key: SessionKey<'s>, source: &str, expected: I)
 where
     I: IntoIterator<Item = T>,
     T: TokenTestable<'s> + Debug,
@@ -99,7 +99,7 @@ where
 ///
 /// Checks the resulting token stream against the given expected stream, panicking if there are any
 /// mismatches. Renders and returns any resulting diagnostics.
-fn check_and_render<'s, I, T>(key: &'s SessionKey<'s>, source: &str, expected: I) -> String
+fn check_and_render<'s, I, T>(key: SessionKey<'s>, source: &str, expected: I) -> String
 where
     I: IntoIterator<Item = T>,
     T: TokenTestable<'s> + Debug,
@@ -110,11 +110,11 @@ where
 
 use Token::*;
 
-fn ident<'s>(key: &SessionKey<'s>, s: &str) -> Token<'s> {
+fn ident<'s>(key: SessionKey<'s>, s: &str) -> Token<'s> {
     Ident(sym!(key, s))
 }
 
-fn strlit<'s>(key: &SessionKey<'s>, s: &str) -> Token<'s> {
+fn strlit<'s>(key: SessionKey<'s>, s: &str) -> Token<'s> {
     Str(sym!(key, s))
 }
 
@@ -145,7 +145,7 @@ fn keywords() {
             (Nil, 67..70),
             (Return, 71..77),
         ];
-        assert!(check_and_render(&key, source, expected).is_empty());
+        assert!(check_and_render(key, source, expected).is_empty());
     });
 }
 
@@ -166,7 +166,7 @@ fn one_char_punctuation() {
             (Star, 9..10),
             (Percent, 10..11),
         ];
-        assert!(check_and_render(&key, source, expected).is_empty());
+        assert!(check_and_render(key, source, expected).is_empty());
     });
 }
 
@@ -184,7 +184,7 @@ fn multi_char_punctuation() {
             (Less, 15..16),
             (LessEqual, 17..19),
         ];
-        assert!(check_and_render(&key, source, expected).is_empty());
+        assert!(check_and_render(key, source, expected).is_empty());
     });
 }
 
@@ -193,17 +193,17 @@ fn idents() {
     Session::with_default(|key| {
         let source = "hey what num_3 _unused __ n1234 fortune iface orange";
         let expected = [
-            ident(&key, "hey"),
-            ident(&key, "what"),
-            ident(&key, "num_3"),
-            ident(&key, "_unused"),
-            ident(&key, "__"),
-            ident(&key, "n1234"),
-            ident(&key, "fortune"),
-            ident(&key, "iface"),
-            ident(&key, "orange"),
+            ident(key, "hey"),
+            ident(key, "what"),
+            ident(key, "num_3"),
+            ident(key, "_unused"),
+            ident(key, "__"),
+            ident(key, "n1234"),
+            ident(key, "fortune"),
+            ident(key, "iface"),
+            ident(key, "orange"),
         ];
-        assert!(check_and_render(&key, source, expected).is_empty())
+        assert!(check_and_render(key, source, expected).is_empty())
     });
 }
 
@@ -220,24 +220,24 @@ fn mixed_punctuation_idents_keywords_newlines_comments() {
         let expected = [
             (If, (0, 0)..=(0, 1)),
             (LeftParen, (0, 3)..=(0, 3)),
-            (ident(&key, "hey"), (0, 4)..=(0, 6)),
+            (ident(key, "hey"), (0, 4)..=(0, 6)),
             (RightParen, (0, 7)..=(0, 7)),
             (LeftBrace, (0, 9)..=(0, 9)),
             (Var, (1, 4)..=(1, 6)),
-            (ident(&key, "x"), (1, 8)..=(1, 8)),
+            (ident(key, "x"), (1, 8)..=(1, 8)),
             (Equal, (1, 10)..=(1, 10)),
-            (ident(&key, "lmao"), (1, 12)..=(1, 15)),
+            (ident(key, "lmao"), (1, 12)..=(1, 15)),
             (Semicolon, (1, 16)..=(1, 16)),
-            (ident(&key, "now"), (2, 4)..=(2, 6)),
+            (ident(key, "now"), (2, 4)..=(2, 6)),
             (LeftParen, (2, 7)..=(2, 7)),
-            (ident(&key, "what"), (2, 8)..=(2, 11)),
+            (ident(key, "what"), (2, 8)..=(2, 11)),
             (Comma, (2, 12)..=(2, 12)),
-            (ident(&key, "lol"), (2, 13)..=(2, 15)),
+            (ident(key, "lol"), (2, 13)..=(2, 15)),
             (RightParen, (2, 16)..=(2, 16)),
             (Semicolon, (2, 17)..=(2, 17)),
             (RightBrace, (3, 0)..=(3, 0)),
         ];
-        assert!(check_and_render(&key, source, expected).is_empty());
+        assert!(check_and_render(key, source, expected).is_empty());
     });
 }
 
@@ -248,7 +248,7 @@ fn multi_char_punctuation_pathological() {
         let expected = [
             Bang, BangEqual, Equal, Less, LessEqual, Equal, BangEqual, EqualEqual, Equal,
         ];
-        assert!(check_and_render(&key, source, expected).is_empty());
+        assert!(check_and_render(key, source, expected).is_empty());
     });
 }
 
@@ -256,8 +256,8 @@ fn multi_char_punctuation_pathological() {
 fn string_literal_no_escapes() {
     Session::with_default(|key| {
         let source = r#""hey what's up""#;
-        let expected = [strlit(&key, "hey what's up")];
-        assert!(check_and_render(&key, source, expected).is_empty());
+        let expected = [strlit(key, "hey what's up")];
+        assert!(check_and_render(key, source, expected).is_empty());
     });
 }
 
@@ -265,8 +265,8 @@ fn string_literal_no_escapes() {
 fn string_literal_escapes() {
     Session::with_default(|key| {
         let source = r#""hey \"nerd\"\n\twhat's up?""#;
-        let expected = [strlit(&key, "hey \"nerd\"\n\twhat's up?")];
-        assert!(check_and_render(&key, source, expected).is_empty());
+        let expected = [strlit(key, "hey \"nerd\"\n\twhat's up?")];
+        assert!(check_and_render(key, source, expected).is_empty());
     });
 }
 
@@ -274,14 +274,8 @@ fn string_literal_escapes() {
 fn string_literal_assignment() {
     Session::with_default(|key| {
         let source = r#"var s = "heya";"#;
-        let expected = [
-            Var,
-            ident(&key, "s"),
-            Equal,
-            strlit(&key, "heya"),
-            Semicolon,
-        ];
-        assert!(check_and_render(&key, source, expected).is_empty());
+        let expected = [Var, ident(key, "s"), Equal, strlit(key, "heya"), Semicolon];
+        assert!(check_and_render(key, source, expected).is_empty());
     });
 }
 
@@ -291,12 +285,12 @@ fn string_literal_including_comment() {
         let source = r#"var s = "hey // what?"; // lol"#;
         let expected = [
             Var,
-            ident(&key, "s"),
+            ident(key, "s"),
             Equal,
-            strlit(&key, "hey // what?"),
+            strlit(key, "hey // what?"),
             Semicolon,
         ];
-        assert!(check_and_render(&key, source, expected).is_empty());
+        assert!(check_and_render(key, source, expected).is_empty());
     });
 }
 
@@ -305,9 +299,9 @@ fn unrecognized_token() {
     Session::with_default(|key| {
         assert_snapshot!(
             check_and_render(
-                &key,
+                key,
                 "$^&0 lol",
-                [num(0.0), ident(&key, "lol")],
+                [num(0.0), ident(key, "lol")],
             ),
             @r#"
         error: unrecognized token
@@ -325,17 +319,17 @@ fn unterminated_string() {
     Session::with_default(|key| {
         assert_snapshot!(
             check_and_render(
-                &key,
+                key,
                 indoc! {r#"
                 var s = "hey;
                 do(something);"#},
                 [
                     Var,
-                    ident(&key, "s"),
+                    ident(key, "s"),
                     Equal,
-                    ident(&key, "do"),
+                    ident(key, "do"),
                     LeftParen,
-                    ident(&key, "something"),
+                    ident(key, "something"),
                     RightParen,
                     Semicolon,
                 ],
@@ -359,16 +353,16 @@ fn continued_string() {
         lmao();"#};
         let expected = [
             (Var, (0, 0)..=(0, 2)),
-            (ident(&key, "s"), (0, 4)..=(0, 4)),
+            (ident(key, "s"), (0, 4)..=(0, 4)),
             (Equal, (0, 6)..=(0, 6)),
-            (strlit(&key, "hey there"), (0, 8)..=(1, 9)),
+            (strlit(key, "hey there"), (0, 8)..=(1, 9)),
             (Semicolon, (1, 10)..=(1, 10)),
-            (ident(&key, "lmao"), (2, 0)..=(2, 3)),
+            (ident(key, "lmao"), (2, 0)..=(2, 3)),
             (LeftParen, (2, 4)..=(2, 4)),
             (RightParen, (2, 5)..=(2, 5)),
             (Semicolon, (2, 6)..=(2, 6)),
         ];
-        assert!(check_and_render(&key, source, expected).is_empty());
+        assert!(check_and_render(key, source, expected).is_empty());
     });
 }
 
@@ -377,9 +371,9 @@ fn unrecognized_escape() {
     Session::with_default(|key| {
         assert_snapshot!(
             check_and_render(
-                &key,
+                key,
                 r#""what \even \the \fuck""#,
-                [(strlit(&key, "what ven \the uck"), (0, 0)..=(0, 22))],
+                [(strlit(key, "what ven \the uck"), (0, 0)..=(0, 22))],
             ),
             @r#"
         error: unrecognized escape sequence
@@ -407,7 +401,7 @@ fn number() {
     Session::with_default(|key| {
         let source = "0 1 1.0 0033 3.500";
         let expected = [num(0.0), num(1.0), num(1.0), num(33.0), num(3.5)];
-        assert!(check_and_render(&key, source, expected).is_empty());
+        assert!(check_and_render(key, source, expected).is_empty());
     });
 }
 
@@ -419,10 +413,10 @@ fn block_comments() {
         you little */ buddy"};
 
         let expected = [
-            (ident(&key, "hey"), (0, 0)..=(0, 2)),
-            (ident(&key, "buddy"), (1, 14)..=(1, 18)),
+            (ident(key, "hey"), (0, 0)..=(0, 2)),
+            (ident(key, "buddy"), (1, 14)..=(1, 18)),
         ];
-        assert!(check_and_render(&key, source, expected).is_empty());
+        assert!(check_and_render(key, source, expected).is_empty());
     });
 }
 
@@ -430,8 +424,8 @@ fn block_comments() {
 fn nested_block_comments() {
     Session::with_default(|key| {
         let source = "now /* what /* even */ is */ this";
-        let expected = [ident(&key, "now"), This];
-        assert!(check_and_render(&key, source, expected).is_empty());
+        let expected = [ident(key, "now"), This];
+        assert!(check_and_render(key, source, expected).is_empty());
     });
 }
 
@@ -440,9 +434,9 @@ fn unterminated_block_comment() {
     Session::with_default(|key| {
         assert_snapshot!(
             check_and_render(
-                &key,
+                key,
                 "ababa /* lmao",
-                [ident(&key, "ababa")],
+                [ident(key, "ababa")],
             ),
             @r#"
         error: unterminated block comment
@@ -460,9 +454,9 @@ fn unterminated_nested_block_comment() {
     Session::with_default(|key| {
         assert_snapshot!(
             check_and_render(
-                &key,
+                key,
                 "wee /* hehe /* yay */ wow",
-                [ident(&key, "wee")],
+                [ident(key, "wee")],
             ),
             @r#"
         error: unterminated block comment

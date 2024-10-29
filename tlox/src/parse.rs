@@ -15,7 +15,7 @@ mod error;
 use error::*;
 
 /// Scan and parse the source with the given index in the current session's source map.
-pub fn parse_source<'s>(key: &'s SessionKey<'s>, source_idx: usize) -> Option<Program<'s>> {
+pub fn parse_source<'s>(key: SessionKey<'s>, source_idx: usize) -> Option<Program<'s>> {
     let lexer = Lexer::new(key, key.get().sm.source(source_idx));
     let parser = Parser::new(lexer);
     parser.parse()

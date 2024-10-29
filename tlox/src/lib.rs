@@ -63,7 +63,7 @@ impl TLox {
             if let Some(path) = script {
                 match fs::read_to_string(&path) {
                     Ok(content) => {
-                        let mut interpreter = Interpreter::new(&key);
+                        let mut interpreter = Interpreter::new(key);
                         if Self::run_source(&mut interpreter, path, &content).is_some() {
                             ExitCode::SUCCESS
                         } else {
@@ -81,7 +81,7 @@ impl TLox {
                 let reader = io::stdin();
                 let mut buffer = String::new();
                 let mut next_input = 0;
-                let mut interpreter = Interpreter::new_repl(&key);
+                let mut interpreter = Interpreter::new_repl(key);
                 loop {
                     let current_input = next_input;
                     next_input += 1;
