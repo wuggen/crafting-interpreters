@@ -8,7 +8,7 @@ use tlox::parse::parse_source;
 use tlox::session::Session;
 use tlox::syn::SynEq;
 
-const PARSE_TESTS_PATH: &str = "tests/parse";
+const PARSE_TESTS_PATH: &str = "parse";
 const SNAPSHOTS_PATH: &str = "parse/snapshots";
 
 fn file_parse_test(path: PathBuf) {

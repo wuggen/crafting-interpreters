@@ -2,9 +2,10 @@
 source: tests/parse.rs
 description: "(a = b) = c;\n\n7 + 8 = 15;\n\nvar a = b + c = d;\n\n(a) = 4;\n"
 expression: render_dcx()
+snapshot_kind: text
 ---
 error: invalid place expression on left side of assignment
-  --> tests/parse/err_invalid_place_exprs.lx:1:1
+  --> parse/err_invalid_place_exprs.lx:1:1
   |
 1 | (a = b) = c;
   | ^^^^^^^ - expected place expression due to assignment here
@@ -14,7 +15,7 @@ error: invalid place expression on left side of assignment
   = note: expected identifier
 
 error: invalid place expression on left side of assignment
-  --> tests/parse/err_invalid_place_exprs.lx:3:1
+  --> parse/err_invalid_place_exprs.lx:3:1
   |
 3 | 7 + 8 = 15;
   | ^^^^^ - expected place expression due to assignment here
@@ -24,7 +25,7 @@ error: invalid place expression on left side of assignment
   = note: expected identifier
 
 error: invalid place expression on left side of assignment
-  --> tests/parse/err_invalid_place_exprs.lx:5:9
+  --> parse/err_invalid_place_exprs.lx:5:9
   |
 5 | var a = b + c = d;
   |         ^^^^^ - expected place expression due to assignment here
@@ -34,7 +35,7 @@ error: invalid place expression on left side of assignment
   = note: expected identifier
 
 error: invalid place expression on left side of assignment
-  --> tests/parse/err_invalid_place_exprs.lx:7:1
+  --> parse/err_invalid_place_exprs.lx:7:1
   |
 7 | (a) = 4;
   | ^^^ - expected place expression due to assignment here

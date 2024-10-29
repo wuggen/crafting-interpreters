@@ -1,15 +1,3 @@
 [workspace]
 resolver = "2"
-members = [ "tlox" ]
-
-[package]
-name = "lox"
-version = "0.1.0"
-edition = "2021"
-
-[dev-dependencies]
-tlox = { path = "./tlox" }
-insta = "1.40.0"
-
-[[test]]
-name = "parse"
+members = [ "tests", "tlox" ]

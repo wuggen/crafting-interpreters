@@ -2,9 +2,10 @@
 source: tests/parse.rs
 description: "var = 4 + 4;\n\nvar lol = ;\n\nvar lmao = no // Should sync correctly and continue reporting errors\n\nvar = ;\n"
 expression: render_dcx()
+snapshot_kind: text
 ---
 error: missing name in variable declaration
-  --> tests/parse/err_decl_stmts.lx:1:5
+  --> parse/err_decl_stmts.lx:1:5
   |
 1 | var = 4 + 4;
   | --- ^ expected variable name here
@@ -14,7 +15,7 @@ error: missing name in variable declaration
   = note: expected identifier
 
 error: statement terminated prematurely
-  --> tests/parse/err_decl_stmts.lx:3:11
+  --> parse/err_decl_stmts.lx:3:11
   |
 3 | var lol = ;
   |           ^ statement terminated here
@@ -22,7 +23,7 @@ error: statement terminated prematurely
   = note: expected expression
 
 error: unterminated statement
-  --> tests/parse/err_decl_stmts.lx:7:1
+  --> parse/err_decl_stmts.lx:7:1
   |
 5 | var lmao = no // Should sync correctly and continue reporting errors
   | ------------- this statement
@@ -33,7 +34,7 @@ error: unterminated statement
   = note: expected `;`
 
 error: missing name in variable declaration
-  --> tests/parse/err_decl_stmts.lx:7:5
+  --> parse/err_decl_stmts.lx:7:5
   |
 7 | var = ;
   | --- ^ expected variable name here

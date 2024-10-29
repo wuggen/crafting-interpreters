@@ -2,9 +2,10 @@
 source: tests/parse.rs
 description: "// Parser should sync and find errors on all of these lines!\nvar x = { 4; };\n\n{ a; b; c }\n\n{ lol; + 4; }\n\n{;}\n\nprint { x };\n"
 expression: render_dcx()
+snapshot_kind: text
 ---
 error: unexpected `{` token in input
-  --> tests/parse/err_block_stmts.lx:2:9
+  --> parse/err_block_stmts.lx:2:9
   |
 2 | var x = { 4; };
   |         ^ unexpected token here
@@ -12,7 +13,7 @@ error: unexpected `{` token in input
   = note: expected expression
 
 error: unterminated statement
-  --> tests/parse/err_block_stmts.lx:4:11
+  --> parse/err_block_stmts.lx:4:11
   |
 4 | { a; b; c }
   |         - ^ statement should have been terminated here
@@ -22,7 +23,7 @@ error: unterminated statement
   = note: expected `;`
 
 error: unclosed braces
-  --> tests/parse/err_block_stmts.lx:6:8
+  --> parse/err_block_stmts.lx:6:8
   |
 6 | { lol; + 4; }
   | -      ^ braces should have been closed here
@@ -32,7 +33,7 @@ error: unclosed braces
   = note: expected `}`
 
 error: unexpected `+` token in input
-  --> tests/parse/err_block_stmts.lx:6:8
+  --> parse/err_block_stmts.lx:6:8
   |
 6 | { lol; + 4; }
   |        ^ unexpected token here
@@ -40,7 +41,7 @@ error: unexpected `+` token in input
   = note: expected statement
 
 error: unclosed braces
-  --> tests/parse/err_block_stmts.lx:8:2
+  --> parse/err_block_stmts.lx:8:2
   |
 8 | {;}
   | -^ braces should have been closed here
@@ -50,7 +51,7 @@ error: unclosed braces
   = note: expected `}`
 
 error: unexpected `;` token in input
-  --> tests/parse/err_block_stmts.lx:8:2
+  --> parse/err_block_stmts.lx:8:2
   |
 8 | {;}
   |  ^ unexpected token here
@@ -58,7 +59,7 @@ error: unexpected `;` token in input
   = note: expected statement
 
 error: unexpected `{` token in input
-   --> tests/parse/err_block_stmts.lx:10:7
+   --> parse/err_block_stmts.lx:10:7
    |
 10 | print { x };
    |       ^ unexpected token here
