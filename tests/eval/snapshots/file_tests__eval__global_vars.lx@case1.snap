@@ -1,0 +1,8 @@
+---
+source: tests/eval.rs
+description: "var a = 4;\nprint a;\nprint a - 6;\n\n"
+expression: combined
+---
+:: Output ::
+4
+-2

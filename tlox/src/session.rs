@@ -73,8 +73,7 @@ impl Session {
     /// Do something in the context of this session.
     ///
     /// Until the given closure returns, this session will be accessible in the current thread via
-    /// [`Session::with_current`]. Once the closure returns, the previous global session, if any,
-    /// becomes current again for the thread.
+    /// [`Session::with_current`].
     ///
     /// # Panics
     ///
@@ -118,8 +117,8 @@ impl Session {
     /// Do something with a new, fresh session.
     ///
     /// Until the given closure returns, the newly-created session will be accessible in the current
-    /// thread via [`Session::with_current`]. Once the closure returns, the previous global session,
-    /// if any, becomes current again for the thread.
+    /// thread via [`Session::with_current`]. Once the given closure returns, the session will be
+    /// dropped before this function returns.
     ///
     /// # Panics
     ///

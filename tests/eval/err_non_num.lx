@@ -1,0 +1,8 @@
+//CASE negate
+print -nil;
+
+//CASE add
+print nil + false;
+
+//CASE compare
+print !(5 + 10) > nil;

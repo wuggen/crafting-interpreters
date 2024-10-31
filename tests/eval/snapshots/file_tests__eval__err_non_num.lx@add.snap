@@ -1,0 +1,25 @@
+---
+source: tests/eval.rs
+description: "print nil + false;\n\n"
+expression: combined
+---
+:: Diagnostics ::
+error: cannot coerce Nil to Num
+  --> err_non_num.lx@add:1:7
+  |
+1 | print nil + false;
+  |       ^^^ - value coerced due to use as an operand to this operator
+  |       |    
+  |       expression found to be of type Nil
+  |
+  = note: operator `+` expects both operands to be of type Num, or of type Str
+
+error: cannot coerce Bool to Num
+  --> err_non_num.lx@add:1:13
+  |
+1 | print nil + false;
+  |           - ^^^^^ expression found to be of type Bool
+  |           |  
+  |           value coerced due to use as an operand to this operator
+  |
+  = note: operator `+` expects both operands to be of type Num, or of type Str

@@ -13,9 +13,6 @@ use crate::syn::{BinopSym, Expr, ExprNode, Lit, Place, Program, Stmt, UnopSym};
 use crate::ty::{PrimitiveTy, Ty};
 use crate::val::{StrValue, Value};
 
-#[cfg(test)]
-mod test;
-
 /// A tree-walking Lox interpreter.
 pub struct Interpreter<'s, 'out> {
     key: SessionKey<'s>,

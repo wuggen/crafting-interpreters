@@ -1,0 +1,15 @@
+---
+source: tests/eval.rs
+description: "{\n    var a = \"lol\";\n    print a;\n}\nvar b = a + 1; // Error unbound var a\n"
+expression: combined
+---
+:: Output ::
+lol
+
+
+:: Diagnostics ::
+error: reference to unbound variable `a`
+  --> err_scopes.lx:5:9
+  |
+5 | var b = a + 1; // Error unbound var a
+  |         ^ variable is not bound at this point

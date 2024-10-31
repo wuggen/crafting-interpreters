@@ -1,0 +1,5 @@
+{
+    var a = "lol";
+    print a;
+}
+var b = a + 1; // Error unbound var a

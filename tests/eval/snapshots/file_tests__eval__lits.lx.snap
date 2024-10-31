@@ -1,0 +1,11 @@
+---
+source: tests/eval.rs
+description: "print nil;\nprint true;\nprint false;\nprint 42;\nprint \"hello lol lol\";\n"
+expression: combined
+---
+:: Output ::
+nil
+true
+false
+42
+hello lol lol

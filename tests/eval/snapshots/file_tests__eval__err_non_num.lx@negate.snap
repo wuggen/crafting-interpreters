@@ -1,0 +1,15 @@
+---
+source: tests/eval.rs
+description: "print -nil;\n\n"
+expression: combined
+---
+:: Diagnostics ::
+error: cannot coerce Nil to Num
+  --> err_non_num.lx@negate:1:8
+  |
+1 | print -nil;
+  |       -^^^ expression found to be of type Nil
+  |       | 
+  |       value coerced due to use as an operand for this operator
+  |
+  = note: operator `-` expects operand of type Num

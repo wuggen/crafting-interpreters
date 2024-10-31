@@ -5,8 +5,8 @@ edition = "2021"
 
 [dev-dependencies]
 tlox = { path = "../tlox" }
-insta = "1.40.0"
+insta = "=1.40.0"
 
 [[test]]
-name = "parse"
-path = "parse.rs"
+name = "file_tests"
+path = "file_tests.rs"

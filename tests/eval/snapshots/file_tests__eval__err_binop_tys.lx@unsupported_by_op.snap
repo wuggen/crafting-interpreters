@@ -1,0 +1,25 @@
+---
+source: tests/eval.rs
+description: "// Error should indicate that types are incompatible with `+` regardless of\n// other operand type (see full test file)\nvar a = false;\nvar b;\nprint a < b;\n"
+expression: combined
+---
+:: Diagnostics ::
+error: cannot coerce Bool to Num
+  --> err_binop_tys.lx@unsupported_by_op:5:7
+  |
+5 | print a < b;
+  |       ^ - value coerced due to use as an operand to this operator
+  |       |  
+  |       expression found to be of type Bool
+  |
+  = note: operator `<` expects operands of type Num
+
+error: cannot coerce Nil to Num
+  --> err_binop_tys.lx@unsupported_by_op:5:11
+  |
+5 | print a < b;
+  |         - ^ expression found to be of type Nil
+  |         |  
+  |         value coerced due to use as an operand to this operator
+  |
+  = note: operator `<` expects operands of type Num

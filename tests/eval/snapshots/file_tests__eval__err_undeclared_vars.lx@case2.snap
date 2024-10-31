@@ -1,0 +1,11 @@
+---
+source: tests/eval.rs
+description: "var a = 8;\nprint a + b;\n"
+expression: combined
+---
+:: Diagnostics ::
+error: reference to unbound variable `b`
+  --> err_undeclared_vars.lx@case2:2:11
+  |
+2 | print a + b;
+  |           ^ variable is not bound at this point

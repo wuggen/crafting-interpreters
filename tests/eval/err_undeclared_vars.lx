@@ -1,0 +1,6 @@
+//CASE case1
+print 4 + nope;
+
+//CASE case2
+var a = 8;
+print a + b;

@@ -1,0 +1,22 @@
+---
+source: tests/parse.rs
+description: "4 + ;\n4 + (nil *) - 5;\n\n"
+expression: render_dcx()
+---
+error: statement terminated prematurely
+  --> err_binop_chains.lx@missing_lhs:1:5
+  |
+1 | 4 + ;
+  |     ^ statement terminated here
+  |
+  = note: expected expression
+
+error: parentheses closed prematurely
+  --> err_binop_chains.lx@missing_lhs:2:11
+  |
+2 | 4 + (nil *) - 5;
+  |     -     ^ parentheses closed here
+  |     |      
+  |     parentheses opened here
+  |
+  = note: expected expression

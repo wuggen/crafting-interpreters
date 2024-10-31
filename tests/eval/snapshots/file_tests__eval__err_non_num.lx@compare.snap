@@ -1,0 +1,25 @@
+---
+source: tests/eval.rs
+description: "print !(5 + 10) > nil;\n"
+expression: combined
+---
+:: Diagnostics ::
+error: cannot coerce Bool to Num
+  --> err_non_num.lx@compare:1:7
+  |
+1 | print !(5 + 10) > nil;
+  |       ^^^^^^^^^ - value coerced due to use as an operand to this operator
+  |       |          
+  |       expression found to be of type Bool
+  |
+  = note: operator `>` expects operands of type Num
+
+error: cannot coerce Nil to Num
+  --> err_non_num.lx@compare:1:19
+  |
+1 | print !(5 + 10) > nil;
+  |                 - ^^^ expression found to be of type Nil
+  |                 |  
+  |                 value coerced due to use as an operand to this operator
+  |
+  = note: operator `>` expects operands of type Num

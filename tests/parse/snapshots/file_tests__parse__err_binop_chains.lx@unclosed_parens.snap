@@ -1,0 +1,24 @@
+---
+source: tests/parse.rs
+description: "\"hey\" + (4 - nil;\n\n123.4 - (nil \"whoops\";\n\n"
+expression: render_dcx()
+---
+error: unclosed parentheses
+  --> err_binop_chains.lx@unclosed_parens:1:17
+  |
+1 | "hey" + (4 - nil;
+  |         -       ^ parentheses should have been closed here
+  |         |        
+  |         parentheses opened here
+  |
+  = note: expected `)`
+
+error: unclosed parentheses
+  --> err_binop_chains.lx@unclosed_parens:3:14
+  |
+3 | 123.4 - (nil "whoops";
+  |         -    ^^^^^^^^ parentheses should have been closed here
+  |         |     
+  |         parentheses opened here
+  |
+  = note: expected `)`

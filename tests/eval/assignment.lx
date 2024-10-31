@@ -1,0 +1,12 @@
+//CASE case1
+var a = 4;
+print a;
+a = 6;
+print a;
+print a = a + 4;
+print a;
+
+//CASE case2
+var a; var b; var c;
+a = b = c = 1;
+print a; print b; print c;

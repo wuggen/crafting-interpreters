@@ -1,0 +1,7 @@
+---
+source: tests/eval.rs
+description: "print \"hey there\" == \"hey \" + \"there\";\n"
+expression: combined
+---
+:: Output ::
+true

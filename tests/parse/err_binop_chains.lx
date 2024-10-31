@@ -1,13 +1,17 @@
+//CASE missing_rhs
 + 4;
 4 + (* nil) - 5;
 
+//CASE missing_lhs
 4 + ;
 4 + (nil *) - 5;
 
+//CASE unclosed_parens
 "hey" + (4 - nil;
 
 123.4 - (nil "whoops";
 
+//CASE double_ops
 8 * + 4;
 
 45 - nil ) / false;

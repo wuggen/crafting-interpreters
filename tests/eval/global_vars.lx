@@ -1,0 +1,11 @@
+//CASE case1
+var a = 4;
+print a;
+print a - 6;
+
+//CASE case2
+var a;
+print a;
+var b = 76;
+var a = -2;
+print b + a;

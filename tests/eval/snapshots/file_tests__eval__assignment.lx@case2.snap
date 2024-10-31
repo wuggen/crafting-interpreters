@@ -1,0 +1,9 @@
+---
+source: tests/eval.rs
+description: "var a; var b; var c;\na = b = c = 1;\nprint a; print b; print c;\n"
+expression: combined
+---
+:: Output ::
+1
+1
+1

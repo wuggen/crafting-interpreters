@@ -1,0 +1,11 @@
+---
+source: tests/eval.rs
+description: "a = 45;\n\n"
+expression: combined
+---
+:: Diagnostics ::
+error: assignment to unbound variable `a`
+  --> err_assignment_unbound_var.lx@case1:1:1
+  |
+1 | a = 45;
+  | ^ variable is not bound at this point

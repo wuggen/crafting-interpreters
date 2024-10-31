@@ -1,0 +1,16 @@
+---
+source: tests/eval.rs
+description: "// Error should indicate incompatibility between Str and Num (see full test file)\nvar a = \"lol\";\nvar b = 20;\nprint a + b;\n\n"
+expression: combined
+---
+:: Diagnostics ::
+error: cannot coerce Num to Str
+  --> err_binop_tys.lx@incompat_operands_1:4:11
+  |
+4 | print a + b;
+  |       - - ^ expression found to be of type Num
+  |       | |  
+  |       | operands to this operator are incompatible
+  |       other operand found to be of type Str
+  |
+  = note: operator `+` expects both operands to be of type Num, or of type Str

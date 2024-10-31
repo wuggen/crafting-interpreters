@@ -1,0 +1,11 @@
+---
+source: tests/eval.rs
+description: "var x;\nprint x = a = x;\n"
+expression: combined
+---
+:: Diagnostics ::
+error: assignment to unbound variable `a`
+  --> err_assignment_unbound_var.lx@case2:2:11
+  |
+2 | print x = a = x;
+  |           ^ variable is not bound at this point

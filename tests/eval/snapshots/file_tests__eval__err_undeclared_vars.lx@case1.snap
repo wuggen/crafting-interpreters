@@ -1,0 +1,11 @@
+---
+source: tests/eval.rs
+description: "print 4 + nope;\n\n"
+expression: combined
+---
+:: Diagnostics ::
+error: reference to unbound variable `nope`
+  --> err_undeclared_vars.lx@case1:1:11
+  |
+1 | print 4 + nope;
+  |           ^^^^ variable is not bound at this point

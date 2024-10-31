@@ -1,0 +1,11 @@
+---
+source: tests/eval.rs
+description: "if (false) var x = \"hey\";\nprint x; // Error unbound variable `x`\n"
+expression: combined
+---
+:: Diagnostics ::
+error: reference to unbound variable `x`
+  --> err_if_else_stmts.lx@no_binding:2:7
+  |
+2 | print x; // Error unbound variable `x`
+  |       ^ variable is not bound at this point

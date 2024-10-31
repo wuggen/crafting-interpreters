@@ -1,0 +1,12 @@
+---
+source: tests/eval.rs
+description: "print 3 + 4;\nprint 5 == nil;\nprint 5 == 5 == true;\nprint 3 + 6 / 2;\nprint (3 + 6) / 2;\nprint \"hey\" + \" there\" + \" good lookin\";\n"
+expression: combined
+---
+:: Output ::
+7
+false
+true
+6
+4.5
+hey there good lookin

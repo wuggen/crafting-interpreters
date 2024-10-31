@@ -1,0 +1,6 @@
+print 3 + 4;
+print 5 == nil;
+print 5 == 5 == true;
+print 3 + 6 / 2;
+print (3 + 6) / 2;
+print "hey" + " there" + " good lookin";

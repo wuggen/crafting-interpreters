@@ -1,0 +1,56 @@
+//IGNORE
+
+// A previous error read as follows:
+//
+//    error: cannot coerce Str to Num
+//      --> %i11:1:7
+//      |
+//    1 | print a + b;
+//      |       ^ - value coerced due to use as an operand to this operator
+//      |       |
+//      |       expression found to be of type Str
+//      |
+//      = note: operator `+` expects operands of type Num or Str
+//
+// This is not especially illuminating about why the coercion was attempted or what it expects. In
+// particular:
+//
+// - This doesn't explain the reason for the coercion at all (`b` is of type Num).
+// - The note is poorly phrased, and seems to imply that either operand can be either type
+//   independent of the other.
+//
+// Conversely, we don't want something like this:
+//
+//    error: cannot coerce Bool to Num
+//      --> %i0:1:7
+//      |
+//    1 | print !(5 + 10) > nil;
+//      |       ^^^^^^^^^ - --- other operand found to be of type Nil
+//      |       |         |
+//      |       |         value coerced due to use as an operand to this operator
+//      |       expression found to be of type Bool
+//      |
+//      = note: operator `>` expects operands of type Num
+//
+// Pointing out the type of the other operand is irrelevant and confusing here, since neither
+// operand's type is compatible with the operator.
+
+//ENDIGNORE
+//CASE incompat_operands_1
+// Error should indicate incompatibility between Str and Num (see full test file)
+var a = "lol";
+var b = 20;
+print a + b;
+
+//CASE incompat_operands_2
+// Error should indicate incompatibility between Num and Str (see full test file)
+var a = 16;
+var b = "heya";
+print a + b;
+
+//CASE unsupported_by_op
+// Error should indicate that types are incompatible with `+` regardless of
+// other operand type (see full test file)
+var a = false;
+var b;
+print a < b;

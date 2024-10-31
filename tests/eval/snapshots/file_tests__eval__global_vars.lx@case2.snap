@@ -1,0 +1,8 @@
+---
+source: tests/eval.rs
+description: "var a;\nprint a;\nvar b = 76;\nvar a = -2;\nprint b + a;\n"
+expression: combined
+---
+:: Output ::
+nil
+74

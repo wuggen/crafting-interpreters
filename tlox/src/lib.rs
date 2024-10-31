@@ -6,7 +6,6 @@
 #![feature(ptr_metadata)]
 #![feature(ptr_sub_ptr)]
 #![feature(round_char_boundary)]
-#![feature(strict_provenance)]
 #![feature(strict_provenance_atomic_ptr)]
 
 use std::fs;

@@ -1,0 +1,10 @@
+---
+source: tests/eval.rs
+description: "var a = 4;\nprint a;\na = 6;\nprint a;\nprint a = a + 4;\nprint a;\n\n"
+expression: combined
+---
+:: Output ::
+4
+6
+10
+10

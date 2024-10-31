@@ -1,0 +1,9 @@
+---
+source: tests/eval.rs
+description: "var x;\nif (nil) x = 12;\nprint x; // nil\n\nif (true) {\n    var x = \"scoped!\";\n    print x;\n} else {\n    var x = \"scoped again!\";\n    print x; // shouldn't print\n}\nprint x; // nil\n"
+expression: combined
+---
+:: Output ::
+nil
+scoped!
+nil

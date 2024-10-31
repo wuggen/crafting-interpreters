@@ -1,0 +1,6 @@
+//CASE case1
+a = 45;
+
+//CASE case2
+var x;
+print x = a = x;

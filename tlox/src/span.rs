@@ -13,6 +13,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::iter::FusedIterator;
 use std::ops::{Bound, Range, RangeBounds, Sub};
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::{MappedRwLockReadGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use codespan_reporting::files::{self, Files};
@@ -232,6 +233,12 @@ impl From<PathBuf> for SourceName {
     }
 }
 
+impl From<&str> for SourceName {
+    fn from(value: &str) -> Self {
+        Self::from(PathBuf::from_str(value).unwrap())
+    }
+}
+
 impl From<String> for SourceName {
     fn from(value: String) -> Self {
         Self::from(PathBuf::from(value))
@@ -328,6 +335,11 @@ impl SourceMap {
         let current_len = inner.content.len();
 
         inner.content.push_str(content);
+        debug_assert!(
+            !content.is_empty(),
+            "received empty source {:?}",
+            name.into()
+        );
         if content.get(content.len() - 1..) != Some("\n") {
             inner.content.push('\n');
         }

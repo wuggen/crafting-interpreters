@@ -1,0 +1,10 @@
+---
+source: tests/eval.rs
+description: "print -42;\nprint --12;\nprint !true;\nprint !!(4 == 4);\n"
+expression: combined
+---
+:: Output ::
+-42
+12
+false
+true
