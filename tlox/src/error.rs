@@ -176,7 +176,7 @@ impl UnopSym {
 impl BinopSym {
     fn expected_tys(self) -> String {
         match self {
-            BinopSym::Eq | BinopSym::Ne => "operands of any type".to_string(),
+            BinopSym::Bool(_) | BinopSym::Eq | BinopSym::Ne => "operands of any type".to_string(),
             BinopSym::Gt | BinopSym::Ge | BinopSym::Lt | BinopSym::Le => {
                 format!("operands of type {}", PrimitiveTy::Num)
             }

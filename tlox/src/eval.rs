@@ -9,7 +9,7 @@ use crate::output::OutputStream;
 use crate::session::SessionKey;
 use crate::span::{Spannable, Spanned};
 use crate::symbol::Symbol;
-use crate::syn::{BinopSym, Expr, ExprNode, Lit, Place, Program, Stmt, UnopSym};
+use crate::syn::{BinopSym, BooleanBinopSym, Expr, ExprNode, Lit, Place, Program, Stmt, UnopSym};
 use crate::ty::{PrimitiveTy, Ty};
 use crate::val::{StrValue, Value};
 
@@ -58,7 +58,7 @@ impl<'s> Interpreter<'s, '_> {
     pub fn eval(&mut self, program: &Program<'s>) {
         let mut res = None;
         for stmt in &program.stmts {
-            match self.eval_stmt(stmt) {
+            match self.eval_stmt(stmt.as_ref()) {
                 Ok(val) => {
                     res = val;
                 }
@@ -79,7 +79,7 @@ impl<'s> Interpreter<'s, '_> {
         }
     }
 
-    fn eval_stmt(&mut self, stmt: &Spanned<Stmt<'s>>) -> RuntimeResult<'s, Option<Value<'s>>> {
+    fn eval_stmt(&mut self, stmt: Spanned<&Stmt<'s>>) -> RuntimeResult<'s, Option<Value<'s>>> {
         let mut res = None;
 
         match &stmt.node {
@@ -108,7 +108,7 @@ impl<'s> Interpreter<'s, '_> {
                 self.env.push_scope();
 
                 for stmt in stmts {
-                    match self.eval_stmt(stmt) {
+                    match self.eval_stmt(stmt.as_ref()) {
                         Ok(val) => {
                             res = val;
                         }
@@ -129,9 +129,9 @@ impl<'s> Interpreter<'s, '_> {
             } => {
                 let cond = self.eval_expr(cond)?;
                 if cond.is_truthy() {
-                    res = self.eval_stmt(body)?;
+                    res = self.eval_stmt(body.as_deref())?;
                 } else if let Some(else_body) = else_body {
-                    res = self.eval_stmt(else_body)?;
+                    res = self.eval_stmt(else_body.as_deref())?;
                 } else {
                     res = None;
                 }
@@ -169,10 +169,14 @@ impl<'s> Interpreter<'s, '_> {
             }
 
             ExprNode::Binop { sym, lhs, rhs } => {
-                let lop = self.eval_expr(lhs)?;
-                let rop = self.eval_expr(rhs)?;
+                if let BinopSym::Bool(bool_sym) = sym.node {
+                    self.eval_boolean_binop(sym.with_node(bool_sym), lhs, rhs)
+                } else {
+                    let lop = self.eval_expr(lhs)?;
+                    let rop = self.eval_expr(rhs)?;
 
-                self.eval_binop(*sym, lhs.with_node(lop), rhs.with_node(rop))
+                    self.eval_binop(*sym, lhs.with_node(lop), rhs.with_node(rop))
+                }
             }
 
             ExprNode::Assign { place, val } => {
@@ -183,7 +187,33 @@ impl<'s> Interpreter<'s, '_> {
         }
     }
 
-    /// Evaluate a binary operator expression.
+    /// Evaluate a short-circuiting boolean binary operator expression.
+    fn eval_boolean_binop(
+        &mut self,
+        sym: Spanned<BooleanBinopSym>,
+        lhs: &Spanned<Expr<'s>>,
+        rhs: &Spanned<Expr<'s>>,
+    ) -> RuntimeResult<'s, Value<'s>> {
+        let lhs = self.eval_expr(lhs)?;
+
+        match sym.node {
+            BooleanBinopSym::Or => {
+                if lhs.is_truthy() {
+                    return Ok(lhs);
+                }
+            }
+
+            BooleanBinopSym::And => {
+                if !lhs.is_truthy() {
+                    return Ok(lhs);
+                }
+            }
+        }
+
+        self.eval_expr(rhs)
+    }
+
+    /// Evaluate a non-boolean binary operator expression.
     fn eval_binop(
         &mut self,
         sym: Spanned<BinopSym>,
@@ -223,6 +253,8 @@ impl<'s> Interpreter<'s, '_> {
                 }
             },
 
+            // Boolean operators are intercepted and handled before ever calling this function; if
+            // we get to this point, it's an operator that's expecting numerical operands.
             _ => {
                 let cause = CoercionCause::Binop { sym };
                 let (lhs, rhs) = join_errs(

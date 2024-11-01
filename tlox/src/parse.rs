@@ -47,13 +47,19 @@ pub struct Parser<'s> {
 //
 // print_stmt -> 'print' expr ';'
 //
-// expr -> equal
+// expr -> assign
 //
-// ; Right-associative
+// ; Right-assoc
 // assign -> place '=' assign
-//         | equal
+//         | logic_or
 //
 // place -> IDENT
+//
+// ; Left-assoc
+// logic_or -> logic_and ('or' logic_and)*
+//
+// ; Left-assoc
+// logic_and -> equal ('and' equal)*
 //
 // ; Left-assoc
 // equal -> comp ( ('!=' | '==') comp )*
@@ -473,7 +479,7 @@ impl<'s> Parser<'s> {
     ///
     /// Corresponds to the `assign` grammar production.
     fn assign(&mut self) -> ParserRes<'s, Spanned<Expr<'s>>> {
-        let maybe_place = self.equal()?;
+        let maybe_place = self.logic_or()?;
 
         if let Ok(eq) = self.advance_or_peek(|tok| matches!(tok, Token::Equal)) {
             match maybe_place.node.into_place() {
@@ -516,6 +522,28 @@ impl<'s> Parser<'s> {
         }
 
         Ok(accum)
+    }
+
+    /// Parse a boolean `or` chain.
+    ///
+    /// Corresponds to the `logic_or` grammar production.
+    fn logic_or(&mut self) -> ParserRes<'s, Spanned<Expr<'s>>> {
+        self.binop_chain_left_assoc(
+            Self::logic_and,
+            |tok| matches!(tok, Token::Or),
+            |_| BinopSym::Bool(BooleanBinopSym::Or),
+        )
+    }
+
+    /// Parse a boolean `and` chain.
+    ///
+    /// Corresponds to the `logic_and` grammar production.
+    fn logic_and(&mut self) -> ParserRes<'s, Spanned<Expr<'s>>> {
+        self.binop_chain_left_assoc(
+            Self::equal,
+            |tok| matches!(tok, Token::And),
+            |_| BinopSym::Bool(BooleanBinopSym::And),
+        )
     }
 
     /// Parse an equality operator chain.

@@ -71,8 +71,8 @@ pub enum Stmt<'s> {
     /// An if-else statement.
     IfElse {
         cond: Spanned<Expr<'s>>,
-        body: Box<Spanned<Stmt<'s>>>,
-        else_body: Option<Box<Spanned<Stmt<'s>>>>,
+        body: Spanned<Box<Stmt<'s>>>,
+        else_body: Option<Spanned<Box<Stmt<'s>>>>,
     },
 }
 
@@ -214,8 +214,8 @@ pub mod stmt {
     ) -> Stmt<'s> {
         Stmt::IfElse {
             cond,
-            body: Box::new(body),
-            else_body: else_body.map(Box::new),
+            body: body.map(Box::new),
+            else_body: else_body.map(|expr| expr.map(Box::new)),
         }
     }
 }
@@ -268,9 +268,22 @@ impl Display for UnopSym {
     }
 }
 
+/// Boolean binary operator symbols.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BooleanBinopSym {
+    /// Boolean `or`
+    Or,
+
+    /// Boolean `and`
+    And,
+}
+
 /// Binary operator symbols.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BinopSym {
+    /// Boolean binary operators
+    Bool(BooleanBinopSym),
+
     /// Equality comparison, `==`
     Eq,
 
@@ -314,6 +327,8 @@ impl SynEq for BinopSym {
 impl Display for BinopSym {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let s = match self {
+            BinopSym::Bool(BooleanBinopSym::Or) => "or",
+            BinopSym::Bool(BooleanBinopSym::And) => "and",
             BinopSym::Eq => "==",
             BinopSym::Ne => "!=",
             BinopSym::Gt => ">",
@@ -333,6 +348,8 @@ impl Display for BinopSym {
 impl BinopSym {
     pub fn binding(self) -> BindingLevel {
         match self {
+            BinopSym::Bool(BooleanBinopSym::Or) => BindingLevel::LogicOr,
+            BinopSym::Bool(BooleanBinopSym::And) => BindingLevel::LogicAnd,
             BinopSym::Eq | BinopSym::Ne => BindingLevel::Eq,
             BinopSym::Gt | BinopSym::Ge | BinopSym::Lt | BinopSym::Le => BindingLevel::Comp,
             BinopSym::Sub | BinopSym::Add => BindingLevel::Add,
@@ -344,6 +361,8 @@ impl BinopSym {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BindingLevel {
     Assign,
+    LogicOr,
+    LogicAnd,
     Eq,
     Comp,
     Add,

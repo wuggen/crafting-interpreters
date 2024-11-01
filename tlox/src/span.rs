@@ -11,7 +11,7 @@
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::iter::FusedIterator;
-use std::ops::{Bound, Range, RangeBounds, Sub};
+use std::ops::{Bound, Deref, Range, RangeBounds, Sub};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::{MappedRwLockReadGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -155,12 +155,6 @@ impl<T: Display> Display for Spanned<T> {
     }
 }
 
-impl<T> AsRef<T> for Spanned<T> {
-    fn as_ref(&self) -> &T {
-        &self.node
-    }
-}
-
 impl<T> Spanned<T> {
     pub fn map<S>(self, f: impl FnOnce(T) -> S) -> Spanned<S> {
         Spanned {
@@ -178,6 +172,23 @@ impl<T> Spanned<T> {
             node: self.node,
             span,
         }
+    }
+
+    pub fn as_ref(&self) -> Spanned<&T> {
+        self.with_node(&self.node)
+    }
+
+    pub fn as_mut(&mut self) -> Spanned<&mut T> {
+        Spanned {
+            node: &mut self.node,
+            span: self.span,
+        }
+    }
+}
+
+impl<T: Deref> Spanned<T> {
+    pub fn as_deref(&self) -> Spanned<&<T as Deref>::Target> {
+        self.with_node(&*self.node)
     }
 }
 

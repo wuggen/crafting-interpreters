@@ -1,0 +1,10 @@
+---
+source: tests/eval.rs
+description: "print \"hi\" or 2; // \"hi\"\nprint nil or \"yes\"; // \"yes\"\n\nprint \"hi\" and 2; // 2\nprint nil and \"yes\"; // nil\n"
+expression: combined
+---
+:: Output ::
+hi
+yes
+2
+nil
