@@ -59,10 +59,10 @@ impl Debug for Symbol<'_> {
         });
 
         if *RENDER_ADDR {
-        f.debug_tuple("Symbol")
-            .field(&self.0)
-            .field(&(self.0 as *const str))
-            .finish()
+            f.debug_tuple("Symbol")
+                .field(&self.0)
+                .field(&(self.0 as *const str))
+                .finish()
         } else {
             Debug::fmt(&self.0, f)
         }
