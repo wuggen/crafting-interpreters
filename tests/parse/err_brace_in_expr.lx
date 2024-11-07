@@ -1,0 +1,7 @@
+//CASE unexpected
+var x = 4 + } // Should sync here and find next error
+print var;
+
+//CASE early_close
+{ somevar = 12 - } // Should sync and find next error
+print var;

@@ -1,0 +1,22 @@
+---
+source: tests/parse.rs
+description: "while b {\n    lol what;\n}\nvar;\n\n"
+expression: render_dcx()
+---
+error: unexpected identifier token in input
+  --> err_while_loops.lx@a:1:7
+  |
+1 | while b {
+  |       ^ unexpected token here
+  |
+  = note: expected `(`
+
+error: missing name in variable declaration
+  --> err_while_loops.lx@a:4:4
+  |
+4 | var;
+  | ---^ expected variable name here
+  | |   
+  | declaration requires a variable name
+  |
+  = note: expected identifier

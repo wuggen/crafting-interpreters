@@ -1,0 +1,20 @@
+---
+source: tests/parse.rs
+description: "{ somevar = 12 - } // Should sync and find next error\nprint var;\n"
+expression: render_dcx()
+---
+error: unexpected `}` token in input
+  --> err_brace_in_expr.lx@early_close:1:18
+  |
+1 | { somevar = 12 - } // Should sync and find next error
+  |                  ^ unexpected token here
+  |
+  = note: expected expression
+
+error: unexpected keyword `var` token in input
+  --> err_brace_in_expr.lx@early_close:2:7
+  |
+2 | print var;
+  |       ^^^ unexpected token here
+  |
+  = note: expected expression

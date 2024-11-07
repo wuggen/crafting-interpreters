@@ -33,13 +33,15 @@ pub struct Parser<'s> {
 //
 // program -> stmt* EOF
 //
-// stmt -> if_stmt | decl_stmt | block_stmt | expr_or_print_stmt
+// stmt -> if_stmt | while_stmt | block_stmt | decl_stmt | expr_or_print_stmt
 //
 // if_stmt -> 'if' '(' expr ')' stmt ('else' stmt)?
 //
-// decl_stmt -> 'var' IDENT ('=' expr)? ';'
+// while_stmt -> 'while' '(' expr ')' stmt
 //
 // block_stmt -> '{' stmt* '}'
+//
+// decl_stmt -> 'var' IDENT ('=' expr)? ';'
 //
 // expr_or_print_stmt -> expr_stmt | print_stmt
 //
@@ -95,7 +97,7 @@ impl<'s> Parser<'s> {
     /// Returns `None` if the parser encounters syntax errors. Any such errors will have been
     /// emitted to the global session's diagnostic context.
     pub fn parse(mut self) -> Option<Program<'s>> {
-        debug_println!(@"=== STARTING NEW PARSE ===");
+        debug_println!("=== STARTING NEW PARSE ===");
         let res = self.program();
         Session::with_current(|key| {
             if key.get().dcx.has_errors() {
@@ -211,12 +213,12 @@ impl<'s> Parser<'s> {
             self.advance_until(&until);
             self.advance();
             if self.check_next(&next) {
-                debug_println!(@"=> found sync point");
+                debug_println!("=> found sync point");
                 return;
             }
         }
 
-        debug_println!(@"=> reached EOF without finding sync point");
+        debug_println!("=> reached EOF without finding sync point");
     }
 
     /// Synchronize to a statement boundary.
@@ -224,11 +226,59 @@ impl<'s> Parser<'s> {
     /// This advances until the next occurrence of a semicolon followed by a non-operator keyword or
     /// method receiver start token.
     fn sync_to_stmt_boundary(&mut self) {
-        debug_println!(@"snychronizing to stmt boundary");
+        debug_println!("snychronizing to stmt boundary");
         self.synchronize(
-            |tok| matches!(tok, Token::Semicolon | Token::RightBrace),
+            |tok| matches!(tok, Token::Semicolon | Token::CloseBrace),
             |tok| tok.is_stmt_start(),
         );
+    }
+
+    /// Parse something enclosed by a delimiter pair.
+    ///
+    /// Returns the opening delimiter token, the parsed contents, and the closing delimiter token.
+    fn parse_pair<T>(
+        &mut self,
+        pair: Pair,
+        contents: impl Fn(&mut Self) -> ParserRes<'s, T>,
+    ) -> ParserRes<'s, (Spanned<Token<'s>>, T, Spanned<Token<'s>>)> {
+        let open = self
+            .advance_or_peek(|tok| tok == &pair.open_tok())
+            .map_err(|tok| {
+                self.push_diag(ParserDiag::unexpected(self, tok, pair.open_tok().summary()));
+                ParserError::unexpected(tok).handled()
+            })?;
+
+        let contents = contents(self).catch_deferred(|kind| match kind {
+            ParserErrorKind::Unexpected(Some(tok)) if tok.node == pair.close_tok() => {
+                self.push_diag(ParserDiag::early_close_pair(pair, open.span, tok.span));
+                Err(kind.handled())
+            }
+            _ => Err(kind.deferred()),
+        })?;
+
+        let close = self
+            .advance_or_peek(|tok| tok == &pair.close_tok())
+            .map_err(|tok| {
+                self.push_diag(ParserDiag::unclosed_pair(
+                    pair,
+                    open.span,
+                    self.span_or_eof(&tok),
+                ));
+                ParserError::unexpected(tok).handled()
+            })?;
+
+        Ok((open, contents, close))
+    }
+
+    /// Parse something enclosed by parentheses.
+    ///
+    /// Returns the opening paren span, the parsed contents, and the closing paren span.
+    fn parse_parens<T>(
+        &mut self,
+        contents: impl Fn(&mut Self) -> ParserRes<'s, T>,
+    ) -> ParserRes<'s, (Span, T, Span)> {
+        let (open, contents, close) = self.parse_pair(Pair::Parens, contents)?;
+        Ok((open.span, contents, close.span))
     }
 
     /// Parse a program.
@@ -266,14 +316,28 @@ impl<'s> Parser<'s> {
         let peeked = self.peek().unwrap();
         match peeked.node {
             Token::Var => self.decl_stmt(),
-            Token::LeftBrace => self.block_stmt(),
+            Token::OpenBrace => self.block_stmt(),
             Token::If => self.if_stmt(),
+            Token::While => self.while_stmt(),
             tok if tok.is_stmt_start() => self.expr_or_print_stmt(),
             _ => {
                 self.push_diag(ParserDiag::unexpected_tok(self, peeked, "statement"));
                 Err(ParserError::unexpected_tok(peeked).handled())
             }
         }
+        .catch_deferred(|kind| match kind {
+            ParserErrorKind::Unexpected(Some(
+                tok @ Spanned {
+                    node: Token::Semicolon | Token::CloseBrace,
+                    ..
+                },
+            )) => {
+                self.push_diag(ParserDiag::unexpected_tok(self, tok, None));
+                Err(ParserError::spurious_stmt_end().handled())
+            }
+
+            _ => Err(kind.deferred()),
+        })
     }
 
     /// Parse an if-else statement.
@@ -286,30 +350,7 @@ impl<'s> Parser<'s> {
         let if_kw = self.advance().unwrap();
         debug_assert!(matches!(if_kw.node, Token::If));
 
-        let oparen = self
-            .advance_or_peek(|tok| matches!(tok, Token::LeftParen))
-            .map_err(|tok| {
-                self.push_diag(ParserDiag::unexpected(self, tok, "`(`"));
-                ParserError::unexpected(tok).handled()
-            })?;
-
-        let cond = self.expr().catch_deferred(|err| match err {
-            ParserErrorKind::Unexpected(Some(tok)) if matches!(tok.node, Token::RightParen) => {
-                self.push_diag(ParserDiag::early_close_paren(oparen.span, tok.span));
-                Err(err.handled())
-            }
-            _ => Err(err.deferred()),
-        })?;
-
-        let _cparen = self
-            .advance_or_peek(|tok| matches!(tok, Token::RightParen))
-            .map_err(|tok| {
-                self.push_diag(ParserDiag::unclosed_paren(
-                    oparen.span,
-                    self.span_or_eof(&tok),
-                ));
-                ParserError::unexpected(tok).handled()
-            })?;
+        let (_, cond, _) = self.parse_parens(Self::expr)?;
 
         let body = self.stmt()?;
 
@@ -323,6 +364,24 @@ impl<'s> Parser<'s> {
             };
 
         Ok(stmt::if_else(cond, body, else_body).spanned(span))
+    }
+
+    /// Parse a while statement.
+    ///
+    /// This expects the next token in the stream to be `Token::While`. In debug builds, it will
+    /// panic if this is not the case.
+    ///
+    /// Corresponds to the `while_stmt` grammar production.
+    fn while_stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
+        let kw_while = self.advance().unwrap();
+        debug_assert!(matches!(kw_while.node, Token::While));
+
+        let (_, cond, _) = self.parse_parens(Self::expr)?;
+
+        let body = self.stmt()?;
+        let span = kw_while.span.join(body.span);
+
+        Ok(stmt::while_loop(cond, body).spanned(span))
     }
 
     /// Parse a variable declaration statement.
@@ -381,8 +440,11 @@ impl<'s> Parser<'s> {
     }
 
     fn block_stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
+        // We don't use `parse_pair` here cuz there's some intricate recovery logic. We also don't
+        // use `program` here because the recovery logic is meaningfully different from what we use
+        // in that node
         let obrace = self.advance().unwrap();
-        debug_assert!(matches!(obrace.node, Token::LeftBrace));
+        debug_assert!(matches!(obrace.node, Token::OpenBrace));
 
         let mut stmts = Vec::new();
 
@@ -391,10 +453,11 @@ impl<'s> Parser<'s> {
                 .stmt()
                 .catch_deferred(|kind| match kind {
                     ParserErrorKind::Unexpected(Some(tok))
-                        if matches!(tok.node, Token::RightBrace) =>
+                        if matches!(tok.node, Token::CloseBrace) =>
                     {
+                        debug_println!("block_stmt: unexpected {tok:?}");
                         self.push_diag(ParserDiag::early_close_brace(obrace.span, tok.span));
-                        Err(ParserError::spurious_block_end().handled())
+                        Err(kind.handled())
                     }
                     _ => Err(kind.deferred()),
                 })
@@ -404,7 +467,10 @@ impl<'s> Parser<'s> {
                     stmts.push(stmt);
                 }
 
-                Err(ParserErrorKind::SpuriousBlockEnd) => {
+                Err(ParserErrorKind::Unexpected(Some(tok)))
+                    if matches!(tok.node, Token::CloseBrace) =>
+                {
+                    debug_println!("spurious block end");
                     return Err(ParserError::spurious_stmt_end().handled());
                 }
 
@@ -415,7 +481,7 @@ impl<'s> Parser<'s> {
         }
 
         let cbrace = self
-            .advance_or_peek(|tok| matches!(tok, Token::RightBrace))
+            .advance_or_peek(|tok| matches!(tok, Token::CloseBrace))
             .map_err(|tok| {
                 self.push_diag(ParserDiag::unclosed_brace(
                     obrace.span,
@@ -646,13 +712,16 @@ impl<'s> Parser<'s> {
                 Token::Boolean(b) => Ok(tok.with_node(expr::literal(Lit::Bool(b)))),
                 Token::Nil => Ok(tok.with_node(expr::literal(Lit::Nil))),
                 Token::Ident(name) => Ok(tok.with_node(expr::var(name))),
-                Token::LeftParen => self.group(tok.span),
+                Token::OpenParen => self.group(tok.span),
 
                 // Error productions
-                Token::RightParen | Token::Semicolon => {
+
+                // Potential spurious ends of larger syntactic constructs:
+                Token::CloseParen | Token::CloseBrace | Token::Semicolon => {
                     Err(ParserError::unexpected_tok(tok).deferred())
                 }
 
+                // Other unexpected tokens
                 _ => {
                     self.push_diag(ParserDiag::unexpected_tok(self, tok, "expression"));
                     Err(ParserError::unexpected_tok(tok).handled())
@@ -671,7 +740,7 @@ impl<'s> Parser<'s> {
     /// Corresponds to the parenthesized expression arm of the `atom` grammar production.
     fn group(&mut self, oparen_span: Span) -> ParserRes<'s, Spanned<Expr<'s>>> {
         let expr = self.expr().catch_deferred(|kind| match kind {
-            ParserErrorKind::Unexpected(Some(tok)) if matches!(tok.node, Token::RightParen) => {
+            ParserErrorKind::Unexpected(Some(tok)) if matches!(tok.node, Token::CloseParen) => {
                 self.push_diag(ParserDiag::early_close_paren(oparen_span, tok.span));
                 Err(kind.handled())
             }
@@ -679,7 +748,7 @@ impl<'s> Parser<'s> {
         })?;
 
         let cparen_span = self
-            .advance_or_peek(|tok| matches!(tok, Token::RightParen))
+            .advance_or_peek(|tok| matches!(tok, Token::CloseParen))
             .map(|tok| tok.span)
             .map_err(|tok| {
                 self.push_diag(ParserDiag::unclosed_paren(

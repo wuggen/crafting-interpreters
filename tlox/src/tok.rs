@@ -14,10 +14,10 @@ mod test;
 /// A Lox token.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Token<'s> {
-    LeftParen,
-    RightParen,
-    LeftBrace,
-    RightBrace,
+    OpenParen,
+    CloseParen,
+    OpenBrace,
+    CloseBrace,
     Comma,
     Dot,
     Minus,
@@ -84,7 +84,7 @@ impl Token<'_> {
     pub fn is_receiver_expr_start(&self) -> bool {
         matches!(
             self,
-            Token::LeftParen
+            Token::OpenParen
                 | Token::Ident(_)
                 | Token::Str(_)
                 | Token::Number(_)
@@ -103,7 +103,7 @@ impl Token<'_> {
         self.is_receiver_expr_start()
             || matches!(
                 self,
-                Token::LeftBrace
+                Token::OpenBrace
                     | Token::Class
                     | Token::Fun
                     | Token::For
@@ -118,10 +118,10 @@ impl Token<'_> {
 
     pub fn summary(&self) -> &'static str {
         match self {
-            Token::LeftParen => "`(`",
-            Token::RightParen => "`)`",
-            Token::LeftBrace => "`{`",
-            Token::RightBrace => "`}`",
+            Token::OpenParen => "`(`",
+            Token::CloseParen => "`)`",
+            Token::OpenBrace => "`{`",
+            Token::CloseBrace => "`}`",
             Token::Comma => "`,`",
             Token::Dot => "`.`",
             Token::Minus => "`-`",
@@ -142,20 +142,20 @@ impl Token<'_> {
             Token::Str(_) => "string",
             Token::Number(_) => "number",
             Token::Boolean(_) => "boolean",
-            Token::And => "`and`",
-            Token::Class => "`class`",
-            Token::Else => "`else`",
-            Token::Fun => "`fun`",
-            Token::For => "`for`",
-            Token::If => "`if`",
-            Token::Nil => "`nil`",
-            Token::Or => "`or`",
-            Token::Print => "`print`",
-            Token::Return => "`return`",
-            Token::Super => "`super`",
-            Token::This => "`this`",
-            Token::Var => "`var`",
-            Token::While => "`while`",
+            Token::And => "keyword `and`",
+            Token::Class => "keyword `class`",
+            Token::Else => "keyword `else`",
+            Token::Fun => "keyword `fun`",
+            Token::For => "keyword `for`",
+            Token::If => "keyword `if`",
+            Token::Nil => "keyword `nil`",
+            Token::Or => "keyword `or`",
+            Token::Print => "keyword `print`",
+            Token::Return => "keyword `return`",
+            Token::Super => "keyword `super`",
+            Token::This => "keyword `this`",
+            Token::Var => "keyword `var`",
+            Token::While => "keyword `while`",
         }
     }
 }
@@ -589,10 +589,10 @@ impl<'s> Lexer<'s> {
             };
 
             break match c {
-                '(' => self.token(LeftParen),
-                ')' => self.token(RightParen),
-                '{' => self.token(LeftBrace),
-                '}' => self.token(RightBrace),
+                '(' => self.token(OpenParen),
+                ')' => self.token(CloseParen),
+                '{' => self.token(OpenBrace),
+                '}' => self.token(CloseBrace),
                 ',' => self.token(Comma),
                 '.' => self.token(Dot),
                 '-' => self.token(Minus),

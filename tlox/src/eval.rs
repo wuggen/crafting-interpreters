@@ -136,6 +136,12 @@ impl<'s> Interpreter<'s, '_> {
                     res = None;
                 }
             }
+
+            Stmt::While { cond, body } => {
+                while self.eval_expr(cond)?.is_truthy() {
+                    self.eval_stmt(body.as_deref())?;
+                }
+            }
         }
 
         Ok(res)

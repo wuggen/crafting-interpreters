@@ -1,0 +1,5 @@
+while (!!nil) {
+    a = b + c;
+}
+
+while (a + b) var x = c;

@@ -74,6 +74,12 @@ pub enum Stmt<'s> {
         body: Spanned<Box<Stmt<'s>>>,
         else_body: Option<Spanned<Box<Stmt<'s>>>>,
     },
+
+    /// A while loop.
+    While {
+        cond: Spanned<Expr<'s>>,
+        body: Spanned<Box<Stmt<'s>>>,
+    },
 }
 
 impl SynEq for Stmt<'_> {
@@ -100,6 +106,10 @@ impl SynEq for Stmt<'_> {
                     else_body: eb2,
                 },
             ) => c1.syn_eq(c2) && b1.syn_eq(b2) && eb1.syn_eq(eb2),
+
+            (Stmt::While { cond: c1, body: b1 }, Stmt::While { cond: c2, body: b2 }) => {
+                c1.syn_eq(c2) && b1.syn_eq(b2)
+            }
 
             _ => false,
         }
@@ -160,6 +170,15 @@ impl Stmt<'_> {
                         }
                         Ok(())
                     }
+                    Stmt::While { cond, body } => {
+                        write!(
+                            f,
+                            "{:first$}while ({}) {}",
+                            "",
+                            cond.node,
+                            body.node.display_indented_level(self.level, true),
+                        )
+                    }
                 }
             }
         }
@@ -214,8 +233,15 @@ pub mod stmt {
     ) -> Stmt<'s> {
         Stmt::IfElse {
             cond,
-            body: body.map(Box::new),
-            else_body: else_body.map(|expr| expr.map(Box::new)),
+            body: body.boxed(),
+            else_body: else_body.map(Spanned::boxed),
+        }
+    }
+
+    pub fn while_loop<'s>(cond: Spanned<Expr<'s>>, body: Spanned<Stmt<'s>>) -> Stmt<'s> {
+        Stmt::While {
+            cond,
+            body: body.boxed(),
         }
     }
 }

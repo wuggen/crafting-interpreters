@@ -154,10 +154,10 @@ fn one_char_punctuation() {
     Session::with_default(|key| {
         let source = "(){},.-+;*%";
         let expected = [
-            (LeftParen, 0..1),
-            (RightParen, 1..2),
-            (LeftBrace, 2..3),
-            (RightBrace, 3..4),
+            (OpenParen, 0..1),
+            (CloseParen, 1..2),
+            (OpenBrace, 2..3),
+            (CloseBrace, 3..4),
             (Comma, 4..5),
             (Dot, 5..6),
             (Minus, 6..7),
@@ -219,23 +219,23 @@ fn mixed_punctuation_idents_keywords_newlines_comments() {
 
         let expected = [
             (If, (0, 0)..=(0, 1)),
-            (LeftParen, (0, 3)..=(0, 3)),
+            (OpenParen, (0, 3)..=(0, 3)),
             (ident(key, "hey"), (0, 4)..=(0, 6)),
-            (RightParen, (0, 7)..=(0, 7)),
-            (LeftBrace, (0, 9)..=(0, 9)),
+            (CloseParen, (0, 7)..=(0, 7)),
+            (OpenBrace, (0, 9)..=(0, 9)),
             (Var, (1, 4)..=(1, 6)),
             (ident(key, "x"), (1, 8)..=(1, 8)),
             (Equal, (1, 10)..=(1, 10)),
             (ident(key, "lmao"), (1, 12)..=(1, 15)),
             (Semicolon, (1, 16)..=(1, 16)),
             (ident(key, "now"), (2, 4)..=(2, 6)),
-            (LeftParen, (2, 7)..=(2, 7)),
+            (OpenParen, (2, 7)..=(2, 7)),
             (ident(key, "what"), (2, 8)..=(2, 11)),
             (Comma, (2, 12)..=(2, 12)),
             (ident(key, "lol"), (2, 13)..=(2, 15)),
-            (RightParen, (2, 16)..=(2, 16)),
+            (CloseParen, (2, 16)..=(2, 16)),
             (Semicolon, (2, 17)..=(2, 17)),
-            (RightBrace, (3, 0)..=(3, 0)),
+            (CloseBrace, (3, 0)..=(3, 0)),
         ];
         assert!(check_and_render(key, source, expected).is_empty());
     });
@@ -328,9 +328,9 @@ fn unterminated_string() {
                     ident(key, "s"),
                     Equal,
                     ident(key, "do"),
-                    LeftParen,
+                    OpenParen,
                     ident(key, "something"),
-                    RightParen,
+                    CloseParen,
                     Semicolon,
                 ],
             ),
@@ -358,8 +358,8 @@ fn continued_string() {
             (strlit(key, "hey there"), (0, 8)..=(1, 9)),
             (Semicolon, (1, 10)..=(1, 10)),
             (ident(key, "lmao"), (2, 0)..=(2, 3)),
-            (LeftParen, (2, 4)..=(2, 4)),
-            (RightParen, (2, 5)..=(2, 5)),
+            (OpenParen, (2, 4)..=(2, 4)),
+            (CloseParen, (2, 5)..=(2, 5)),
             (Semicolon, (2, 6)..=(2, 6)),
         ];
         assert!(check_and_render(key, source, expected).is_empty());

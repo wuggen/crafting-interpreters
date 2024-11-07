@@ -1,0 +1,14 @@
+//CASE number
+var a = 0;
+while (a < 10)
+    a = a + 1;
+print a; // 10
+
+//CASE string
+var s = "";
+var i = 0;
+while (i < 5) {
+    s = s + "ha";
+    i = i + 1;
+}
+print s; // 5 repetitions of "ha"

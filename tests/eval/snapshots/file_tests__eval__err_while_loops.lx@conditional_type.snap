@@ -1,0 +1,20 @@
+---
+source: tests/eval.rs
+description: "var x = 0;\nvar a;\nwhile (x < 2) {\n    if (x == 0)\n        a = 5;\n    else\n        a = \"nope\";\n\n    print a + 5;\n    x = x + 1;\n}\n"
+expression: combined
+---
+:: Output ::
+10
+
+
+:: Diagnostics ::
+error: cannot coerce Num to Str
+  --> err_while_loops.lx@conditional_type:9:15
+  |
+9 |     print a + 5;
+  |           - - ^ expression found to be of type Num
+  |           | |  
+  |           | operands to this operator are incompatible
+  |           other operand found to be of type Str
+  |
+  = note: operator `+` expects both operands to be of type Num, or of type Str

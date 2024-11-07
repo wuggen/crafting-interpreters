@@ -1,0 +1,12 @@
+---
+source: tests/parse.rs
+description: "while { lmao; }\n"
+expression: render_dcx()
+---
+error: unexpected `{` token in input
+  --> err_while_loops.lx@c:1:7
+  |
+1 | while { lmao; }
+  |       ^ unexpected token here
+  |
+  = note: expected `(`

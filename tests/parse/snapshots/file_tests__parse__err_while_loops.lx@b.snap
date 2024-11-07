@@ -1,0 +1,12 @@
+---
+source: tests/parse.rs
+description: "while x) var y;\n\n"
+expression: render_dcx()
+---
+error: unexpected identifier token in input
+  --> err_while_loops.lx@b:1:7
+  |
+1 | while x) var y;
+  |       ^ unexpected token here
+  |
+  = note: expected `(`

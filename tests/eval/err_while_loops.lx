@@ -1,0 +1,21 @@
+//CASE conditional_bind
+var x = 0;
+while (x < 2) {
+    if (x == 0)
+        var a = "hey";
+    print a;
+    x = x + 1;
+}
+
+//CASE conditional_type
+var x = 0;
+var a;
+while (x < 2) {
+    if (x == 0)
+        a = 5;
+    else
+        a = "nope";
+
+    print a + 5;
+    x = x + 1;
+}

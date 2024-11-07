@@ -31,7 +31,7 @@ error: missing name in variable declaration
   |
   = note: expected identifier
 
-error: unexpected `var` token in input
+error: unexpected keyword `var` token in input
   --> err_sync_to_stmt.lx:4:7
   |
 4 | print var;

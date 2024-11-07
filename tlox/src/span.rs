@@ -184,6 +184,10 @@ impl<T> Spanned<T> {
             span: self.span,
         }
     }
+
+    pub fn boxed(self) -> Spanned<Box<T>> {
+        self.map(Box::new)
+    }
 }
 
 impl<T: Deref> Spanned<T> {

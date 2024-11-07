@@ -40,7 +40,7 @@ fn parse_test_success(key: SessionKey, case: TestCase) {
         .unwrap();
 
     insta::with_settings!({
-        description => content,
+        description => &content,
     }, {
         assert_snapshot!(name.as_str(), first_parse);
     });
@@ -53,7 +53,7 @@ fn parse_test_success(key: SessionKey, case: TestCase) {
 
     assert!(
         first_parse.syn_eq(&reparse),
-        "{name} failed reparse check\n::First::\n{first_parse}\n\n::Reparse::\n{reparse}"
+        "{name} failed reparse check\n::Source\n{content}\n::First::\n{first_parse:#?}\n\n::Reparse::\n{reparse:#?}"
     );
     assert!(
         !key.get().dcx.has_errors(),

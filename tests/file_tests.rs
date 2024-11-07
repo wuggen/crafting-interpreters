@@ -29,33 +29,26 @@ where
     for<'a> &'a E: UnwindSafe,
 {
     pub fn run(&self) {
-        let paths = collect_files(&self.base_path, self.filter_var).collect::<Vec<_>>();
+        let paths = collect_files(&self.base_path).collect::<Vec<_>>();
 
         let mut snap_path = self.base_path.clone();
         snap_path.push("snapshots");
 
+        let filter = std::env::var(self.filter_var).unwrap_or_default();
         insta::with_settings!({
             snapshot_path => snap_path,
         }, {
             for path in paths {
-                file_test(path, &self.test_fn, &self.err_test_fn);
+                file_test(path, &self.test_fn, &self.err_test_fn, &filter);
             }
         });
     }
 }
 
-pub fn collect_files(base_path: &Path, filter_var: &str) -> impl Iterator<Item = PathBuf> {
-    let filter = std::env::var(filter_var);
-
+pub fn collect_files(base_path: &Path) -> impl Iterator<Item = PathBuf> {
     let filter_fn = move |entry: DirEntry| {
         if !entry.file_type().unwrap().is_file() {
             return None;
-        }
-
-        if let Ok(filter) = &filter {
-            if !entry.path().to_str().unwrap().contains(filter.as_str()) {
-                return None;
-            }
         }
 
         let name = entry.file_name();
@@ -76,11 +69,12 @@ pub fn collect_files(base_path: &Path, filter_var: &str) -> impl Iterator<Item =
 pub fn collect_cases_from_file<'a>(
     base_name: &'a str,
     file_content: &'a str,
+    filter: &'a str,
 ) -> impl Iterator<Item = TestCase> + use<'a> {
     let mut name = String::from(base_name);
     let mut content = String::new();
     let mut lines = file_content.lines();
-    std::iter::from_fn(move || {
+    let base_iter = std::iter::from_fn(move || {
         let mut ignore = false;
         for line in lines.by_ref() {
             if ignore {
@@ -121,10 +115,12 @@ pub fn collect_cases_from_file<'a>(
         } else {
             None
         }
-    })
+    });
+
+    base_iter.filter(move |case| case.name.contains(filter))
 }
 
-fn file_test<F, E>(path: PathBuf, success_test: &F, err_test: &E)
+fn file_test<F, E>(path: PathBuf, success_test: &F, err_test: &E, filter: &str)
 where
     F: Fn(SessionKey, TestCase),
     E: Fn(SessionKey, TestCase),
@@ -137,7 +133,7 @@ where
 
     let mut panic_cause: Option<Box<dyn Any + Send>> = None;
 
-    for case in collect_cases_from_file(&name, &content) {
+    for case in collect_cases_from_file(&name, &content, filter) {
         if let Err(cause) = std::panic::catch_unwind(|| {
             Session::with_default(|key| {
                 if name.starts_with("err_") {

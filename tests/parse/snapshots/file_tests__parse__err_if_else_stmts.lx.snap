@@ -13,7 +13,7 @@ error: unterminated statement
   |
   = note: expected `;`
 
-error: unexpected `else` token in input
+error: unexpected keyword `else` token in input
   --> err_if_else_stmts.lx:1:17
   |
 1 | if (a == b) lol else lmao;

@@ -6,11 +6,14 @@ use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::ops::Deref;
 use std::ptr;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 
 use crate::arena::DroplessArena;
 use crate::session::SessionKey;
 use crate::util::with_lifetime;
+
+const SYM_DEBUG_RENDER_VAR: &str = "SYM_DEBUG_RENDER";
+const RENDER_ADDR_MODE: &str = "addr";
 
 #[derive(Default)]
 pub struct SymbolInterner {
@@ -50,10 +53,19 @@ pub struct Symbol<'s>(&'s str);
 
 impl Debug for Symbol<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        static RENDER_ADDR: LazyLock<bool> = LazyLock::new(|| {
+            let var = std::env::var(SYM_DEBUG_RENDER_VAR);
+            var.as_deref() == Ok(RENDER_ADDR_MODE)
+        });
+
+        if *RENDER_ADDR {
         f.debug_tuple("Symbol")
             .field(&self.0)
             .field(&(self.0 as *const str))
             .finish()
+        } else {
+            Debug::fmt(&self.0, f)
+        }
     }
 }
 

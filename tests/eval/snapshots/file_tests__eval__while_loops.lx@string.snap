@@ -1,0 +1,7 @@
+---
+source: tests/eval.rs
+description: "var s = \"\";\nvar i = 0;\nwhile (i < 5) {\n    s = s + \"ha\";\n    i = i + 1;\n}\nprint s; // 5 repetitions of \"ha\"\n"
+expression: combined
+---
+:: Output ::
+hahahahaha

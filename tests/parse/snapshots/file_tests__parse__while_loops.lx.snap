@@ -1,0 +1,9 @@
+---
+source: tests/parse.rs
+description: "while (!!nil) {\n    a = b + c;\n}\n\nwhile (a + b) var x = c;\n"
+expression: first_parse
+---
+while (!!nil) {
+    a = b + c;
+}
+while (a + b) var x = c;

@@ -50,7 +50,7 @@ pub enum ParserError<'s> {
 impl<'s> ParserError<'s> {
     pub fn into_kind(self) -> ParserErrorKind<'s> {
         match self {
-            ParserError::Handled(diag) | ParserError::Deferred(diag) => diag,
+            ParserError::Handled(kind) | ParserError::Deferred(kind) => kind,
         }
     }
 }
@@ -67,12 +67,6 @@ pub enum ParserErrorKind<'s> {
     /// semicolon where a statement end was expected. Either way, the parser should not sync to a
     /// statement boundary, since it is reasonable to assume it's at one.
     SpuriousStmtEnd,
-
-    /// A spurious block statement end.
-    ///
-    /// This is caused by an unexpected closing brace while parsing a block statement. As for
-    /// `SpuriousStmtEnd`, synchronization is not needed outside of the block statement.
-    SpuriousBlockEnd,
 
     /// An assignment was attempted to an invalid place expression.
     InvalidPlaceExpr,
@@ -95,10 +89,6 @@ impl<'s> ParserError<'s> {
         ParserErrorKind::SpuriousStmtEnd
     }
 
-    pub const fn spurious_block_end() -> ParserErrorKind<'s> {
-        ParserErrorKind::SpuriousBlockEnd
-    }
-
     pub const fn invalid_place_expr() -> ParserErrorKind<'s> {
         ParserErrorKind::InvalidPlaceExpr
     }
@@ -114,17 +104,24 @@ impl<'s> ParserErrorKind<'s> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Pair {
     Parens,
     Braces,
 }
 
 impl Pair {
-    fn close_tok(&self) -> Token<'static> {
+    pub fn open_tok<'a>(&self) -> Token<'a> {
         match self {
-            Pair::Parens => Token::RightParen,
-            Pair::Braces => Token::RightBrace,
+            Pair::Parens => Token::OpenParen,
+            Pair::Braces => Token::OpenBrace,
+        }
+    }
+
+    pub fn close_tok<'a>(&self) -> Token<'a> {
+        match self {
+            Pair::Parens => Token::CloseParen,
+            Pair::Braces => Token::CloseBrace,
         }
     }
 
