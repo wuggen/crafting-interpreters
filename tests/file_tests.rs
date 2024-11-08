@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::fmt::Write;
 use std::fs::{self, DirEntry};
 use std::panic::UnwindSafe;
@@ -35,13 +34,21 @@ where
         snap_path.push("snapshots");
 
         let filter = std::env::var(self.filter_var).unwrap_or_default();
+        let mut failures = String::new();
+
         insta::with_settings!({
             snapshot_path => snap_path,
         }, {
             for path in paths {
-                file_test(path, &self.test_fn, &self.err_test_fn, &filter);
+                if let Err(new_failures) = file_test(path, &self.test_fn, &self.err_test_fn, &filter) {
+                    failures.push_str(&new_failures);
+                }
             }
         });
+
+        if !failures.is_empty() {
+            std::panic::resume_unwind(Box::new(failures));
+        }
     }
 }
 
@@ -63,7 +70,6 @@ pub fn collect_files(base_path: &Path) -> impl Iterator<Item = PathBuf> {
         .unwrap()
         .filter_map(Result::ok)
         .filter_map(filter_fn)
-        .inspect(|path| eprintln!("collected test {}", path.display()))
 }
 
 pub fn collect_cases_from_file<'a>(
@@ -120,36 +126,43 @@ pub fn collect_cases_from_file<'a>(
     base_iter.filter(move |case| case.name.contains(filter))
 }
 
-fn file_test<F, E>(path: PathBuf, success_test: &F, err_test: &E, filter: &str)
+fn file_test<F, E>(path: PathBuf, success_test: &F, err_test: &E, filter: &str) -> Result<(), String>
 where
     F: Fn(SessionKey, TestCase),
     E: Fn(SessionKey, TestCase),
     for<'a> &'a F: UnwindSafe,
     for<'a> &'a E: UnwindSafe,
 {
-    eprintln!("file test for {}", path.display());
     let name = path.file_name().unwrap().to_string_lossy().into_owned();
     let content = fs::read_to_string(&path).unwrap();
 
-    let mut panic_cause: Option<Box<dyn Any + Send>> = None;
+    let mut panic_cause = Ok(());
 
     for case in collect_cases_from_file(&name, &content, filter) {
+        println!("Running test {name}...");
         if let Err(cause) = std::panic::catch_unwind(|| {
             Session::with_default(|key| {
                 if name.starts_with("err_") {
-                    eprintln!(" => err test");
                     err_test(key, case);
                 } else {
-                    eprintln!(" => success test");
                     success_test(key, case);
                 }
             })
         }) {
-            panic_cause = Some(cause);
+            println!("  > {name} FAILED");
+
+            if panic_cause.is_ok() {
+                panic_cause = Err(String::new());
+            }
+
+            let new_cause = cause.downcast::<String>().unwrap();
+            let panic_cause = panic_cause.as_mut().unwrap_err();
+
+            writeln!(panic_cause, "  {name}: {new_cause}",).unwrap();
+        } else {
+            println!("  > {name} ok");
         }
     }
 
-    if let Some(cause) = panic_cause {
-        std::panic::resume_unwind(cause);
-    }
+    panic_cause
 }
