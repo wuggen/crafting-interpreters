@@ -1,3 +1,17 @@
 //CASE scope_access
 for (var a = 0; a < 4; a = a + 1) {}
 print a;
+
+//CASE error_in_init
+for (var a = b; a < 4; a = a + 1) {}
+
+//CASE error_in_cond
+for (; a < 4; a = a + 1) {}
+
+//CASE error_in_update
+for (var x = 0; x < 4; x = x + b) {}
+
+//CASE error_in_body
+for (var x = 0; x < 4; x = x + 1) {
+    print "lol" + x;
+}

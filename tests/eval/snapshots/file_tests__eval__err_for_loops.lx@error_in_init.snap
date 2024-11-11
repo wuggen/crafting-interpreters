@@ -1,0 +1,11 @@
+---
+source: tests/eval.rs
+description: "for (var a = b; a < 4; a = a + 1) {}\n\n"
+expression: combined
+---
+:: Diagnostics ::
+error: reference to unbound variable `b`
+  --> err_for_loops.lx@error_in_init:1:14
+  |
+1 | for (var a = b; a < 4; a = a + 1) {}
+  |              ^ variable is not bound at this point

@@ -1,0 +1,16 @@
+---
+source: tests/eval.rs
+description: "for (var x = 0; x < 4; x = x + 1) {\n    print \"lol\" + x;\n}\n"
+expression: combined
+---
+:: Diagnostics ::
+error: cannot coerce Num to Str
+  --> err_for_loops.lx@error_in_body:2:19
+  |
+2 |     print "lol" + x;
+  |           ----- - ^ expression found to be of type Num
+  |           |     |  
+  |           |     operands to this operator are incompatible
+  |           other operand found to be of type Str
+  |
+  = note: operator `+` expects both operands to be of type Num, or of type Str
