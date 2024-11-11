@@ -144,7 +144,7 @@ impl<'s> Interpreter<'s, '_> {
             }
 
             Stmt::For { desugared, .. } => {
-                res = self.eval_stmt(stmt.with_node(&*desugared))?;
+                res = self.eval_stmt(stmt.with_node(desugared))?;
             }
         }
 

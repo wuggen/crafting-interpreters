@@ -136,6 +136,7 @@ impl SynEq for Stmt<'_> {
 }
 
 impl<'s> Stmt<'s> {
+    #[allow(clippy::type_complexity)]
     fn resugar_for(
         &self,
         has_cond: bool,
