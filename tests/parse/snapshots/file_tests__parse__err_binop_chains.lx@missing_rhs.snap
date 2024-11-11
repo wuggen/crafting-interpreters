@@ -9,7 +9,7 @@ error: unexpected `+` token in input
 1 | + 4;
   | ^ unexpected token here
   |
-  = note: expected statement
+  = note: expected expression
 
 error: unexpected `*` token in input
   --> err_binop_chains.lx@missing_rhs:2:6

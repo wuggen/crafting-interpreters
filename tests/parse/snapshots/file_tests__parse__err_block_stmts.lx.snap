@@ -37,7 +37,7 @@ error: unexpected `+` token in input
 6 | { lol; + 4; }
   |        ^ unexpected token here
   |
-  = note: expected statement
+  = note: expected expression
 
 error: unclosed braces
   --> err_block_stmts.lx:8:2
@@ -49,13 +49,21 @@ error: unclosed braces
   |
   = note: expected `}`
 
-error: unexpected `;` token in input
+error: statement terminated prematurely
   --> err_block_stmts.lx:8:2
   |
 8 | {;}
-  |  ^ unexpected token here
+  |  ^ statement terminated here
   |
-  = note: expected statement
+  = note: expected expression
+
+error: unexpected `}` token in input
+  --> err_block_stmts.lx:8:3
+  |
+8 | {;}
+  |   ^ unexpected token here
+  |
+  = note: expected expression
 
 error: unexpected `{` token in input
    --> err_block_stmts.lx:10:7

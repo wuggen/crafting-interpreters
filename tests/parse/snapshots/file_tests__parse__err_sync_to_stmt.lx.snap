@@ -13,13 +13,21 @@ error: unclosed braces
   |
   = note: expected `}`
 
-error: unexpected `;` token in input
+error: statement terminated prematurely
   --> err_sync_to_stmt.lx:2:2
   |
 2 | {;}
-  |  ^ unexpected token here
+  |  ^ statement terminated here
   |
-  = note: expected statement
+  = note: expected expression
+
+error: unexpected `}` token in input
+  --> err_sync_to_stmt.lx:2:3
+  |
+2 | {;}
+  |   ^ unexpected token here
+  |
+  = note: expected expression
 
 error: missing name in variable declaration
   --> err_sync_to_stmt.lx:3:5

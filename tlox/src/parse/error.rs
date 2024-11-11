@@ -6,7 +6,7 @@
 use super::Parser;
 use crate::diag::{Diag, DiagKind, Diagnostic};
 use crate::span::{Span, Spanned};
-use crate::tok::Token;
+use crate::tok::{Pair, Token};
 
 /// Result type for parser errors.
 pub type ParserRes<'s, T> = Result<T, ParserError<'s>>;
@@ -48,10 +48,20 @@ pub enum ParserError<'s> {
 }
 
 impl<'s> ParserError<'s> {
+    pub fn kind(&self) -> &ParserErrorKind<'s> {
+        match self {
+            ParserError::Handled(kind) | ParserError::Deferred(kind) => kind,
+        }
+    }
+
     pub fn into_kind(self) -> ParserErrorKind<'s> {
         match self {
             ParserError::Handled(kind) | ParserError::Deferred(kind) => kind,
         }
+    }
+
+    pub fn is_deferred(&self) -> bool {
+        matches!(self, ParserError::Deferred(_))
     }
 }
 
@@ -70,6 +80,9 @@ pub enum ParserErrorKind<'s> {
 
     /// An assignment was attempted to an invalid place expression.
     InvalidPlaceExpr,
+
+    /// A sequence encountered an error, but synced and continued before returning.
+    InterruptedSeq,
 }
 
 impl<'s> ParserError<'s> {
@@ -92,6 +105,10 @@ impl<'s> ParserError<'s> {
     pub const fn invalid_place_expr() -> ParserErrorKind<'s> {
         ParserErrorKind::InvalidPlaceExpr
     }
+
+    pub const fn interrupted_seq() -> ParserErrorKind<'s> {
+        ParserErrorKind::InterruptedSeq
+    }
 }
 
 impl<'s> ParserErrorKind<'s> {
@@ -101,35 +118,6 @@ impl<'s> ParserErrorKind<'s> {
 
     pub const fn deferred(self) -> ParserError<'s> {
         ParserError::Deferred(self)
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum Pair {
-    Parens,
-    Braces,
-}
-
-impl Pair {
-    pub fn open_tok<'a>(&self) -> Token<'a> {
-        match self {
-            Pair::Parens => Token::OpenParen,
-            Pair::Braces => Token::OpenBrace,
-        }
-    }
-
-    pub fn close_tok<'a>(&self) -> Token<'a> {
-        match self {
-            Pair::Parens => Token::CloseParen,
-            Pair::Braces => Token::CloseBrace,
-        }
-    }
-
-    fn desc(&self) -> &'static str {
-        match self {
-            Pair::Parens => "parentheses",
-            Pair::Braces => "braces",
-        }
     }
 }
 
@@ -151,6 +139,13 @@ pub enum ParserDiag<'s> {
         kind: Pair,
         open: Span,
         expected_close: Span,
+    },
+
+    MismatchedPair {
+        open_kind: Pair,
+        close_kind: Pair,
+        open: Span,
+        close: Span,
     },
 
     UnterminatedStmt {
@@ -209,26 +204,40 @@ impl<'s> ParserDiag<'s> {
         Self::early_close_pair(Pair::Braces, open, close)
     }
 
-    pub const fn unclosed_pair(kind: Pair, open: Span, expected_close: Span) -> Self {
+    pub fn unclosed_pair(kind: Pair, open: Span, expected_close: Span) -> Self {
         Self::UnclosedPair {
             kind,
             open,
-            expected_close,
+            expected_close: expected_close.collapse_to_start(),
         }
     }
 
-    pub const fn unclosed_paren(open: Span, expected_close: Span) -> Self {
+    pub fn unclosed_paren(open: Span, expected_close: Span) -> Self {
         Self::unclosed_pair(Pair::Parens, open, expected_close)
     }
 
-    pub const fn unclosed_brace(open: Span, expected_close: Span) -> Self {
+    pub fn unclosed_brace(open: Span, expected_close: Span) -> Self {
         Self::unclosed_pair(Pair::Braces, open, expected_close)
     }
 
-    pub const fn unterminated_stmt(stmt: Span, expected_semi: Span) -> Self {
+    pub const fn mismatched_close(
+        open_kind: Pair,
+        close_kind: Pair,
+        open: Span,
+        close: Span,
+    ) -> Self {
+        Self::MismatchedPair {
+            open_kind,
+            close_kind,
+            open,
+            close,
+        }
+    }
+
+    pub fn unterminated_stmt(stmt: Span, expected_semi: Span) -> Self {
         Self::UnterminatedStmt {
             stmt,
-            expected_semi,
+            expected_semi: expected_semi.collapse_to_start(),
         }
     }
 
@@ -259,6 +268,7 @@ impl ParserDiag<'_> {
                 format!("{} closed prematurely", kind.desc())
             }
             ParserDiag::UnclosedPair { kind, .. } => format!("unclosed {}", kind.desc()),
+            ParserDiag::MismatchedPair { .. } => "mismatched closing delimiter".into(),
             ParserDiag::UnterminatedStmt { .. } => "unterminated statement".into(),
             ParserDiag::EarlyTerminatedStmt { .. } => "statement terminated prematurely".into(),
             ParserDiag::MissingVarName { .. } => "missing name in variable declaration".into(),
@@ -271,9 +281,9 @@ impl ParserDiag<'_> {
     fn expected(&mut self) -> Option<&'static str> {
         match self {
             ParserDiag::Unexpected { expected, .. } => expected.take(),
-
             ParserDiag::EarlyClosePair { .. } => Some("expression"),
             ParserDiag::UnclosedPair { kind, .. } => Some(kind.close_tok().summary()),
+            ParserDiag::MismatchedPair { open_kind, .. } => Some(open_kind.close_tok().summary()),
             ParserDiag::UnterminatedStmt { .. } => Some("`;`"),
             ParserDiag::EarlyTerminatedStmt { .. } => Some("expression"),
             ParserDiag::MissingVarName { .. } => Some("identifier"),
@@ -302,6 +312,24 @@ impl ParserDiag<'_> {
                     format!("{} should have been closed here", kind.desc()),
                 )
                 .with_secondary(open, format!("{} opened here", kind.desc())),
+
+            ParserDiag::MismatchedPair {
+                open_kind,
+                close_kind,
+                open,
+                close,
+            } => diag
+                .with_primary(
+                    close,
+                    format!(
+                        "closing delimiter {} found here",
+                        close_kind.close_tok().summary()
+                    ),
+                )
+                .with_secondary(
+                    open,
+                    format!("opening delimiter {} here", open_kind.open_tok().summary()),
+                ),
 
             ParserDiag::UnterminatedStmt {
                 stmt,

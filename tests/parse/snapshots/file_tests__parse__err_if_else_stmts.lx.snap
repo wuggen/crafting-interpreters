@@ -19,7 +19,7 @@ error: unexpected keyword `else` token in input
 1 | if (a == b) lol else lmao;
   |                 ^^^^ unexpected token here
   |
-  = note: expected statement
+  = note: expected expression
 
 error: unexpected `+` token in input
   --> err_if_else_stmts.lx:2:7

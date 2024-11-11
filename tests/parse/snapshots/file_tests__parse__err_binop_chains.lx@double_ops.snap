@@ -27,4 +27,4 @@ error: unexpected `)` token in input
 3 | 45 - nil ) / false;
   |          ^ unexpected token here
   |
-  = note: expected statement
+  = note: expected expression

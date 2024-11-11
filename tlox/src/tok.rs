@@ -116,6 +116,18 @@ impl Token<'_> {
             )
     }
 
+    pub fn pair(&self) -> Option<Pair> {
+        match self {
+            Token::OpenParen | Token::CloseParen => Some(Pair::Parens),
+            Token::OpenBrace | Token::CloseBrace => Some(Pair::Braces),
+            _ => None,
+        }
+    }
+
+    pub fn is_pair_close(&self) -> bool {
+        matches!(self, Token::CloseParen | Token::CloseBrace)
+    }
+
     pub fn summary(&self) -> &'static str {
         match self {
             Token::OpenParen => "`(`",
@@ -156,6 +168,35 @@ impl Token<'_> {
             Token::This => "keyword `this`",
             Token::Var => "keyword `var`",
             Token::While => "keyword `while`",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Pair {
+    Parens,
+    Braces,
+}
+
+impl Pair {
+    pub fn open_tok<'a>(&self) -> Token<'a> {
+        match self {
+            Pair::Parens => Token::OpenParen,
+            Pair::Braces => Token::OpenBrace,
+        }
+    }
+
+    pub fn close_tok<'a>(&self) -> Token<'a> {
+        match self {
+            Pair::Parens => Token::CloseParen,
+            Pair::Braces => Token::CloseBrace,
+        }
+    }
+
+    pub fn desc(&self) -> &'static str {
+        match self {
+            Pair::Parens => "parentheses",
+            Pair::Braces => "braces",
         }
     }
 }

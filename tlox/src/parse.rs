@@ -4,15 +4,17 @@ use std::iter::Peekable;
 
 use crate::diag::Diagnostic;
 use crate::session::{Session, SessionKey};
-use crate::span::{Source, Span, Spannable, Spanned};
+use crate::span::{HasSpan, Source, Span, Spannable, Spanned};
 use crate::syn::*;
-use crate::tok::{Lexer, Token};
+use crate::tok::{Lexer, Pair, Token};
 
 #[cfg(test)]
 mod test;
 
 mod error;
 use error::*;
+
+// pub mod redo;
 
 /// Scan and parse the source with the given index in the current session's source map.
 pub fn parse_source(key: SessionKey, source_idx: usize) -> Option<Program> {
@@ -33,7 +35,11 @@ pub struct Parser<'s> {
 //
 // program -> stmt* EOF
 //
-// stmt -> if_stmt | while_stmt | block_stmt | decl_stmt | expr_or_print_stmt
+// stmt -> compound_stmt | simple_stmt ';'
+//
+// compound_stmt -> if_stmt | while_stmt | block_stmt
+//
+// simple_stmt -> decl_stmt | print_or_expr_stmt
 //
 // if_stmt -> 'if' '(' expr ')' stmt ('else' stmt)?
 //
@@ -41,13 +47,9 @@ pub struct Parser<'s> {
 //
 // block_stmt -> '{' stmt* '}'
 //
-// decl_stmt -> 'var' IDENT ('=' expr)? ';'
+// decl_stmt -> 'var' IDENT ('=' expr)?
 //
-// expr_or_print_stmt -> expr_stmt | print_stmt
-//
-// expr_stmt -> expr ';'
-//
-// print_stmt -> 'print' expr ';'
+// print_or_expr_stmt -> 'print'? expr
 //
 // expr -> assign
 //
@@ -97,15 +99,16 @@ impl<'s> Parser<'s> {
     /// Returns `None` if the parser encounters syntax errors. Any such errors will have been
     /// emitted to the global session's diagnostic context.
     pub fn parse(mut self) -> Option<Program<'s>> {
-        debug_println!("=== STARTING NEW PARSE ===");
-        let res = self.program();
-        Session::with_current(|key| {
-            if key.get().dcx.has_errors() {
-                None
-            } else {
-                Some(res)
-            }
-        })
+        debug_println!(@"=== STARTING NEW PARSE ===");
+        // let res = self.program();
+        // Session::with_current(|key| {
+        //     if key.get().dcx.has_errors() {
+        //         None
+        //     } else {
+        //         Some(res)
+        //     }
+        // })
+        self.program().ok()
     }
 }
 
@@ -213,12 +216,12 @@ impl<'s> Parser<'s> {
             self.advance_until(&until);
             self.advance();
             if self.check_next(&next) {
-                debug_println!("=> found sync point");
+                debug_println!(@"=> found sync point");
                 return;
             }
         }
 
-        debug_println!("=> reached EOF without finding sync point");
+        debug_println!(@"=> reached EOF without finding sync point");
     }
 
     /// Synchronize to a statement boundary.
@@ -226,7 +229,7 @@ impl<'s> Parser<'s> {
     /// This advances until the next occurrence of a semicolon followed by a non-operator keyword or
     /// method receiver start token.
     fn sync_to_stmt_boundary(&mut self) {
-        debug_println!("snychronizing to stmt boundary");
+        debug_println!(@"snychronizing to stmt boundary");
         self.synchronize(
             |tok| matches!(tok, Token::Semicolon | Token::CloseBrace),
             |tok| tok.is_stmt_start(),
@@ -288,6 +291,7 @@ impl<'s> Parser<'s> {
         let mut stmts = Vec::new();
         while !self.is_at_end() {
             match self
+                // .stmt_old()
                 .stmt()
                 .catch_deferred(|kind| panic!("uncaught deferred parser error {kind:?}"))
                 .map_err(ParserError::into_kind)
@@ -312,14 +316,14 @@ impl<'s> Parser<'s> {
     /// Parse a statement.
     ///
     /// Corresponds to the `stmt` grammar production.
-    fn stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
+    fn stmt_old(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
         let peeked = self.peek().unwrap();
         match peeked.node {
-            Token::Var => self.decl_stmt(),
+            Token::Var => self.decl_stmt_old(),
             Token::OpenBrace => self.block_stmt(),
             Token::If => self.if_stmt(),
             Token::While => self.while_stmt(),
-            tok if tok.is_stmt_start() => self.expr_or_print_stmt(),
+            tok if tok.is_stmt_start() => self.print_or_expr_stmt_old(),
             _ => {
                 self.push_diag(ParserDiag::unexpected_tok(self, peeked, "statement"));
                 Err(ParserError::unexpected_tok(peeked).handled())
@@ -340,6 +344,63 @@ impl<'s> Parser<'s> {
         })
     }
 
+    fn stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
+        let peeked = self.peek().unwrap();
+        let res = match peeked.node {
+            Token::If | Token::While | Token::OpenBrace => self.compound_stmt(),
+            _ => self.simple_stmt(),
+        };
+
+        res.or_else(|err| match err.kind() {
+            ParserErrorKind::Unexpected(Some(tok))
+                if matches!(tok.node, Token::Semicolon | Token::CloseBrace) =>
+            {
+                if err.is_deferred() {
+                    if matches!(tok.node, Token::Semicolon) {
+                        self.push_diag(ParserDiag::early_terminated_stmt(tok.span));
+                    } else {
+                        self.push_diag(ParserDiag::unexpected_tok(self, *tok, None));
+                    }
+                }
+
+                Err(ParserError::spurious_stmt_end().handled())
+            }
+            _ => Err(err),
+        })
+    }
+
+    fn simple_stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
+        let stmt = if self.check_next(|tok| matches!(tok, Token::Var)) {
+            self.decl_stmt()?
+        } else {
+            self.print_or_expr_stmt_old()?
+        };
+
+        match self.advance_or_peek(|tok| matches!(tok, Token::Semicolon)) {
+            Ok(semi) => Ok(stmt.join_with_span(semi)),
+            Err(tok) => {
+                self.push_diag(ParserDiag::unterminated_stmt(
+                    stmt.span,
+                    self.span_or_eof(&tok),
+                ));
+                Err(ParserError::spurious_stmt_end().handled())
+            }
+        }
+    }
+
+    fn compound_stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
+        let peeked = self.peek().unwrap();
+        match peeked.node {
+            Token::If => self.if_stmt(),
+            Token::While => self.while_stmt(),
+            Token::OpenBrace => self.block_stmt(),
+            _ => {
+                self.push_diag(ParserDiag::unexpected_tok(self, peeked, "statement"));
+                Err(ParserError::unexpected_tok(peeked).handled())
+            }
+        }
+    }
+
     /// Parse an if-else statement.
     ///
     /// This expects the next token to be `Token::If`. In debug builds, it will panic if this is not
@@ -352,10 +413,12 @@ impl<'s> Parser<'s> {
 
         let (_, cond, _) = self.parse_parens(Self::expr)?;
 
+        // let body = self.stmt_old()?;
         let body = self.stmt()?;
 
         let (else_body, span) =
             if let Ok(_else_kw) = self.advance_or_peek(|tok| matches!(tok, Token::Else)) {
+                // let else_body = self.stmt_old()?;
                 let else_body = self.stmt()?;
                 let span = if_kw.span.join(else_body.span);
                 (Some(else_body), span)
@@ -378,10 +441,48 @@ impl<'s> Parser<'s> {
 
         let (_, cond, _) = self.parse_parens(Self::expr)?;
 
+        // let body = self.stmt_old()?;
         let body = self.stmt()?;
         let span = kw_while.span.join(body.span);
 
         Ok(stmt::while_loop(cond, body).spanned(span))
+    }
+
+    fn decl_stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
+        let var = self.advance().unwrap();
+        debug_assert!(matches!(var.node, Token::Var));
+
+        let name = self
+            .advance_or_peek(|tok| matches!(tok, Token::Ident(_)))
+            .map(|tok| {
+                tok.map(|node| match node {
+                    Token::Ident(name) => name,
+                    _ => unreachable!(),
+                })
+            })
+            .map_err(|tok| {
+                self.push_diag(ParserDiag::missing_var_name(
+                    var.span,
+                    self.span_or_eof(&tok),
+                ));
+                ParserError::unexpected(tok).handled()
+            })?;
+
+        let init = if self
+            .advance_or_peek(|tok| matches!(tok, Token::Equal))
+            .is_ok()
+        {
+            Some(self.expr()?)
+        } else {
+            None
+        };
+
+        let mut span = var.span;
+        if let Some(init) = init.as_ref() {
+            span = span.join(init.span);
+        }
+
+        Ok(stmt::decl(name, init).spanned(span))
     }
 
     /// Parse a variable declaration statement.
@@ -390,7 +491,7 @@ impl<'s> Parser<'s> {
     /// if this is not the case.
     ///
     /// This corresponds to the `decl_stmt` grammar production.
-    fn decl_stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
+    fn decl_stmt_old(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
         let var = self.advance().unwrap();
         debug_assert!(matches!(var.node, Token::Var));
 
@@ -424,18 +525,23 @@ impl<'s> Parser<'s> {
             None
         };
 
-        let semi = self
-            .advance_or_peek(|tok| matches!(tok, Token::Semicolon))
-            .map_err(|tok| {
-                let expected_semi = self.span_or_eof(&tok);
-                let stmt_span = var
-                    .span
-                    .join(init.as_ref().map(|expr| expr.span).unwrap_or(name.span));
-                self.push_diag(ParserDiag::unterminated_stmt(stmt_span, expected_semi));
-                ParserError::spurious_stmt_end().handled()
-            })?;
+        // let semi = self
+        //     .advance_or_peek(|tok| matches!(tok, Token::Semicolon))
+        //     .map_err(|tok| {
+        //         let expected_semi = self.span_or_eof(&tok);
+        //         let stmt_span = var
+        //             .span
+        //             .join(init.as_ref().map(|expr| expr.span).unwrap_or(name.span));
+        //         self.push_diag(ParserDiag::unterminated_stmt(stmt_span, expected_semi));
+        //         ParserError::spurious_stmt_end().handled()
+        //     })?;
 
-        let span = var.span.join(semi.span);
+        // let span = var.span.join(semi.span);
+        let span = if let Some(init) = init.as_ref() {
+            var.span.join(init.span)
+        } else {
+            var.span.join(name.span)
+        };
         Ok(stmt::decl(name, init).spanned(span))
     }
 
@@ -450,12 +556,13 @@ impl<'s> Parser<'s> {
 
         while self.check_next(|tok| tok.is_stmt_start()) {
             match self
+                // .stmt_old()
                 .stmt()
                 .catch_deferred(|kind| match kind {
                     ParserErrorKind::Unexpected(Some(tok))
                         if matches!(tok.node, Token::CloseBrace) =>
                     {
-                        debug_println!("block_stmt: unexpected {tok:?}");
+                        debug_println!(@"block_stmt: unexpected {tok:?}");
                         self.push_diag(ParserDiag::early_close_brace(obrace.span, tok.span));
                         Err(kind.handled())
                     }
@@ -470,7 +577,7 @@ impl<'s> Parser<'s> {
                 Err(ParserErrorKind::Unexpected(Some(tok)))
                     if matches!(tok.node, Token::CloseBrace) =>
                 {
-                    debug_println!("spurious block end");
+                    debug_println!(@"spurious block end");
                     return Err(ParserError::spurious_stmt_end().handled());
                 }
 
@@ -493,10 +600,16 @@ impl<'s> Parser<'s> {
         Ok(stmt::block(stmts).spanned(obrace.span.join(cbrace.span)))
     }
 
+    fn print_or_expr_stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
+        let maybe_print = self.advance_or_peek(|tok| matches!(tok, Token::Print)).ok();
+
+        todo!()
+    }
+
     /// Parse a print or expression statement.
     ///
-    /// Corresponds to the `expr_or_print_stmt` grammar production.
-    fn expr_or_print_stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
+    /// Corresponds to the `print_or_expr_stmt` grammar production.
+    fn print_or_expr_stmt_old(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
         let maybe_print = self.advance_or_peek(|tok| matches!(tok, Token::Print)).ok();
 
         let expr = self.expr().catch_deferred(|kind| match kind {
@@ -513,23 +626,24 @@ impl<'s> Parser<'s> {
             _ => Err(kind.deferred()),
         })?;
 
-        let semi = self
-            .advance_or_peek(|tok| matches!(tok, Token::Semicolon))
-            .map_err(|tok| {
-                let mut stmt = expr.span;
-                if let Some(print) = &maybe_print {
-                    stmt = print.span.join(stmt);
-                }
+        // let semi = self
+        //     .advance_or_peek(|tok| matches!(tok, Token::Semicolon))
+        //     .map_err(|tok| {
+        //         let mut stmt = expr.span;
+        //         if let Some(print) = &maybe_print {
+        //             stmt = print.span.join(stmt);
+        //         }
 
-                self.push_diag(ParserDiag::unterminated_stmt(stmt, self.span_or_eof(&tok)));
-                ParserError::spurious_stmt_end().handled()
-            })?;
+        //         self.push_diag(ParserDiag::unterminated_stmt(stmt, self.span_or_eof(&tok)));
+        //         ParserError::spurious_stmt_end().handled()
+        //     })?;
 
         if let Some(print) = maybe_print {
-            let span = print.span.join(semi.span);
+            let span = print.span.join(expr.span);
             Ok(stmt::print(expr).spanned(span))
         } else {
-            let span = expr.span.join(semi.span);
+            // let span = expr.span.join(semi.span);
+            let span = expr.span;
             Ok(stmt::expr(expr).spanned(span))
         }
     }

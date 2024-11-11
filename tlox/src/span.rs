@@ -20,6 +20,28 @@ use codespan_reporting::files::{self, Files};
 
 use crate::session::Session;
 
+pub trait HasSpan {
+    fn span(&self) -> Span;
+}
+
+impl HasSpan for Span {
+    fn span(&self) -> Span {
+        *self
+    }
+}
+
+impl<T> HasSpan for Spanned<T> {
+    fn span(&self) -> Span {
+        self.span
+    }
+}
+
+impl<T: HasSpan> HasSpan for &T {
+    fn span(&self) -> Span {
+        T::span(self)
+    }
+}
+
 #[cfg(test)]
 mod test;
 
@@ -111,6 +133,25 @@ impl Span {
         let len = end - byte_offset;
         Span { byte_offset, len }
     }
+
+    pub fn collapse_to_start(self) -> Span {
+        Session::with_current(|key| {
+            let byte_offset = self.start();
+            let end = key.get().sm.content().ceil_char_boundary(byte_offset + 1);
+            let len = end - byte_offset;
+            Span { byte_offset, len }
+        })
+    }
+
+    pub fn collapse_to_end(self) -> Span {
+        Session::with_current(|key| {
+            let end = self.end();
+            debug_assert!(end > 0);
+            let byte_offset = key.get().sm.content().floor_char_boundary(end - 1);
+            let len = end - byte_offset;
+            Span { byte_offset, len }
+        })
+    }
 }
 
 impl Debug for Span {
@@ -167,10 +208,17 @@ impl<T> Spanned<T> {
         node.spanned(self.span)
     }
 
-    pub fn with_span(self, span: Span) -> Spanned<T> {
+    pub fn with_span<S: HasSpan>(self, spanned: S) -> Spanned<T> {
         Spanned {
             node: self.node,
-            span,
+            span: spanned.span(),
+        }
+    }
+
+    pub fn join_with_span<S: HasSpan>(self, spanned: S) -> Spanned<T> {
+        Spanned {
+            node: self.node,
+            span: self.span.join(spanned.span()),
         }
     }
 

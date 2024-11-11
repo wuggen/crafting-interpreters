@@ -5,6 +5,7 @@ use std::hash::{Hash, Hasher};
 
 use crate::span::{Spannable, Spanned};
 use crate::symbol::Symbol;
+use crate::tok::Token;
 
 pub trait SynEq<T: ?Sized = Self> {
     fn syn_eq(&self, other: &T) -> bool;
@@ -294,6 +295,16 @@ impl Display for UnopSym {
     }
 }
 
+impl UnopSym {
+    pub fn from_tok(tok: &Token) -> Option<Self> {
+        match tok {
+            Token::Bang => Some(Self::Not),
+            Token::Minus => Some(Self::Neg),
+            _ => None,
+        }
+    }
+}
+
 /// Boolean binary operator symbols.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BooleanBinopSym {
@@ -380,6 +391,25 @@ impl BinopSym {
             BinopSym::Gt | BinopSym::Ge | BinopSym::Lt | BinopSym::Le => BindingLevel::Comp,
             BinopSym::Sub | BinopSym::Add => BindingLevel::Add,
             BinopSym::Div | BinopSym::Mul | BinopSym::Mod => BindingLevel::Mul,
+        }
+    }
+
+    pub fn from_tok(tok: &Token) -> Option<Self> {
+        match tok {
+            Token::And => Some(Self::Bool(BooleanBinopSym::And)),
+            Token::Or => Some(Self::Bool(BooleanBinopSym::Or)),
+            Token::EqualEqual => Some(Self::Eq),
+            Token::BangEqual => Some(Self::Ne),
+            Token::Greater => Some(Self::Gt),
+            Token::GreaterEqual => Some(Self::Ge),
+            Token::Less => Some(Self::Lt),
+            Token::LessEqual => Some(Self::Le),
+            Token::Minus => Some(Self::Sub),
+            Token::Plus => Some(Self::Add),
+            Token::Slash => Some(Self::Div),
+            Token::Star => Some(Self::Mul),
+            Token::Percent => Some(Self::Mod),
+            _ => None,
         }
     }
 }
