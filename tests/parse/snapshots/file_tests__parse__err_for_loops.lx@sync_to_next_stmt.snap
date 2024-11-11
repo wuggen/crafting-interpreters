@@ -1,0 +1,32 @@
+---
+source: tests/parse.rs
+description: "for (var;;) {\n    hey;\n    there;\n}\nvar;\n"
+expression: render_dcx()
+---
+error: missing name in variable declaration
+  --> err_for_loops.lx@sync_to_next_stmt:1:9
+  |
+1 | for (var;;) {
+  |      ---^ expected variable name here
+  |      |   
+  |      declaration requires a variable name
+  |
+  = note: expected identifier
+
+error: unexpected `}` token in input
+  --> err_for_loops.lx@sync_to_next_stmt:4:1
+  |
+4 | }
+  | ^ unexpected token here
+  |
+  = note: expected statement
+
+error: missing name in variable declaration
+  --> err_for_loops.lx@sync_to_next_stmt:5:4
+  |
+5 | var;
+  | ---^ expected variable name here
+  | |   
+  | declaration requires a variable name
+  |
+  = note: expected identifier

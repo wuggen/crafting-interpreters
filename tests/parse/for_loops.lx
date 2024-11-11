@@ -1,0 +1,18 @@
+//CASE full
+for (var x = 0; x < 3; x = x + 1) print x;
+
+//CASE no_fields
+for (;;) print y;
+
+//CASE missing_init
+for (; r < 4; r = r + 2) a;
+
+//CASE missing_update
+for (a + b; a < b;) {
+    "lol";
+}
+
+//CASE missing_cond
+for (a = a - c;; b + 4) {
+    var x = "hey";
+}

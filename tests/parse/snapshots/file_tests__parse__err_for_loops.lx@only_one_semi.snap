@@ -1,0 +1,12 @@
+---
+source: tests/parse.rs
+description: "for (var x = 0; x = x + 1) { }\n"
+expression: render_dcx()
+---
+error: unexpected `)` token in input
+  --> err_for_loops.lx@only_one_semi:1:26
+  |
+1 | for (var x = 0; x = x + 1) { }
+  |                          ^ unexpected token here
+  |
+  = note: expected `;`

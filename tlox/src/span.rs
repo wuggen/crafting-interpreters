@@ -65,7 +65,8 @@ impl Span {
     /// Get the range over which `other` is a subspan of `self`.
     ///
     /// Returns `None` if `self` is not wholly contained within `other`.
-    pub fn range_within(&self, other: Span) -> Option<Range<usize>> {
+    pub fn range_within<S: HasSpan>(&self, other: S) -> Option<Range<usize>> {
+        let other = other.span();
         if other.start() > self.start() || other.end() < self.end() {
             None
         } else {
@@ -105,7 +106,8 @@ impl Span {
     /// Join two spans into one.
     ///
     /// This returns the smallest span that covers both of the given spans.
-    pub fn join(self, other: Span) -> Span {
+    pub fn join<S: HasSpan>(self, other: S) -> Span {
+        let other = other.span();
         let byte_offset = self.start().min(other.start());
         let end = self.end().max(other.end());
         let len = end - byte_offset;
@@ -163,14 +165,26 @@ impl<T> Spanned<T> {
         }
     }
 
+    pub fn map_with_span<S>(self, f: impl FnOnce(Spanned<T>) -> S) -> Spanned<S> {
+        let span = self.span;
+        f(self).spanned(span)
+    }
+
     pub fn with_node<S>(&self, node: S) -> Spanned<S> {
         node.spanned(self.span)
     }
 
-    pub fn with_span(self, span: Span) -> Spanned<T> {
+    pub fn with_span<S: HasSpan>(self, span: S) -> Spanned<T> {
         Spanned {
             node: self.node,
-            span,
+            span: span.span(),
+        }
+    }
+
+    pub fn extend_span<S: HasSpan>(self, span: S) -> Spanned<T> {
+        Spanned {
+            node: self.node,
+            span: self.span.join(span.span()),
         }
     }
 
@@ -193,6 +207,28 @@ impl<T> Spanned<T> {
 impl<T: Deref> Spanned<T> {
     pub fn as_deref(&self) -> Spanned<&<T as Deref>::Target> {
         self.with_node(&*self.node)
+    }
+}
+
+pub trait HasSpan {
+    fn span(&self) -> Span;
+}
+
+impl HasSpan for Span {
+    fn span(&self) -> Span {
+        *self
+    }
+}
+
+impl<T> HasSpan for Spanned<T> {
+    fn span(&self) -> Span {
+        self.span
+    }
+}
+
+impl<T: HasSpan> HasSpan for &T {
+    fn span(&self) -> Span {
+        T::span(*self)
     }
 }
 

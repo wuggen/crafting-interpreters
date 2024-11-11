@@ -36,7 +36,7 @@ fn parse_test_success(key: SessionKey, case: TestCase) {
     let TestCase { name, content } = case;
     let idx = key.get().sm.add_source(name.as_str(), &content);
     let first_parse = parse_source(key, idx)
-        .or_else(|| panic!("failed to parse {name}"))
+        .or_else(|| panic!("failed to parse {name}\n{}", render_dcx()))
         .unwrap();
 
     insta::with_settings!({

@@ -1,0 +1,8 @@
+---
+source: tests/parse.rs
+description: "for (a = a - c;; b + 4) {\n    var x = \"hey\";\n}\n"
+expression: first_parse
+---
+for (a = a - c;; b + 4) {
+    var x = "hey";
+}

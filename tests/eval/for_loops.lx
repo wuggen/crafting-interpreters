@@ -1,0 +1,21 @@
+//CASE full
+for (var x = 0; x < 3; x = x + 1) {
+    print x; // print 0 through 2
+}
+
+//CASE no_init
+var a;
+for (; a == nil; a = !a) {
+    print a; // nil
+}
+print a; // true
+
+//CASE no_update
+for (var a = 4; a > 0;) {
+    if (a == 4)
+        a = a - 2;
+    else
+        a = a - 1;
+
+    print a; // 2, 1, 0
+}

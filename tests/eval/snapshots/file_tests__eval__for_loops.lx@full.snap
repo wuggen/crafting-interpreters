@@ -1,0 +1,9 @@
+---
+source: tests/eval.rs
+description: "for (var x = 0; x < 3; x = x + 1) {\n    print x; // print 0 through 2\n}\n"
+expression: combined
+---
+:: Output ::
+0
+1
+2

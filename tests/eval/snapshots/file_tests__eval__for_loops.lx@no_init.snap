@@ -1,0 +1,8 @@
+---
+source: tests/eval.rs
+description: "var a;\nfor (; a == nil; a = !a) {\n    print a; // nil\n}\nprint a; // true\n"
+expression: combined
+---
+:: Output ::
+nil
+true

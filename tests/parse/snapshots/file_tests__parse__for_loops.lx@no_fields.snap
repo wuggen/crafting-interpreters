@@ -1,0 +1,6 @@
+---
+source: tests/parse.rs
+description: "for (;;) print y;\n\n"
+expression: first_parse
+---
+for (;;) print y;

@@ -1,0 +1,6 @@
+---
+source: tests/parse.rs
+description: "for (var x = 0; x < 3; x = x + 1) print x;\n\n"
+expression: first_parse
+---
+for (var x = 0; x < 3; x = x + 1) print x;

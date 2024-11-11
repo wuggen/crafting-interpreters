@@ -126,7 +126,12 @@ pub fn collect_cases_from_file<'a>(
     base_iter.filter(move |case| case.name.contains(filter))
 }
 
-fn file_test<F, E>(path: PathBuf, success_test: &F, err_test: &E, filter: &str) -> Result<(), String>
+fn file_test<F, E>(
+    path: PathBuf,
+    success_test: &F,
+    err_test: &E,
+    filter: &str,
+) -> Result<(), String>
 where
     F: Fn(SessionKey, TestCase),
     E: Fn(SessionKey, TestCase),

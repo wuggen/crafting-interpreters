@@ -1,0 +1,12 @@
+---
+source: tests/parse.rs
+description: "for (x = var;;) something;\n"
+expression: render_dcx()
+---
+error: unexpected keyword `var` token in input
+  --> err_for_loops.lx@invalid_field:1:10
+  |
+1 | for (x = var;;) something;
+  |          ^^^ unexpected token here
+  |
+  = note: expected expression

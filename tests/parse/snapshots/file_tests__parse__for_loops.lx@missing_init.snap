@@ -1,0 +1,6 @@
+---
+source: tests/parse.rs
+description: "for (; r < 4; r = r + 2) a;\n\n"
+expression: first_parse
+---
+for (; r < 4; r = r + 2) a;

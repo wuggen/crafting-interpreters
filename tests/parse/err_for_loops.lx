@@ -1,0 +1,18 @@
+//CASE missing_fields
+for () print thing;
+
+//CASE only_one_semi
+for (var x = 0; x = x + 1) { }
+
+//CASE empty_fields_one_semi
+for (;) hey;
+
+//CASE invalid_field
+for (x = var;;) something;
+
+//CASE sync_to_next_stmt
+for (var;;) {
+    hey;
+    there;
+}
+var;

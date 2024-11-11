@@ -1,0 +1,14 @@
+---
+source: tests/parse.rs
+description: "for (;) hey;\n"
+expression: render_dcx()
+---
+error: parentheses closed prematurely
+  --> err_for_loops.lx@empty_fields_one_semi:1:7
+  |
+1 | for (;) hey;
+  |     - ^ parentheses closed here
+  |     |  
+  |     parentheses opened here
+  |
+  = note: expected expression

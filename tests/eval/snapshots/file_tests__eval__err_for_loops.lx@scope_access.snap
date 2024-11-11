@@ -1,0 +1,11 @@
+---
+source: tests/eval.rs
+description: "for (var a = 0; a < 4; a = a + 1) {}\nprint a;\n"
+expression: combined
+---
+:: Diagnostics ::
+error: reference to unbound variable `a`
+  --> err_for_loops.lx@scope_access:2:7
+  |
+2 | print a;
+  |       ^ variable is not bound at this point

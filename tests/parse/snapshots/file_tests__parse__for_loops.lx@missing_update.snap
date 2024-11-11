@@ -1,0 +1,8 @@
+---
+source: tests/parse.rs
+description: "for (a + b; a < b;) {\n    \"lol\";\n}\n\n"
+expression: first_parse
+---
+for (a + b; a < b;) {
+    "lol";
+}
