@@ -28,6 +28,12 @@ impl<T: SynEq> SynEq for &T {
     }
 }
 
+impl<T: SynEq> SynEq for Vec<T> {
+    fn syn_eq(&self, other: &Self) -> bool {
+        self.as_slice().syn_eq(other.as_slice())
+    }
+}
+
 impl<T: SynEq> SynEq for Option<T> {
     fn syn_eq(&self, other: &Self) -> bool {
         match (self, other) {
@@ -671,6 +677,15 @@ pub enum ExprNode<'s> {
         /// The value assigned.
         val: Spanned<Expr<'s>>,
     },
+
+    /// A function call expression.
+    Call {
+        /// The callee.
+        callee: Spanned<Expr<'s>>,
+
+        /// The arguments list.
+        args: Spanned<Vec<Spanned<Expr<'s>>>>,
+    },
 }
 
 impl Debug for ExprNode<'_> {
@@ -689,6 +704,9 @@ impl Debug for ExprNode<'_> {
                 .finish(),
             ExprNode::Assign { place, val } => {
                 f.debug_tuple("Assign").field(&place).field(&val).finish()
+            }
+            ExprNode::Call { callee, args } => {
+                f.debug_tuple("Call").field(&callee).field(&args).finish()
             }
         }
     }
@@ -725,6 +743,16 @@ impl SynEq for ExprNode<'_> {
             (Self::Assign { place: p1, val: v1 }, Self::Assign { place: p2, val: v2 }) => {
                 p1.syn_eq(p2) && v1.syn_eq(v2)
             }
+            (
+                Self::Call {
+                    callee: c1,
+                    args: a1,
+                },
+                Self::Call {
+                    callee: c2,
+                    args: a2,
+                },
+            ) => c1.syn_eq(c2) && a1.syn_eq(a2),
             _ => false,
         }
     }
@@ -770,6 +798,15 @@ pub mod expr {
     pub fn assign<'s>(place: Spanned<Place<'s>>, val: Spanned<Expr<'s>>) -> Spanned<Expr<'s>> {
         let span = place.span.join(val.span);
         Box::new(ExprNode::Assign { place, val }).spanned(span)
+    }
+
+    /// Create a function call expression.
+    pub fn call<'s>(
+        callee: Spanned<Expr<'s>>,
+        args: Spanned<Vec<Spanned<Expr<'s>>>>,
+    ) -> Spanned<Expr<'s>> {
+        let span = callee.span.join(args.span);
+        Box::new(ExprNode::Call { callee, args }).spanned(span)
     }
 }
 
@@ -833,6 +870,19 @@ impl Display for ExprNode<'_> {
                 }
             }
             ExprNode::Assign { place, val } => write!(f, "{} = {}", place.node, val.node),
+            ExprNode::Call { callee, args } => {
+                write!(f, "{}(", callee.node)?;
+                let mut tail = false;
+                for arg in &args.node {
+                    if tail {
+                        write!(f, ", {}", arg.node)?;
+                    } else {
+                        write!(f, "{}", arg.node)?;
+                        tail = true;
+                    }
+                }
+                write!(f, ")")
+            }
         }
     }
 }

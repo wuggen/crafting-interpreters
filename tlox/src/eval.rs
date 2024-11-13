@@ -194,6 +194,8 @@ impl<'s> Interpreter<'s, '_> {
                 *self.eval_place(place)? = val.clone();
                 Ok(val)
             }
+
+            ExprNode::Call { callee, args } => todo!(),
         }
     }
 

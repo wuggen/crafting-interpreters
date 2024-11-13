@@ -1,0 +1,10 @@
+---
+source: tests/parse.rs
+description: "foo();\nfoo(bar);\nfoo(bar,);\nfoo(bar, baz);\nfoo(bar)(baz);\n"
+expression: first_parse
+---
+foo();
+foo(bar);
+foo(bar);
+foo(bar, baz);
+foo(bar)(baz);

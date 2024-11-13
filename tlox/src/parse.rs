@@ -78,7 +78,11 @@ pub struct Parser<'s> {
 // factors -> unary ( ('*' | '/' | '%') unary )*
 //
 // unary -> ('-' | '!') unary
-//        | atom
+//        | call
+//
+// call -> atom ( '(' arguments? ')' )*
+//
+// arguments -> expr (',' expr)* ','?
 //
 // atom -> NUMBER | STRING | 'true' | 'false' | 'nil'
 //       | '(' expr ')'
@@ -791,7 +795,36 @@ impl<'s> Parser<'s> {
 
             Ok(expr::unop(sym, operand))
         } else {
-            self.atom()
+            self.call()
+        }
+    }
+
+    fn call(&mut self) -> ParserRes<'s, Spanned<Expr<'s>>> {
+        let mut res = self.atom()?;
+
+        loop {
+            if self.check_next(|tok| matches!(tok, Token::OpenParen)) {
+                let (open, args, close) = self.parse_parens(|this| {
+                    let mut res = Vec::new();
+
+                    while !this.check_next(|tok| matches!(tok, Token::CloseParen)) {
+                        res.push(this.expr()?);
+
+                        if this
+                            .advance_or_peek(|tok| matches!(tok, Token::Comma))
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+
+                    Ok(res)
+                })?;
+                let args = args.spanned(open.join(close));
+                res = expr::call(res, args);
+            } else {
+                break Ok(res);
+            }
         }
     }
 
