@@ -1,6 +1,6 @@
 ---
 source: tests/parse.rs
-description: "for (var x = 0; x = x + 1) { }\n"
+description: "for (var x = 0; x = x + 1) { }\n\n"
 expression: render_dcx()
 ---
 error: unexpected `)` token in input

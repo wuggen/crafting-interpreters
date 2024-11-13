@@ -1,6 +1,6 @@
 ---
 source: tests/parse.rs
-description: "for (x = var;;) something;\n"
+description: "for (x = var;;) something;\n\n"
 expression: render_dcx()
 ---
 error: unexpected keyword `var` token in input

@@ -1,6 +1,6 @@
 ---
 source: tests/parse.rs
-description: "for (;) hey;\n"
+description: "for (;) hey;\n\n"
 expression: render_dcx()
 ---
 error: parentheses closed prematurely

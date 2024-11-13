@@ -1,6 +1,6 @@
 ---
 source: tests/eval.rs
-description: "var a;\nfor (; a == nil; a = !a) {\n    print a; // nil\n}\nprint a; // true\n"
+description: "var a;\nfor (; a == nil; a = !a) {\n    print a; // nil\n}\nprint a; // true\n\n"
 expression: combined
 ---
 :: Output ::

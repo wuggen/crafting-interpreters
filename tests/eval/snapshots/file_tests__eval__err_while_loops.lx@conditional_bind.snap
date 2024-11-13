@@ -1,6 +1,6 @@
 ---
 source: tests/eval.rs
-description: "var x = 0;\nwhile (x < 2) {\n    if (x == 0)\n        var a = \"hey\";\n    print a;\n    x = x + 1;\n}\n"
+description: "var x = 0;\nwhile (x < 2) {\n    if (x == 0)\n        var a = \"hey\";\n    print a;\n    x = x + 1;\n}\n\n"
 expression: combined
 ---
 :: Output ::

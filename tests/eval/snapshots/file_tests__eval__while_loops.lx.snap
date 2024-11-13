@@ -1,7 +1,0 @@
----
-source: tests/eval.rs
-description: "var a = 0;\nwhile (a < 10)\n    a = a + 1;\nprint a; // 10\n"
-expression: combined
----
-:: Output ::
-10

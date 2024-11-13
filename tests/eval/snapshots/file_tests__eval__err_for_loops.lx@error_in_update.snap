@@ -1,6 +1,6 @@
 ---
 source: tests/eval.rs
-description: "for (var x = 0; x < 4; x = x + b) {}\n"
+description: "for (var x = 0; x < 4; x = x + b) {}\n\n"
 expression: combined
 ---
 :: Diagnostics ::
