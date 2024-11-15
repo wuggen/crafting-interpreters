@@ -9,6 +9,7 @@ pub enum PrimitiveTy {
     Num,
     Bool,
     Str,
+    Callable,
 }
 
 impl Display for PrimitiveTy {
@@ -18,6 +19,7 @@ impl Display for PrimitiveTy {
             PrimitiveTy::Num => write!(f, "Num"),
             PrimitiveTy::Bool => write!(f, "Bool"),
             PrimitiveTy::Str => write!(f, "Str"),
+            PrimitiveTy::Callable => write!(f, "Callable"),
         }
     }
 }

@@ -1,6 +1,6 @@
 ---
 source: tests/parse.rs
-description: "foo();\nfoo(bar);\nfoo(bar,);\nfoo(bar, baz);\nfoo(bar)(baz);\n"
+description: "foo();\nfoo(bar);\nfoo(bar,);\nfoo(bar, baz);\nfoo(bar)(baz);\nprint 4 + foo(bar);\n"
 expression: first_parse
 ---
 foo();
@@ -8,3 +8,4 @@ foo(bar);
 foo(bar);
 foo(bar, baz);
 foo(bar)(baz);
+print 4 + foo(bar);

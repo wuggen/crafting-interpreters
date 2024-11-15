@@ -800,15 +800,30 @@ impl<'s> Parser<'s> {
     }
 
     fn call(&mut self) -> ParserRes<'s, Spanned<Expr<'s>>> {
-        let mut res = self.atom()?;
+        let mut maybe_fn = self.atom()?;
 
         loop {
             if self.check_next(|tok| matches!(tok, Token::OpenParen)) {
                 let (open, args, close) = self.parse_parens(|this| {
-                    let mut res = Vec::new();
+                    let mut res = Some(Vec::new());
 
                     while !this.check_next(|tok| matches!(tok, Token::CloseParen)) {
-                        res.push(this.expr()?);
+                        let arg = this.expr()?;
+
+                        res = res.and_then(|mut args| {
+                            if args.len() < 255 {
+                                args.push(arg);
+                                Some(args)
+                            } else {
+                                this.push_diag(ParserDiag::excessive_args(
+                                    FunCtx::Call,
+                                    FunKind::Fun,
+                                    maybe_fn.span,
+                                    arg.span,
+                                ));
+                                None
+                            }
+                        });
 
                         if this
                             .advance_or_peek(|tok| matches!(tok, Token::Comma))
@@ -820,10 +835,10 @@ impl<'s> Parser<'s> {
 
                     Ok(res)
                 })?;
-                let args = args.spanned(open.join(close));
-                res = expr::call(res, args);
+                let args = args.unwrap_or_default().spanned(open.join(close));
+                maybe_fn = expr::call(maybe_fn, args);
             } else {
-                break Ok(res);
+                break Ok(maybe_fn);
             }
         }
     }

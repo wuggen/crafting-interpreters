@@ -133,6 +133,43 @@ impl Pair {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum FunCtx {
+    Def,
+    Call,
+}
+
+impl FunCtx {
+    fn desc(&self) -> &'static str {
+        match self {
+            FunCtx::Def => "definition",
+            FunCtx::Call => "call",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum FunKind {
+    Fun,
+    Method,
+}
+
+impl FunKind {
+    fn desc(&self) -> &'static str {
+        match self {
+            FunKind::Fun => "function",
+            FunKind::Method => "method",
+        }
+    }
+
+    fn arg_num(&self) -> u32 {
+        match self {
+            FunKind::Fun => 255,
+            FunKind::Method => 254,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum ParserDiag<'s> {
     Unexpected {
@@ -170,6 +207,13 @@ pub enum ParserDiag<'s> {
     InvalidPlaceExpr {
         place: Span,
         eq: Span,
+    },
+
+    ExcessiveArgs {
+        ctx: FunCtx,
+        kind: FunKind,
+        fun_name: Span,
+        arg: Span,
     },
 }
 
@@ -246,6 +290,15 @@ impl<'s> ParserDiag<'s> {
     pub const fn invalid_place_expr(place: Span, eq: Span) -> Self {
         Self::InvalidPlaceExpr { place, eq }
     }
+
+    pub const fn excessive_args(ctx: FunCtx, kind: FunKind, fun_name: Span, arg: Span) -> Self {
+        Self::ExcessiveArgs {
+            ctx,
+            kind,
+            fun_name,
+            arg,
+        }
+    }
 }
 
 impl ParserDiag<'_> {
@@ -265,6 +318,12 @@ impl ParserDiag<'_> {
             ParserDiag::InvalidPlaceExpr { .. } => {
                 "invalid place expression on left side of assignment".into()
             }
+            ParserDiag::ExcessiveArgs { ctx, kind, .. } => format!(
+                "more than {} arguments in {} {}",
+                kind.arg_num(),
+                kind.desc(),
+                ctx.desc(),
+            ),
         }
     }
 
@@ -278,6 +337,7 @@ impl ParserDiag<'_> {
             ParserDiag::EarlyTerminatedStmt { .. } => Some("expression"),
             ParserDiag::MissingVarName { .. } => Some("identifier"),
             ParserDiag::InvalidPlaceExpr { .. } => Some("identifier"),
+            ParserDiag::ExcessiveArgs { .. } => None,
         }
     }
 
@@ -324,6 +384,20 @@ impl ParserDiag<'_> {
             ParserDiag::InvalidPlaceExpr { place, eq } => diag
                 .with_primary(place, "invalid place expression")
                 .with_secondary(eq, "expected place expression due to assignment here"),
+
+            ParserDiag::ExcessiveArgs {
+                ctx,
+                kind,
+                fun_name,
+                arg,
+            } => diag
+                .with_primary(arg, self.message())
+                .with_secondary(fun_name, format!("arguments for this {}", ctx.desc()))
+                .with_note(format!(
+                    "{}s can have no more than {} arguments",
+                    kind.desc(),
+                    kind.arg_num()
+                )),
         }
     }
 }

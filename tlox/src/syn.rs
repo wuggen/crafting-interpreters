@@ -87,6 +87,10 @@ pub enum Stmt<'s> {
         body: Spanned<Box<Stmt<'s>>>,
     },
 
+    /// A for loop.
+    ///
+    /// For loops are internally desugared into while loops. This node is retained explicitly for
+    /// pretty-printing purposes.
     For {
         desugared: Box<Stmt<'s>>,
         has_cond: bool,

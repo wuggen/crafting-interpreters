@@ -36,6 +36,7 @@ pub mod symbol;
 pub mod util;
 
 pub mod arena;
+pub mod builtin;
 pub mod diag;
 pub mod error;
 pub mod eval;

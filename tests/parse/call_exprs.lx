@@ -3,3 +3,4 @@ foo(bar);
 foo(bar,);
 foo(bar, baz);
 foo(bar)(baz);
+print 4 + foo(bar);

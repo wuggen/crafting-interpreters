@@ -13,6 +13,8 @@ use crate::syn::{BinopSym, BooleanBinopSym, Expr, ExprNode, Lit, Place, Program,
 use crate::ty::{PrimitiveTy, Ty};
 use crate::val::{StrValue, Value};
 
+pub mod callable;
+
 /// A tree-walking Lox interpreter.
 pub struct Interpreter<'s, 'out> {
     key: SessionKey<'s>,
