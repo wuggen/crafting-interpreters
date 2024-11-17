@@ -3,7 +3,13 @@
 use std::fmt::{self, Display, Formatter};
 use std::rc::Rc;
 
+use crate::builtin::Builtin;
+use crate::callable::Callable;
+use crate::error::RuntimeResult;
+use crate::eval::{Env, Interpreter};
+use crate::span::Spanned;
 use crate::symbol::Symbol;
+use crate::syn::Stmt;
 use crate::ty::{PrimitiveTy, Ty};
 
 /// A runtime value.
@@ -13,6 +19,7 @@ pub enum Value<'s> {
     Bool(bool),
     Num(f64),
     Str(StrValue<'s>),
+    Callable(CallableValue<'s>),
 }
 
 impl Value<'_> {
@@ -23,6 +30,7 @@ impl Value<'_> {
             Value::Bool(_) => Ty::Primitive(PrimitiveTy::Bool),
             Value::Num(_) => Ty::Primitive(PrimitiveTy::Num),
             Value::Str(_) => Ty::Primitive(PrimitiveTy::Str),
+            Value::Callable(_) => Ty::Primitive(PrimitiveTy::Callable),
         }
     }
 
@@ -41,6 +49,8 @@ impl Display for Value<'_> {
             Value::Bool(b) => write!(f, "{b}"),
             Value::Num(n) => write!(f, "{n}"),
             Value::Str(s) => write!(f, "{s}"),
+            Value::Callable(CallableValue::Builtin(b)) => write!(f, "<builtin fun {b}"),
+            Value::Callable(CallableValue::User(_)) => write!(f, "<fun>"),
         }
     }
 }
@@ -135,5 +145,40 @@ impl StrValue<'_> {
                 .into_iter()
                 .collect::<String>(),
         ))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum CallableValue<'s> {
+    Builtin(Builtin),
+    User(Rc<UserFun<'s>>),
+}
+
+#[derive(Debug, Clone)]
+pub struct UserFun<'s> {
+    code: Vec<Spanned<Stmt<'s>>>,
+    args: Vec<Spanned<Symbol<'s>>>,
+    env: Env<'s>,
+}
+
+impl<'s> Callable<'s> for UserFun<'s> {
+    fn arity(&self) -> u8 {
+        self.args.len() as u8
+    }
+
+    fn call(
+        &self,
+        interpreter: &mut Interpreter<'s, '_>,
+        args: &[Value<'s>],
+    ) -> RuntimeResult<'s, Value<'s>> {
+        debug_assert_eq!(args.len(), self.args.len());
+
+        let mut env = self.env.clone();
+        env.push_scope();
+        for (name, val) in self.args.iter().copied().zip(args.iter().cloned()) {
+            env.declare(name.node, val);
+        }
+
+        interpreter.eval_with_env(&mut env, &self.code)
     }
 }

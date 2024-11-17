@@ -37,6 +37,7 @@ pub mod util;
 
 pub mod arena;
 pub mod builtin;
+pub mod callable;
 pub mod diag;
 pub mod error;
 pub mod eval;

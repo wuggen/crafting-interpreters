@@ -1,7 +1,9 @@
 //! Evaluation of Lox syntax trees.
+use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
 use std::io::Write;
 use std::ops::{Div, Mul, Rem, Sub};
+use std::rc::Rc;
 
 use crate::diag::Diagnostic;
 use crate::error::{join_errs, CoercionCause, RuntimeError, RuntimeResult};
@@ -12,8 +14,6 @@ use crate::symbol::Symbol;
 use crate::syn::{BinopSym, BooleanBinopSym, Expr, ExprNode, Lit, Place, Program, Stmt, UnopSym};
 use crate::ty::{PrimitiveTy, Ty};
 use crate::val::{StrValue, Value};
-
-pub mod callable;
 
 /// A tree-walking Lox interpreter.
 pub struct Interpreter<'s, 'out> {
@@ -58,41 +58,54 @@ impl<'s> Interpreter<'s, '_> {
 impl<'s> Interpreter<'s, '_> {
     /// Evaluate a Lox program.
     pub fn eval(&mut self, program: &Program<'s>) {
-        let mut res = None;
-        for stmt in &program.stmts {
-            match self.eval_stmt(stmt.as_ref()) {
-                Ok(val) => {
-                    res = val;
+        let res = match self.eval_stmts(&program.stmts) {
+            Ok(val) => val,
+            Err(errs) => {
+                for err in errs {
+                    err.emit();
                 }
-
-                Err(errs) => {
-                    for err in errs {
-                        err.emit();
-                    }
-                    return;
-                }
+                return;
             }
-        }
+        };
 
         if self.repl {
-            if let Some(val) = res {
-                writeln!(self.output, "{val}").unwrap();
+            if !matches!(res, Value::Nil) {
+                writeln!(self.output, "{res}").unwrap();
             }
         }
     }
 
-    fn eval_stmt(&mut self, stmt: Spanned<&Stmt<'s>>) -> RuntimeResult<'s, Option<Value<'s>>> {
-        let mut res = None;
+    fn eval_stmts(&mut self, code: &[Spanned<Stmt<'s>>]) -> RuntimeResult<'s, Value<'s>> {
+        let mut res = Value::Nil;
+        for stmt in code {
+            res = self.eval_stmt(stmt.as_ref())?;
+        }
+        Ok(res)
+    }
+
+    pub fn eval_with_env(
+        &mut self,
+        env: &mut Env<'s>,
+        code: &[Spanned<Stmt<'s>>],
+    ) -> RuntimeResult<'s, Value<'s>> {
+        std::mem::swap(env, &mut self.env);
+        let res = self.eval_stmts(code);
+        std::mem::swap(env, &mut self.env);
+        res
+    }
+
+    fn eval_stmt(&mut self, stmt: Spanned<&Stmt<'s>>) -> RuntimeResult<'s, Value<'s>> {
+        let mut res = Value::Nil;
 
         match &stmt.node {
             Stmt::Expr { val } => {
-                res = Some(self.eval_expr(val)?);
+                res = self.eval_expr(val)?;
             }
 
             Stmt::Print { val } => {
                 let val = self.eval_expr(val)?;
                 writeln!(self.output, "{val}").unwrap();
-                res = None;
+                res = Value::Nil;
             }
 
             Stmt::Decl { name, init } => {
@@ -103,25 +116,15 @@ impl<'s> Interpreter<'s, '_> {
                 };
 
                 self.env.declare(name.node, init.clone());
-                res = Some(init);
+                res = init;
             }
 
             Stmt::Block { stmts } => {
                 self.env.push_scope();
-
-                for stmt in stmts {
-                    match self.eval_stmt(stmt.as_ref()) {
-                        Ok(val) => {
-                            res = val;
-                        }
-                        Err(errs) => {
-                            self.env.pop_scope();
-                            return Err(errs);
-                        }
-                    }
-                }
-
+                let inner_res = self.eval_stmts(stmts);
                 self.env.pop_scope();
+
+                res = inner_res?;
             }
 
             Stmt::IfElse {
@@ -135,7 +138,7 @@ impl<'s> Interpreter<'s, '_> {
                 } else if let Some(else_body) = else_body {
                     res = self.eval_stmt(else_body.as_deref())?;
                 } else {
-                    res = None;
+                    res = Value::Nil;
                 }
             }
 
@@ -193,7 +196,7 @@ impl<'s> Interpreter<'s, '_> {
 
             ExprNode::Assign { place, val } => {
                 let val = self.eval_expr(val)?;
-                *self.eval_place(place)? = val.clone();
+                self.eval_place(place)?.set(val.clone());
                 Ok(val)
             }
 
@@ -283,11 +286,11 @@ impl<'s> Interpreter<'s, '_> {
     /// Evaluate a place expression.
     ///
     /// Returns a mutable reference to the value currently assigned to the evaluated place.
-    fn eval_place(&mut self, place: &Spanned<Place<'s>>) -> RuntimeResult<'s, &mut Value<'s>> {
+    fn eval_place(&mut self, place: &Spanned<Place<'s>>) -> RuntimeResult<'s, PlaceVal<'_, 's>> {
         match place.node {
             Place::Var(name) => self
                 .env
-                .get_mut(name)
+                .get_place(name)
                 .ok_or_else(|| vec![RuntimeError::unbound_var_assign(name.spanned(place.span))]),
         }
     }
@@ -331,39 +334,83 @@ impl<'s> Interpreter<'s, '_> {
     }
 }
 
-#[derive(Debug, Default)]
-struct Env<'s> {
-    bindings: HashMap<Symbol<'s>, Value<'s>>,
-    parent: Option<Box<Env<'s>>>,
+struct PlaceVal<'e, 's> {
+    val: RefMut<'e, Value<'s>>,
+}
+
+impl<'s> PlaceVal<'_, 's> {
+    fn set(&mut self, value: Value<'s>) {
+        *self.val = value;
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct EnvBindings<'s> {
+    bindings: Rc<RefCell<HashMap<Symbol<'s>, Value<'s>>>>,
+}
+
+impl<'s> EnvBindings<'s> {
+    fn declare(&self, name: Symbol<'s>, init: Value<'s>) {
+        self.bindings.borrow_mut().insert(name, init);
+    }
+
+    fn get(&self, name: Symbol<'s>) -> Option<Value<'s>> {
+        self.bindings.borrow().get(&name).cloned()
+    }
+
+    fn get_place(&self, name: Symbol<'s>) -> Option<PlaceVal<'_, 's>> {
+        let val = RefMut::filter_map(self.bindings.borrow_mut(), |bindings| {
+            bindings.get_mut(&name)
+        })
+        .ok()?;
+        Some(PlaceVal { val })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Env<'s> {
+    bindings: Vec<EnvBindings<'s>>,
+}
+
+impl Default for Env<'_> {
+    fn default() -> Self {
+        Self {
+            bindings: vec![EnvBindings::default()],
+        }
+    }
 }
 
 impl<'s> Env<'s> {
-    fn push_scope(&mut self) {
-        let mut env = Env::default();
-        std::mem::swap(self, &mut env);
-        self.parent = Some(Box::new(env));
+    pub fn push_scope(&mut self) {
+        self.bindings.push(EnvBindings::default());
     }
 
-    fn pop_scope(&mut self) {
-        let env = self.parent.take().expect("cannot pop the global scope");
-        *self = *env;
+    pub fn pop_scope(&mut self) {
+        if self.bindings.len() <= 1 {
+            panic!("cannot pop the global scope");
+        }
+
+        self.bindings.pop();
     }
 
-    fn declare(&mut self, name: Symbol<'s>, init: Value<'s>) {
-        self.bindings.insert(name, init);
+    pub fn declare(&self, name: Symbol<'s>, init: Value<'s>) {
+        self.bindings.last().unwrap().declare(name, init);
     }
 
     fn get(&self, name: Symbol<'s>) -> Option<Value<'s>> {
         self.bindings
-            .get(&name)
-            .cloned()
-            .or_else(|| self.parent.as_ref().and_then(|env| env.get(name)))
+            .iter()
+            .rev()
+            .filter_map(|scope| scope.get(name))
+            .next()
     }
 
-    fn get_mut(&mut self, name: Symbol<'s>) -> Option<&mut Value<'s>> {
+    fn get_place(&self, name: Symbol<'s>) -> Option<PlaceVal<'_, 's>> {
         self.bindings
-            .get_mut(&name)
-            .or_else(|| self.parent.as_mut().and_then(|env| env.get_mut(name)))
+            .iter()
+            .rev()
+            .filter_map(|scope| scope.get_place(name))
+            .next()
     }
 }
 
