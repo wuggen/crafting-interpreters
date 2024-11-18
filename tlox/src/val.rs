@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use crate::builtin::Builtin;
 use crate::callable::Callable;
-use crate::error::RuntimeResult;
+use crate::error::{RuntimeError, RuntimeResult};
 use crate::eval::{Env, Interpreter};
 use crate::span::Spanned;
 use crate::symbol::Symbol;
@@ -50,7 +50,7 @@ impl Display for Value<'_> {
             Value::Num(n) => write!(f, "{n}"),
             Value::Str(s) => write!(f, "{s}"),
             Value::Callable(CallableValue::Builtin(b)) => write!(f, "<builtin fun {b}"),
-            Value::Callable(CallableValue::User(_)) => write!(f, "<fun>"),
+            Value::Callable(CallableValue::User(fun)) => write!(f, "<fun {}>", fun.name),
         }
     }
 }
@@ -154,14 +154,62 @@ pub enum CallableValue<'s> {
     User(Rc<UserFun<'s>>),
 }
 
+impl<'s> Callable<'s> for CallableValue<'s> {
+    fn name(&self) -> Symbol<'s> {
+        match self {
+            CallableValue::Builtin(builtin) => builtin.name(),
+            CallableValue::User(fun) => fun.name(),
+        }
+    }
+
+    fn arity(&self) -> u8 {
+        match self {
+            CallableValue::Builtin(builtin) => builtin.arity(),
+            CallableValue::User(fun) => fun.arity(),
+        }
+    }
+
+    fn call(
+        &self,
+        interpreter: &mut Interpreter<'s, '_>,
+        args: &[Value<'s>],
+    ) -> RuntimeResult<'s, Value<'s>> {
+        match self {
+            CallableValue::Builtin(builtin) => builtin.call(interpreter, args),
+            CallableValue::User(fun) => fun.call(interpreter, args),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct UserFun<'s> {
-    code: Vec<Spanned<Stmt<'s>>>,
+    name: Symbol<'s>,
     args: Vec<Spanned<Symbol<'s>>>,
+    code: Vec<Spanned<Stmt<'s>>>,
     env: Env<'s>,
 }
 
+impl<'s> UserFun<'s> {
+    pub fn new(
+        name: Symbol<'s>,
+        args: &[Spanned<Symbol<'s>>],
+        code: &[Spanned<Stmt<'s>>],
+        env: Env<'s>,
+    ) -> Self {
+        Self {
+            name,
+            args: Vec::from(args),
+            code: Vec::from(code),
+            env,
+        }
+    }
+}
+
 impl<'s> Callable<'s> for UserFun<'s> {
+    fn name(&self) -> Symbol<'s> {
+        self.name
+    }
+
     fn arity(&self) -> u8 {
         self.args.len() as u8
     }
@@ -179,6 +227,14 @@ impl<'s> Callable<'s> for UserFun<'s> {
             env.declare(name.node, val);
         }
 
-        interpreter.eval_with_env(&mut env, &self.code)
+        interpreter
+            .eval_with_env(&mut env, &self.code)
+            .or_else(|errs| {
+                if let [RuntimeError::FunReturn { val }] = &errs[..] {
+                    Ok(val.clone())
+                } else {
+                    Err(errs)
+                }
+            })
     }
 }

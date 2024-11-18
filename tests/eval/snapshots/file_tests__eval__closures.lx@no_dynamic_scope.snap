@@ -1,0 +1,7 @@
+---
+source: tests/eval.rs
+description: "fun foo(a, b) {\n    fun bar(c) {\n        return a + b + c;\n    }\n\n    return bar;\n}\n\nprint foo(1, 2)(3); // 6\n"
+expression: combined
+---
+:: Output ::
+6

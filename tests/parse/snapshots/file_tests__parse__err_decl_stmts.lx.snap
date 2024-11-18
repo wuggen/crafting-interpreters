@@ -9,7 +9,7 @@ error: missing name in variable declaration
 1 | var = 4 + 4;
   | --- ^ expected variable name here
   | |    
-  | declaration requires a variable name
+  | variable declaration requires a name
   |
   = note: expected identifier
 
@@ -38,6 +38,6 @@ error: missing name in variable declaration
 7 | var = ;
   | --- ^ expected variable name here
   | |    
-  | declaration requires a variable name
+  | variable declaration requires a name
   |
   = note: expected identifier

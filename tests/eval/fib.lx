@@ -1,3 +1,4 @@
+//CASE straightahead
 // Should print all Fibonacci numbers less than 10000
 var a = 0;
 var tmp;
@@ -6,4 +7,19 @@ for (var b = 1; a < 10000; b = tmp + b) {
     print a;
     tmp = a;
     a = b;
+}
+
+//CASE recfun
+fun fib(n) {
+    if (n < 0)
+        return;
+
+    if (n == 0 or n == 1)
+        return 1;
+
+    return fib(n - 1) + fib(n - 2);
+}
+
+for (var n = 0; n < 20; n = n + 1) {
+    print fib(n);
 }

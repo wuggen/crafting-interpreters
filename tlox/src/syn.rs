@@ -96,6 +96,16 @@ pub enum Stmt<'s> {
         has_cond: bool,
         has_updt: bool,
     },
+
+    /// A function declaration.
+    FunDecl {
+        name: Spanned<Symbol<'s>>,
+        args: Vec<Spanned<Symbol<'s>>>,
+        body: Vec<Spanned<Stmt<'s>>>,
+    },
+
+    /// A return statement.
+    Return { val: Option<Spanned<Expr<'s>>> },
 }
 
 impl SynEq for Stmt<'_> {
@@ -139,6 +149,21 @@ impl SynEq for Stmt<'_> {
                     has_updt: hu2,
                 },
             ) => hc1 == hc2 && hu1 == hu2 && d1.syn_eq(d2),
+
+            (
+                Stmt::FunDecl {
+                    name: n1,
+                    args: a1,
+                    body: b1,
+                },
+                Stmt::FunDecl {
+                    name: n2,
+                    args: a2,
+                    body: b2,
+                },
+            ) => n1.syn_eq(n2) && a1.syn_eq(a2) && b1.syn_eq(b2),
+
+            (Stmt::Return { val: v1 }, Stmt::Return { val: v2 }) => v1.syn_eq(v2),
 
             _ => false,
         }
@@ -306,6 +331,31 @@ impl<'s> Stmt<'s> {
                         }
                         write!(f, ") {}", body.display_indented_level(self.level, true))
                     }
+                    Stmt::FunDecl { name, args, body } => {
+                        write!(f, "{:first$}fun {}(", "", name.node)?;
+                        for (i, arg) in args.iter().enumerate() {
+                            if i > 0 {
+                                write!(f, ", ")?;
+                            }
+                            write!(f, "{}", arg.node)?;
+                        }
+                        writeln!(f, ") {{")?;
+                        for stmt in body {
+                            writeln!(
+                                f,
+                                "{}",
+                                stmt.node.display_indented_level(self.level + 1, false)
+                            )?;
+                        }
+                        write!(f, "{:indent$}}}", "")
+                    }
+                    Stmt::Return { val } => {
+                        write!(f, "{:first$}return", "")?;
+                        if let Some(val) = val {
+                            write!(f, " {}", val.node)?;
+                        }
+                        write!(f, ";")
+                    }
                 }
             }
         }
@@ -405,6 +455,18 @@ pub mod stmt {
             has_cond,
             has_updt,
         }
+    }
+
+    pub fn fun_decl<'s>(
+        name: Spanned<Symbol<'s>>,
+        args: Vec<Spanned<Symbol<'s>>>,
+        body: Vec<Spanned<Stmt<'s>>>,
+    ) -> Stmt<'s> {
+        Stmt::FunDecl { name, args, body }
+    }
+
+    pub fn fun_return<'s>(val: impl Into<Option<Spanned<Expr<'s>>>>) -> Stmt<'s> {
+        Stmt::Return { val: val.into() }
     }
 }
 

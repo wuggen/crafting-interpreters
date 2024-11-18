@@ -1,0 +1,24 @@
+//CASE no_dynamic_scope
+fun foo(a, b) {
+    fun bar(c) {
+        return a + b + c;
+    }
+
+    return bar;
+}
+
+print foo(1, 2)(3); // 6
+
+//CASE dynamic_scope
+// Dynamic scoping should be prevented; we want closures to freeze their environment.
+var a = "global";
+{
+    fun foo() {
+        print a;
+    }
+
+    foo(); // "global"
+    var a = "block";
+
+    foo(); // "global", if dynamic scoping issues are resolved
+}

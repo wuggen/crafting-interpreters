@@ -1,14 +1,22 @@
 //! Runtime errors.
 
+use crate::callable::Callable;
 use crate::diag::{Diag, DiagKind, Diagnostic};
 use crate::span::{Span, Spanned};
 use crate::symbol::Symbol;
-use crate::syn::{BinopSym, UnopSym};
+use crate::syn::{BinopSym, Expr, UnopSym};
 use crate::ty::{PrimitiveTy, Ty};
+use crate::val::{CallableValue, Value};
 
 /// A Lox runtime error.
 #[derive(Debug, Clone)]
 pub enum RuntimeError<'s> {
+    /// A function return.
+    ///
+    /// This is not an error per se, but rather a mediator of control flow within the treewalking
+    /// interpreter.
+    FunReturn { val: Value<'s> },
+
     /// An invalid type coercion was attempted.
     InvalidCoercion {
         /// Span of the coerced value.
@@ -30,9 +38,29 @@ pub enum RuntimeError<'s> {
         site: Spanned<Symbol<'s>>,
         usage: VarUsage,
     },
+
+    /// Attempted to call a non-Callable value.
+    NotCallable {
+        /// Span of the expression that was called.
+        site: Span,
+        /// Type of the value that was called.
+        ty: Ty,
+    },
+
+    /// Called a function with the incorrect number of arguments.
+    UnexpectedArgCount {
+        callable: Spanned<Symbol<'s>>,
+        args: Span,
+        expected: u8,
+        found: u8,
+    },
 }
 
 impl<'s> RuntimeError<'s> {
+    pub fn fun_return(val: Value<'s>) -> Self {
+        Self::FunReturn { val }
+    }
+
     pub fn unbound_var_ref(site: Spanned<Symbol<'s>>) -> Self {
         Self::UnboundVariable {
             site,
@@ -44,6 +72,26 @@ impl<'s> RuntimeError<'s> {
         Self::UnboundVariable {
             site,
             usage: VarUsage::Assign,
+        }
+    }
+
+    pub fn not_callable(site: Span, ty: Ty) -> Self {
+        Self::NotCallable { site, ty }
+    }
+
+    pub fn unexpected_arg_count(
+        callable: Spanned<&CallableValue<'s>>,
+        args: &Spanned<Vec<Spanned<Expr<'s>>>>,
+    ) -> Self {
+        let expected = callable.node.arity();
+        let found = args.node.len() as u8;
+        let callable = callable.map(Callable::name);
+        let args = args.span;
+        Self::UnexpectedArgCount {
+            callable,
+            args,
+            expected,
+            found,
         }
     }
 }
@@ -80,6 +128,7 @@ pub fn join_errs<'s, A, B>(
 impl Diagnostic for RuntimeError<'_> {
     fn into_diag(self) -> Diag {
         match self {
+            RuntimeError::FunReturn { .. } => panic!("function return not caught"),
             RuntimeError::InvalidCoercion {
                 val,
                 val_ty,
@@ -143,6 +192,31 @@ impl Diagnostic for RuntimeError<'_> {
                 Diag::new(DiagKind::Error, message)
                     .with_primary(site.span, "variable is not bound at this point")
             }
+
+            RuntimeError::NotCallable { site, ty } => {
+                let message = format!("cannot call value of type {ty}");
+                Diag::new(DiagKind::Error, message.clone())
+                    .with_primary(site, message)
+                    .with_note("only functions and class methods can be called")
+            }
+
+            RuntimeError::UnexpectedArgCount {
+                callable,
+                args,
+                expected,
+                found,
+            } => Diag::new(
+                DiagKind::Error,
+                format!(
+                    "callee `{}` expects {expected} arguments, found {found}",
+                    callable.node
+                ),
+            )
+            .with_primary(args, format!("found {found} arguments"))
+            .with_secondary(
+                callable.span,
+                format!("callee `{}` expects {expected} arguments", callable.node),
+            ),
         }
     }
 }

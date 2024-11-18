@@ -4,7 +4,8 @@ use std::iter::Peekable;
 
 use crate::diag::Diagnostic;
 use crate::session::{Session, SessionKey};
-use crate::span::{Source, Span, Spannable, Spanned};
+use crate::span::{HasSpan, Source, Span, Spannable, Spanned};
+use crate::symbol::Symbol;
 use crate::syn::*;
 use crate::tok::{Lexer, Token};
 
@@ -27,13 +28,24 @@ pub struct Parser<'s> {
     lexer: Peekable<Lexer<'s>>,
     source: Source<'s>,
     diags: Vec<ParserDiag<'s>>,
+    enclosing_funs: usize,
 }
 
 // Grammar:
 //
 // program -> stmt* EOF
 //
-// stmt -> if_stmt | while_stmt | for_stmt | block_stmt | decl_stmt | expr_or_print_stmt
+// stmt -> simple_stmt | compound_stmt
+//
+// simple_stmt -> (var_decl | expr_or_print_stmt | return_stmt) ';'
+//
+// compound_stmt -> if_stmt | while_stmt | for_stmt | fun_decl | block_stmt
+//
+// var_decl -> 'var' IDENT ('=' expr)?
+//
+// expr_or_print_stmt -> 'print'? expr
+//
+// return_stmt -> 'return' expr?
 //
 // if_stmt -> 'if' '(' expr ')' stmt ('else' stmt)?
 //
@@ -41,15 +53,9 @@ pub struct Parser<'s> {
 //
 // for_stmt -> 'for' '(' (decl_stmt | expr_stmt)? ';' expr? ';' expr? ')' stmt
 //
+// fun_decl -> 'fun' IDENT '(' arguments? ')' block_stmt
+//
 // block_stmt -> '{' stmt* '}'
-//
-// decl_stmt -> 'var' IDENT ('=' expr)? ';'
-//
-// expr_or_print_stmt -> expr_stmt | print_stmt
-//
-// expr_stmt -> expr ';'
-//
-// print_stmt -> 'print' expr ';'
 //
 // expr -> assign
 //
@@ -84,8 +90,9 @@ pub struct Parser<'s> {
 //
 // arguments -> expr (',' expr)* ','?
 //
-// atom -> NUMBER | STRING | 'true' | 'false' | 'nil'
-//       | '(' expr ')'
+// atom -> NUMBER | STRING | 'true' | 'false' | 'nil' | group
+//
+// group -> '(' expr ')'
 
 impl<'s> Parser<'s> {
     /// Create a new parser, using the given lexer.
@@ -95,6 +102,7 @@ impl<'s> Parser<'s> {
             lexer: lexer.peekable(),
             source,
             diags: Vec::new(),
+            enclosing_funs: 0,
         }
     }
 
@@ -187,6 +195,22 @@ impl<'s> Parser<'s> {
             Ok(self.advance().unwrap())
         } else {
             Err(self.peek())
+        }
+    }
+
+    fn advance_map_or_peek<T>(
+        &mut self,
+        f: impl FnOnce(Spanned<Token<'s>>) -> Option<T>,
+    ) -> Result<T, Option<Spanned<Token<'s>>>> {
+        if let Some(peeked) = self.peek() {
+            if let Some(res) = f(peeked) {
+                self.advance();
+                Ok(res)
+            } else {
+                Err(Some(peeked))
+            }
+        } else {
+            Err(None)
         }
     }
 
@@ -302,6 +326,58 @@ impl<'s> Parser<'s> {
         Ok((open.span, contents, close.span))
     }
 
+    fn parse_list<T>(
+        &mut self,
+        check: impl Fn(&Token) -> bool,
+        item: impl Fn(&mut Self) -> ParserRes<'s, T>,
+    ) -> ParserRes<'s, Vec<T>> {
+        let mut res = Vec::new();
+        while self.check_next(&check) {
+            res.push(item(self)?);
+
+            if self
+                .advance_or_peek(|tok| matches!(tok, Token::Comma))
+                .is_err()
+            {
+                break;
+            }
+        }
+        Ok(res)
+    }
+
+    fn parse_args<T>(
+        &mut self,
+        name: Span,
+        ctx: FunCtx,
+        kind: FunKind,
+        arg: impl Fn(&mut Self) -> ParserRes<'s, Spanned<T>>,
+    ) -> ParserRes<'s, Spanned<Vec<Spanned<T>>>> {
+        let (open, args, close) = self
+            .parse_parens(|this| this.parse_list(|tok| !matches!(tok, Token::CloseParen), &arg))?;
+
+        let max_arity = kind.arg_num() as usize;
+        let span = open.join(close);
+
+        if args.len() > kind.arg_num() as usize {
+            self.push_diag(ParserDiag::excessive_args(
+                ctx,
+                kind,
+                name,
+                args[max_arity].span,
+            ));
+            Ok(Vec::new().spanned(span))
+        } else {
+            Ok(args.spanned(span))
+        }
+    }
+
+    fn parse_ident(&mut self) -> Result<Spanned<Symbol<'s>>, Option<Spanned<Token<'s>>>> {
+        self.advance_map_or_peek(|tok| match tok.node {
+            Token::Ident(id) => Some(tok.with_node(id)),
+            _ => None,
+        })
+    }
+
     /// Parse a program.
     ///
     /// Corresponds to the `program` grammar production.
@@ -340,6 +416,7 @@ impl<'s> Parser<'s> {
             Token::If => self.if_stmt(),
             Token::While => self.while_stmt(),
             Token::For => self.for_stmt(),
+            Token::Fun => self.fun_decl(),
             tok if tok.is_stmt_start() => self.simple_stmt(),
             _ => {
                 self.push_diag(ParserDiag::unexpected_tok(self, peeked, "statement"));
@@ -431,7 +508,7 @@ impl<'s> Parser<'s> {
 
         let init = match self.peek() {
             Some(tok) if matches!(tok.node, Token::Semicolon) => Ok(None),
-            Some(tok) if matches!(tok.node, Token::Var) => self.decl_stmt().map(Some),
+            Some(tok) if matches!(tok.node, Token::Var) => self.var_decl().map(Some),
             Some(_) => self.expr().map(|expr| Some(expr.map_with_span(stmt::expr))),
             None => {
                 self.push_diag(ParserDiag::unexpected(self, None, "initializer or `;`"));
@@ -488,7 +565,8 @@ impl<'s> Parser<'s> {
 
     fn simple_stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
         let stmt = match self.peek().unwrap().node {
-            Token::Var => self.decl_stmt(),
+            Token::Var => self.var_decl(),
+            Token::Return => self.return_stmt(),
             _ => self.expr_or_print_stmt(),
         }?;
 
@@ -505,29 +583,54 @@ impl<'s> Parser<'s> {
         Ok(stmt.extend_span(semi))
     }
 
+    fn fun_decl(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
+        let fun = self.advance().unwrap();
+        debug_assert!(matches!(fun.node, Token::Fun));
+
+        let name = self.parse_ident().map_err(|tok| {
+            self.push_diag(ParserDiag::missing_fun_name(
+                fun.span,
+                self.span_or_eof(&tok),
+            ));
+            ParserError::unexpected(tok).handled()
+        })?;
+
+        let args = self.parse_args(name.span, FunCtx::Def, FunKind::Fun, |this| {
+            this.parse_ident().map_err(|tok| {
+                this.push_diag(ParserDiag::unexpected(this, tok, "identifier"));
+                ParserError::unexpected(tok).handled()
+            })
+        })?;
+
+        self.enclosing_funs += 1;
+
+        let block = self.block_stmt()?;
+        let block_span = block.span();
+        let body = match block.node {
+            Stmt::Block { stmts } => stmts,
+            _ => unreachable!(),
+        };
+
+        self.enclosing_funs -= 1;
+
+        Ok(stmt::fun_decl(name, args.node, body).spanned(fun.span.join(block_span)))
+    }
+
     /// Parse a variable declaration statement.
     ///
     /// This expects the next token in the stream to be `Token::Var`. In debug builds, it will panic
     /// if this is not the case.
-    ///
-    /// This corresponds to the `decl_stmt` grammar production.
-    fn decl_stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
+    fn var_decl(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
         let var = self.advance().unwrap();
         debug_assert!(matches!(var.node, Token::Var));
 
-        let name = self
-            .advance_or_peek(|tok| matches!(tok, Token::Ident(_)))
-            .map(|tok| match tok.node {
-                Token::Ident(name) => tok.with_node(name),
-                _ => unreachable!(),
-            })
-            .map_err(|tok| {
-                self.push_diag(ParserDiag::missing_var_name(
-                    var.span,
-                    self.span_or_eof(&tok),
-                ));
-                ParserError::unexpected(tok).handled()
-            })?;
+        let name = self.parse_ident().map_err(|tok| {
+            self.push_diag(ParserDiag::missing_var_name(
+                var.span,
+                self.span_or_eof(&tok),
+            ));
+            ParserError::unexpected(tok).handled()
+        })?;
 
         let init = if self
             .advance_or_peek(|tok| matches!(tok, Token::Equal))
@@ -603,6 +706,26 @@ impl<'s> Parser<'s> {
             })?;
 
         Ok(stmt::block(stmts).spanned(obrace.span.join(cbrace.span)))
+    }
+
+    /// Parse a return statement.
+    fn return_stmt(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
+        let kw_return = self.advance().unwrap();
+        debug_assert!(matches!(kw_return.node, Token::Return));
+
+        let (val, span) = if self.check_next(|tok| !matches!(tok, Token::Semicolon)) {
+            let val = self.expr()?;
+            let span = kw_return.span.join(val.span);
+            (Some(val), span)
+        } else {
+            (None, kw_return.span)
+        };
+
+        if self.enclosing_funs == 0 {
+            self.push_diag(ParserDiag::return_outside_fun(kw_return.span));
+        }
+
+        Ok(stmt::fun_return(val).spanned(span))
     }
 
     /// Parse a print or expression statement.
@@ -799,43 +922,14 @@ impl<'s> Parser<'s> {
         }
     }
 
+    /// Parse a sequence of call expressions.
     fn call(&mut self) -> ParserRes<'s, Spanned<Expr<'s>>> {
         let mut maybe_fn = self.atom()?;
 
         loop {
             if self.check_next(|tok| matches!(tok, Token::OpenParen)) {
-                let (open, args, close) = self.parse_parens(|this| {
-                    let mut res = Some(Vec::new());
-
-                    while !this.check_next(|tok| matches!(tok, Token::CloseParen)) {
-                        let arg = this.expr()?;
-
-                        res = res.and_then(|mut args| {
-                            if args.len() < 255 {
-                                args.push(arg);
-                                Some(args)
-                            } else {
-                                this.push_diag(ParserDiag::excessive_args(
-                                    FunCtx::Call,
-                                    FunKind::Fun,
-                                    maybe_fn.span,
-                                    arg.span,
-                                ));
-                                None
-                            }
-                        });
-
-                        if this
-                            .advance_or_peek(|tok| matches!(tok, Token::Comma))
-                            .is_err()
-                        {
-                            break;
-                        }
-                    }
-
-                    Ok(res)
-                })?;
-                let args = args.unwrap_or_default().spanned(open.join(close));
+                let args =
+                    self.parse_args(maybe_fn.span, FunCtx::Call, FunKind::Fun, Self::expr)?;
                 maybe_fn = expr::call(maybe_fn, args);
             } else {
                 break Ok(maybe_fn);

@@ -162,10 +162,25 @@ impl FunKind {
         }
     }
 
-    fn arg_num(&self) -> u32 {
+    pub fn arg_num(&self) -> u32 {
         match self {
             FunKind::Fun => 255,
             FunKind::Method => 254,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum DeclKind {
+    Var,
+    Fun,
+}
+
+impl DeclKind {
+    fn desc(&self) -> &'static str {
+        match self {
+            DeclKind::Var => "variable",
+            DeclKind::Fun => "function",
         }
     }
 }
@@ -199,7 +214,8 @@ pub enum ParserDiag<'s> {
         semi: Span,
     },
 
-    MissingVarName {
+    MissingDeclName {
+        kind: DeclKind,
         decl: Span,
         expected_name: Span,
     },
@@ -214,6 +230,10 @@ pub enum ParserDiag<'s> {
         kind: FunKind,
         fun_name: Span,
         arg: Span,
+    },
+
+    ReturnOutsideFun {
+        site: Span,
     },
 }
 
@@ -280,11 +300,20 @@ impl<'s> ParserDiag<'s> {
         Self::EarlyTerminatedStmt { semi }
     }
 
-    pub const fn missing_var_name(decl: Span, expected_name: Span) -> Self {
-        Self::MissingVarName {
+    pub const fn missing_decl_name(kind: DeclKind, decl: Span, expected_name: Span) -> Self {
+        Self::MissingDeclName {
+            kind,
             decl,
             expected_name,
         }
+    }
+
+    pub const fn missing_var_name(decl: Span, expected_name: Span) -> Self {
+        Self::missing_decl_name(DeclKind::Var, decl, expected_name)
+    }
+
+    pub const fn missing_fun_name(decl: Span, expected_name: Span) -> Self {
+        Self::missing_decl_name(DeclKind::Fun, decl, expected_name)
     }
 
     pub const fn invalid_place_expr(place: Span, eq: Span) -> Self {
@@ -298,6 +327,10 @@ impl<'s> ParserDiag<'s> {
             fun_name,
             arg,
         }
+    }
+
+    pub const fn return_outside_fun(site: Span) -> Self {
+        Self::ReturnOutsideFun { site }
     }
 }
 
@@ -314,7 +347,7 @@ impl ParserDiag<'_> {
             ParserDiag::UnclosedPair { kind, .. } => format!("unclosed {}", kind.desc()),
             ParserDiag::UnterminatedStmt { .. } => "unterminated statement".into(),
             ParserDiag::EarlyTerminatedStmt { .. } => "statement terminated prematurely".into(),
-            ParserDiag::MissingVarName { .. } => "missing name in variable declaration".into(),
+            ParserDiag::MissingDeclName { .. } => "missing name in variable declaration".into(),
             ParserDiag::InvalidPlaceExpr { .. } => {
                 "invalid place expression on left side of assignment".into()
             }
@@ -324,6 +357,9 @@ impl ParserDiag<'_> {
                 kind.desc(),
                 ctx.desc(),
             ),
+            ParserDiag::ReturnOutsideFun { .. } => {
+                "return statement found outside of an enclosing function definition".into()
+            }
         }
     }
 
@@ -335,9 +371,10 @@ impl ParserDiag<'_> {
             ParserDiag::UnclosedPair { kind, .. } => Some(kind.close_tok().summary()),
             ParserDiag::UnterminatedStmt { .. } => Some("`;`"),
             ParserDiag::EarlyTerminatedStmt { .. } => Some("expression"),
-            ParserDiag::MissingVarName { .. } => Some("identifier"),
+            ParserDiag::MissingDeclName { .. } => Some("identifier"),
             ParserDiag::InvalidPlaceExpr { .. } => Some("identifier"),
             ParserDiag::ExcessiveArgs { .. } => None,
+            ParserDiag::ReturnOutsideFun { .. } => None,
         }
     }
 
@@ -374,12 +411,13 @@ impl ParserDiag<'_> {
                 diag.with_primary(semi, "statement terminated here")
             }
 
-            ParserDiag::MissingVarName {
+            ParserDiag::MissingDeclName {
+                kind,
                 decl,
                 expected_name,
             } => diag
-                .with_primary(expected_name, "expected variable name here")
-                .with_secondary(decl, "declaration requires a variable name"),
+                .with_primary(expected_name, format!("expected {} name here", kind.desc()))
+                .with_secondary(decl, format!("{} declaration requires a name", kind.desc())),
 
             ParserDiag::InvalidPlaceExpr { place, eq } => diag
                 .with_primary(place, "invalid place expression")
@@ -398,6 +436,8 @@ impl ParserDiag<'_> {
                     kind.desc(),
                     kind.arg_num()
                 )),
+
+            ParserDiag::ReturnOutsideFun { site } => diag.with_primary(site, self.message()),
         }
     }
 }

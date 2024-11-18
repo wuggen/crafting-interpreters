@@ -12,6 +12,8 @@ use crate::arena::DroplessArena;
 use crate::session::SessionKey;
 use crate::util::with_lifetime;
 
+pub mod static_syms;
+
 const SYM_DEBUG_RENDER_VAR: &str = "SYM_DEBUG_RENDER";
 const RENDER_ADDR_MODE: &str = "addr";
 
@@ -105,11 +107,15 @@ impl Display for Symbol<'_> {
 
 impl Symbol<'_> {
     pub fn intern<'s>(key: SessionKey<'s>, val: &str) -> Symbol<'s> {
-        key.get().syms.with_key(key).intern(val)
+        Symbol::resolve_static_sym(val).unwrap_or_else(|| key.get().syms.with_key(key).intern(val))
     }
 
     pub fn as_str(&self) -> &str {
         self.0
+    }
+
+    pub const fn mk_static(val: &'static str) -> Symbol<'static> {
+        Symbol(val)
     }
 }
 

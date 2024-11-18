@@ -1,0 +1,21 @@
+//CASE no_val
+return;
+
+//CASE with_val
+return 5;
+
+//CASE with_valid_returns
+fun foo(a, b) {
+    return a + b;
+}
+
+fun bar(a, b) {
+    fun baz(c) {
+        return a + b + c;
+    }
+    return baz;
+}
+
+return foo(1, 2) + bar(1, 2)(3);
+
+var; // should sync!

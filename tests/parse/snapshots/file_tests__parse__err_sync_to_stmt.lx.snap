@@ -27,7 +27,7 @@ error: missing name in variable declaration
 3 | var (x);
   | --- ^ expected variable name here
   | |    
-  | declaration requires a variable name
+  | variable declaration requires a name
   |
   = note: expected identifier
 

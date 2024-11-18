@@ -1,0 +1,26 @@
+---
+source: tests/eval.rs
+description: "fun fib(n) {\n    if (n < 0)\n        return;\n\n    if (n == 0 or n == 1)\n        return 1;\n\n    return fib(n - 1) + fib(n - 2);\n}\n\nfor (var n = 0; n < 20; n = n + 1) {\n    print fib(n);\n}\n"
+expression: combined
+---
+:: Output ::
+1
+1
+2
+3
+5
+8
+13
+21
+34
+55
+89
+144
+233
+377
+610
+987
+1597
+2584
+4181
+6765

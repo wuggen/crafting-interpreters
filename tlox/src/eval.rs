@@ -5,6 +5,8 @@ use std::io::Write;
 use std::ops::{Div, Mul, Rem, Sub};
 use std::rc::Rc;
 
+use crate::builtin::Builtin;
+use crate::callable::Callable;
 use crate::diag::Diagnostic;
 use crate::error::{join_errs, CoercionCause, RuntimeError, RuntimeResult};
 use crate::output::OutputStream;
@@ -13,7 +15,7 @@ use crate::span::{Spannable, Spanned};
 use crate::symbol::Symbol;
 use crate::syn::{BinopSym, BooleanBinopSym, Expr, ExprNode, Lit, Place, Program, Stmt, UnopSym};
 use crate::ty::{PrimitiveTy, Ty};
-use crate::val::{StrValue, Value};
+use crate::val::{CallableValue, StrValue, UserFun, Value};
 
 /// A tree-walking Lox interpreter.
 pub struct Interpreter<'s, 'out> {
@@ -68,10 +70,8 @@ impl<'s> Interpreter<'s, '_> {
             }
         };
 
-        if self.repl {
-            if !matches!(res, Value::Nil) {
-                writeln!(self.output, "{res}").unwrap();
-            }
+        if self.repl && !matches!(res, Value::Nil) {
+            writeln!(self.output, "{res}").unwrap();
         }
     }
 
@@ -151,6 +151,23 @@ impl<'s> Interpreter<'s, '_> {
             Stmt::For { desugared, .. } => {
                 res = self.eval_stmt(stmt.with_node(desugared))?;
             }
+
+            Stmt::FunDecl { name, args, body } => {
+                let env = self.env.clone();
+                let fun = Value::Callable(CallableValue::User(Rc::new(UserFun::new(
+                    name.node, args, body, env,
+                ))));
+                self.env.declare(name.node, fun.clone());
+                res = fun;
+            }
+
+            Stmt::Return { val } => {
+                let val = val
+                    .as_ref()
+                    .map(|val| self.eval_expr(val))
+                    .unwrap_or(Ok(Value::Nil))?;
+                return Err(vec![RuntimeError::fun_return(val)]);
+            }
         }
 
         Ok(res)
@@ -200,7 +217,27 @@ impl<'s> Interpreter<'s, '_> {
                 Ok(val)
             }
 
-            ExprNode::Call { callee, args } => todo!(),
+            ExprNode::Call { callee, args } => {
+                let callee_span = callee.span;
+                let callee = self.eval_expr(callee)?;
+                if let Value::Callable(callable) = &callee {
+                    if callable.arity() as usize != args.node.len() {
+                        return Err(vec![RuntimeError::unexpected_arg_count(
+                            callable.spanned(callee_span),
+                            args,
+                        )]);
+                    }
+                    let args = args
+                        .node
+                        .iter()
+                        .map(|arg| self.eval_expr(arg))
+                        .collect::<Result<Vec<_>, _>>()?;
+
+                    callable.call(self, &args)
+                } else {
+                    Err(vec![RuntimeError::not_callable(callee_span, callee.ty())])
+                }
+            }
         }
     }
 
@@ -374,9 +411,11 @@ pub struct Env<'s> {
 
 impl Default for Env<'_> {
     fn default() -> Self {
-        Self {
+        let mut env = Self {
             bindings: vec![EnvBindings::default()],
-        }
+        };
+        Builtin::declare_builtins(&mut env);
+        env
     }
 }
 
