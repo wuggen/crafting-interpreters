@@ -17,6 +17,12 @@ pub enum RuntimeError<'s> {
     /// interpreter.
     FunReturn { val: Value<'s> },
 
+    /// A loop break.
+    ///
+    /// This is not an error per se, but rather a mediator of control flow within the treewalking
+    /// interpreter.
+    LoopBreak,
+
     /// An invalid type coercion was attempted.
     InvalidCoercion {
         /// Span of the coerced value.
@@ -59,6 +65,10 @@ pub enum RuntimeError<'s> {
 impl<'s> RuntimeError<'s> {
     pub fn fun_return(val: Value<'s>) -> Self {
         Self::FunReturn { val }
+    }
+
+    pub fn loop_break() -> Self {
+        Self::LoopBreak
     }
 
     pub fn unbound_var_ref(site: Spanned<Symbol<'s>>) -> Self {
@@ -129,6 +139,7 @@ impl Diagnostic for RuntimeError<'_> {
     fn into_diag(self) -> Diag {
         match self {
             RuntimeError::FunReturn { .. } => panic!("function return not caught"),
+            RuntimeError::LoopBreak => panic!("loop break not caught"),
             RuntimeError::InvalidCoercion {
                 val,
                 val_ty,

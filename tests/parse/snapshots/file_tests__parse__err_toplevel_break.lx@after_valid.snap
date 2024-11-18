@@ -1,0 +1,10 @@
+---
+source: tests/parse.rs
+description: "for (;;) {\n    break;\n}\n\nbreak;\n"
+expression: render_dcx()
+---
+error: break statement outside of an enclosing loop
+  --> err_toplevel_break.lx@after_valid:5:1
+  |
+5 | break;
+  | ^^^^^ break statement outside of an enclosing loop

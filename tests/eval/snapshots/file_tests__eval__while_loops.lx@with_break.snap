@@ -1,0 +1,17 @@
+---
+source: tests/eval.rs
+description: "var x = 0;\nwhile (true) {\n    print x = x + 1; // 1 through 10\n    if (x >= 10) {\n        break;\n    }\n}\n\nprint \"yay!\";\n"
+expression: combined
+---
+:: Output ::
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+yay!

@@ -29,6 +29,7 @@ pub struct Parser<'s> {
     source: Source<'s>,
     diags: Vec<ParserDiag<'s>>,
     enclosing_funs: usize,
+    enclosing_loops: usize,
 }
 
 // Grammar:
@@ -37,7 +38,7 @@ pub struct Parser<'s> {
 //
 // stmt -> simple_stmt | compound_stmt
 //
-// simple_stmt -> (var_decl | expr_or_print_stmt | return_stmt) ';'
+// simple_stmt -> (var_decl | expr_or_print_stmt | return_stmt | 'break') ';'
 //
 // compound_stmt -> if_stmt | while_stmt | for_stmt | fun_decl | block_stmt
 //
@@ -103,6 +104,7 @@ impl<'s> Parser<'s> {
             source,
             diags: Vec::new(),
             enclosing_funs: 0,
+            enclosing_loops: 0,
         }
     }
 
@@ -476,8 +478,12 @@ impl<'s> Parser<'s> {
 
         let (_, cond, _) = self.parse_parens(Self::expr)?;
 
+        self.enclosing_loops += 1;
+
         let body = self.stmt()?;
         let span = kw_while.span.join(body.span);
+
+        self.enclosing_loops -= 1;
 
         Ok(stmt::while_loop(cond, body).spanned(span))
     }
@@ -557,7 +563,9 @@ impl<'s> Parser<'s> {
                 ParserError::unexpected(tok).handled()
             })?;
 
+        self.enclosing_loops += 1;
         let body = self.stmt()?;
+        self.enclosing_loops -= 1;
 
         let span = kw_for.span.join(body.span);
         Ok(stmt::for_loop(init, cond, update, body).spanned(span))
@@ -567,6 +575,14 @@ impl<'s> Parser<'s> {
         let stmt = match self.peek().unwrap().node {
             Token::Var => self.var_decl(),
             Token::Return => self.return_stmt(),
+            Token::Break => {
+                let span = self.advance().unwrap().span;
+                if self.enclosing_loops == 0 {
+                    self.push_diag(ParserDiag::break_outside_loop(span));
+                }
+
+                Ok(stmt::loop_break().spanned(span))
+            }
             _ => self.expr_or_print_stmt(),
         }?;
 
@@ -603,6 +619,8 @@ impl<'s> Parser<'s> {
         })?;
 
         self.enclosing_funs += 1;
+        let old_loops = self.enclosing_loops;
+        self.enclosing_loops = 0;
 
         let block = self.block_stmt()?;
         let block_span = block.span();
@@ -612,6 +630,7 @@ impl<'s> Parser<'s> {
         };
 
         self.enclosing_funs -= 1;
+        self.enclosing_loops = old_loops;
 
         Ok(stmt::fun_decl(name, args.node, body).spanned(fun.span.join(block_span)))
     }

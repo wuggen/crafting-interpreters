@@ -12,3 +12,14 @@ while (i < 5) {
     i = i + 1;
 }
 print s; // 5 repetitions of "ha"
+
+//CASE with_break
+var x = 0;
+while (true) {
+    print x = x + 1; // 1 through 10
+    if (x >= 10) {
+        break;
+    }
+}
+
+print "yay!";

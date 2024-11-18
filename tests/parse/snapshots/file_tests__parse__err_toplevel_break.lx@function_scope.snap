@@ -1,0 +1,10 @@
+---
+source: tests/parse.rs
+description: "while (true) {\n    fun foo() {\n        break;\n    }\n\n    break;\n}\n\n"
+expression: render_dcx()
+---
+error: break statement outside of an enclosing loop
+  --> err_toplevel_break.lx@function_scope:3:9
+  |
+3 |         break;
+  |         ^^^^^ break statement outside of an enclosing loop

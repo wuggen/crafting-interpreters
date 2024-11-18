@@ -39,6 +39,7 @@ pub enum Token<'s> {
     Number(f64),
     Boolean(bool),
     And,
+    Break,
     Class,
     Else,
     Fun,
@@ -105,6 +106,7 @@ impl Token<'_> {
                 self,
                 Token::OpenBrace
                     | Token::Class
+                    | Token::Break
                     | Token::Fun
                     | Token::For
                     | Token::If
@@ -143,6 +145,7 @@ impl Token<'_> {
             Token::Number(_) => "number",
             Token::Boolean(_) => "boolean",
             Token::And => "keyword `and`",
+            Token::Break => "keyword `break`",
             Token::Class => "keyword `class`",
             Token::Else => "keyword `else`",
             Token::Fun => "keyword `fun`",
@@ -535,6 +538,7 @@ impl<'s> Lexer<'s> {
         self.advance_while(is_ident_continue);
         match self.buffer() {
             "and" => self.token(And),
+            "break" => self.token(Break),
             "class" => self.token(Class),
             "else" => self.token(Else),
             "false" => self.token(Boolean(false)),

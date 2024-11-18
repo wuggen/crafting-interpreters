@@ -144,7 +144,19 @@ impl<'s> Interpreter<'s, '_> {
 
             Stmt::While { cond, body } => {
                 while self.eval_expr(cond)?.is_truthy() {
-                    res = self.eval_stmt(body.as_deref())?;
+                    match self.eval_stmt(body.as_deref()) {
+                        Ok(val) => {
+                            res = val;
+                        }
+                        Err(errs) => {
+                            if let [RuntimeError::LoopBreak] = &errs[..] {
+                                res = Value::Nil;
+                                break;
+                            } else {
+                                return Err(errs);
+                            }
+                        }
+                    };
                 }
             }
 
@@ -167,6 +179,10 @@ impl<'s> Interpreter<'s, '_> {
                     .map(|val| self.eval_expr(val))
                     .unwrap_or(Ok(Value::Nil))?;
                 return Err(vec![RuntimeError::fun_return(val)]);
+            }
+
+            Stmt::Break => {
+                return Err(vec![RuntimeError::loop_break()]);
             }
         }
 

@@ -106,6 +106,9 @@ pub enum Stmt<'s> {
 
     /// A return statement.
     Return { val: Option<Spanned<Expr<'s>>> },
+
+    /// A break statement.
+    Break,
 }
 
 impl SynEq for Stmt<'_> {
@@ -164,6 +167,8 @@ impl SynEq for Stmt<'_> {
             ) => n1.syn_eq(n2) && a1.syn_eq(a2) && b1.syn_eq(b2),
 
             (Stmt::Return { val: v1 }, Stmt::Return { val: v2 }) => v1.syn_eq(v2),
+
+            (Stmt::Break, Stmt::Break) => true,
 
             _ => false,
         }
@@ -356,6 +361,7 @@ impl<'s> Stmt<'s> {
                         }
                         write!(f, ";")
                     }
+                    Stmt::Break => write!(f, "{:first$}break;", ""),
                 }
             }
         }
@@ -467,6 +473,10 @@ pub mod stmt {
 
     pub fn fun_return<'s>(val: impl Into<Option<Spanned<Expr<'s>>>>) -> Stmt<'s> {
         Stmt::Return { val: val.into() }
+    }
+
+    pub fn loop_break<'s>() -> Stmt<'s> {
+        Stmt::Break
     }
 }
 

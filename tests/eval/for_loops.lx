@@ -19,3 +19,10 @@ for (var a = 4; a > 0;) {
 
     print a; // 2, 1, 0
 }
+
+//CASE no_cond
+for (var x = 0; ; x = x + 1) {
+    if (x > 10) break;
+    else print x; // 0 through 10
+}
+print "yay!";

@@ -235,6 +235,10 @@ pub enum ParserDiag<'s> {
     ReturnOutsideFun {
         site: Span,
     },
+
+    BreakOutsideLoop {
+        site: Span,
+    },
 }
 
 impl<'s> ParserDiag<'s> {
@@ -332,6 +336,10 @@ impl<'s> ParserDiag<'s> {
     pub const fn return_outside_fun(site: Span) -> Self {
         Self::ReturnOutsideFun { site }
     }
+
+    pub const fn break_outside_loop(site: Span) -> Self {
+        Self::BreakOutsideLoop { site }
+    }
 }
 
 impl ParserDiag<'_> {
@@ -360,6 +368,9 @@ impl ParserDiag<'_> {
             ParserDiag::ReturnOutsideFun { .. } => {
                 "return statement found outside of an enclosing function definition".into()
             }
+            ParserDiag::BreakOutsideLoop { .. } => {
+                "break statement outside of an enclosing loop".into()
+            }
         }
     }
 
@@ -375,6 +386,7 @@ impl ParserDiag<'_> {
             ParserDiag::InvalidPlaceExpr { .. } => Some("identifier"),
             ParserDiag::ExcessiveArgs { .. } => None,
             ParserDiag::ReturnOutsideFun { .. } => None,
+            ParserDiag::BreakOutsideLoop { .. } => None,
         }
     }
 
@@ -438,6 +450,8 @@ impl ParserDiag<'_> {
                 )),
 
             ParserDiag::ReturnOutsideFun { site } => diag.with_primary(site, self.message()),
+
+            ParserDiag::BreakOutsideLoop { site } => diag.with_primary(site, self.message()),
         }
     }
 }
