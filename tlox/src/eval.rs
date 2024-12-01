@@ -10,6 +10,7 @@ use crate::callable::Callable;
 use crate::diag::Diagnostic;
 use crate::error::{join_errs, CoercionCause, RuntimeError, RuntimeResult};
 use crate::output::OutputStream;
+use crate::resolve::ResolutionTable;
 use crate::session::SessionKey;
 use crate::span::{Spannable, Spanned};
 use crate::symbol::Symbol;
@@ -60,6 +61,12 @@ impl<'s> Interpreter<'s, '_> {
 impl<'s> Interpreter<'s, '_> {
     /// Evaluate a Lox program.
     pub fn eval(&mut self, program: &Program<'s>) {
+        self.env.resolve(&program.stmts);
+
+        if self.key.get().dcx.has_errors() {
+            return;
+        }
+
         let res = match self.eval_stmts(&program.stmts) {
             Ok(val) => val,
             Err(errs) => {
@@ -196,7 +203,7 @@ impl<'s> Interpreter<'s, '_> {
 
             ExprNode::Var(name) => self
                 .env
-                .get(*name)
+                .get(expr.with_node(*name))
                 .ok_or_else(|| vec![RuntimeError::unbound_var_ref(expr.with_node(*name))]),
 
             ExprNode::Group(expr) => self.eval_expr(expr),
@@ -343,7 +350,7 @@ impl<'s> Interpreter<'s, '_> {
         match place.node {
             Place::Var(name) => self
                 .env
-                .get_place(name)
+                .get_place(place.with_node(name))
                 .ok_or_else(|| vec![RuntimeError::unbound_var_assign(name.spanned(place.span))]),
         }
     }
@@ -422,13 +429,17 @@ impl<'s> EnvBindings<'s> {
 
 #[derive(Debug, Clone)]
 pub struct Env<'s> {
-    bindings: Vec<EnvBindings<'s>>,
+    global_binds: EnvBindings<'s>,
+    local_binds: Vec<EnvBindings<'s>>,
+    resolutions: ResolutionTable<'s>,
 }
 
 impl Default for Env<'_> {
     fn default() -> Self {
         let mut env = Self {
-            bindings: vec![EnvBindings::default()],
+            global_binds: EnvBindings::default(),
+            local_binds: Vec::new(),
+            resolutions: ResolutionTable::default(),
         };
         Builtin::declare_builtins(&mut env);
         env
@@ -437,35 +448,44 @@ impl Default for Env<'_> {
 
 impl<'s> Env<'s> {
     pub fn push_scope(&mut self) {
-        self.bindings.push(EnvBindings::default());
+        self.local_binds.push(EnvBindings::default());
     }
 
     pub fn pop_scope(&mut self) {
-        if self.bindings.len() <= 1 {
+        if self.local_binds.is_empty() {
             panic!("cannot pop the global scope");
         }
 
-        self.bindings.pop();
+        self.local_binds.pop();
     }
 
     pub fn declare(&self, name: Symbol<'s>, init: Value<'s>) {
-        self.bindings.last().unwrap().declare(name, init);
+        self.local_binds
+            .last()
+            .unwrap_or(&self.global_binds)
+            .declare(name, init);
     }
 
-    fn get(&self, name: Symbol<'s>) -> Option<Value<'s>> {
-        self.bindings
-            .iter()
-            .rev()
-            .filter_map(|scope| scope.get(name))
-            .next()
+    fn get(&self, var: Spanned<Symbol<'s>>) -> Option<Value<'s>> {
+        self.lookup_scope(var).get(var.node)
     }
 
-    fn get_place(&self, name: Symbol<'s>) -> Option<PlaceVal<'_, 's>> {
-        self.bindings
-            .iter()
-            .rev()
-            .filter_map(|scope| scope.get_place(name))
-            .next()
+    fn get_place(&self, var: Spanned<Symbol<'s>>) -> Option<PlaceVal<'_, 's>> {
+        self.lookup_scope(var).get_place(var.node)
+    }
+
+    fn lookup_scope(&self, var: Spanned<Symbol<'s>>) -> &EnvBindings<'s> {
+        self.resolutions
+            .lookup(var)
+            .map(|idx| {
+                debug_assert!(idx < self.local_binds.len());
+                &self.local_binds[self.local_binds.len() - 1 - idx]
+            })
+            .unwrap_or(&self.global_binds)
+    }
+
+    fn resolve(&mut self, stmts: &[Spanned<Stmt<'s>>]) {
+        self.resolutions.resolve(stmts);
     }
 }
 

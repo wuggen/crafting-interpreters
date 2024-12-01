@@ -43,6 +43,7 @@ pub mod error;
 pub mod eval;
 pub mod output;
 pub mod parse;
+pub mod resolve;
 pub mod session;
 pub mod span;
 pub mod syn;

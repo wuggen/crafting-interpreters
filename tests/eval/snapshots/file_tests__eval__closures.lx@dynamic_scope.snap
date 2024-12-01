@@ -1,0 +1,8 @@
+---
+source: tests/eval.rs
+description: "// Dynamic scoping should be prevented; we want closures to freeze their environment.\nvar a = \"global\";\n{\n    fun foo() {\n        print a;\n    }\n\n    foo(); // \"global\"\n    var a = \"block\";\n\n    foo(); // \"global\", if dynamic scoping issues are resolved\n}\n"
+expression: combined
+---
+:: Output ::
+global
+global
