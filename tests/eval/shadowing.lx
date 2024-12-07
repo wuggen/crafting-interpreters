@@ -1,0 +1,46 @@
+//CASE shadowing_in_block
+var a = 4;
+{
+    print a;     // 4
+    var a = 6;
+    print a;     // 6
+}
+print a;         // 4
+
+//CASE block_shadowing
+{
+    var a = 4;
+    fun foo() {
+        print a;
+    }
+
+    foo();       // 4
+
+    var a = 6;
+    print a;     // 6
+    foo();       // 4
+}
+
+//CASE global_shadowing
+var a = 4;
+fun foo() {
+    print a;
+}
+
+foo();        // 4
+var a = 6;
+print a;      // 6
+foo();        // 6
+
+//CASE no_dynamic_scope
+var a = 4;
+{
+    fun foo() {
+        print a;
+    }
+
+    foo();        // 4
+    var a = 6;
+    print a;      // 6
+    foo();        // 4
+}

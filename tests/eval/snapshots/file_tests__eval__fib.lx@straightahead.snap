@@ -1,6 +1,6 @@
 ---
 source: tests/eval.rs
-description: "// Should print all Fibonacci numbers less than 10000\nvar a = 0;\nvar tmp;\n\nfor (var b = 1; a < 10000; b = tmp + b) {\n    print a;\n    tmp = a;\n    a = b;\n}\n"
+description: "// Should print all Fibonacci numbers less than 10000\nvar a = 0;\nvar tmp;\n\nfor (var b = 1; a < 10000; b = tmp + b) {\n    print a;\n    tmp = a;\n    a = b;\n}\n\n"
 expression: combined
 ---
 :: Output ::

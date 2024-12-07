@@ -1,0 +1,9 @@
+---
+source: tests/eval.rs
+description: "var a = 4;\n{\n    fun foo() {\n        print a;\n    }\n\n    foo();        // 4\n    var a = 6;\n    print a;      // 6\n    foo();        // 4\n}\n"
+expression: combined
+---
+:: Output ::
+4
+6
+4

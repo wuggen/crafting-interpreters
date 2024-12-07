@@ -1,6 +1,6 @@
 ---
 source: tests/eval.rs
-description: "for (var a = 4; a > 0;) {\n    if (a == 4)\n        a = a - 2;\n    else\n        a = a - 1;\n\n    print a; // 2, 1, 0\n}\n"
+description: "for (var a = 4; a > 0;) {\n    if (a == 4)\n        a = a - 2;\n    else\n        a = a - 1;\n\n    print a; // 2, 1, 0\n}\n\n"
 expression: combined
 ---
 :: Output ::
