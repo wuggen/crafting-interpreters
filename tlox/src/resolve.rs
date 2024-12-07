@@ -1,14 +1,17 @@
 //! Variable resolution.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
-use crate::span::Spanned;
+use crate::span::{Span, Spanned};
 use crate::symbol::Symbol;
 use crate::syn::{Expr, ExprNode, Place, Stmt};
 
 #[derive(Debug, Clone, Default)]
 pub struct ResolutionTable<'s> {
-    references: HashMap<Spanned<Symbol<'s>>, usize>,
+    // Map from variable references to pairs of (a) the index of the scope in
+    // which the referenced variable is declared and (b) the span of that
+    // declaration.
+    references: HashMap<Spanned<Symbol<'s>>, (usize, Span)>,
 }
 
 impl<'s> ResolutionTable<'s> {
@@ -25,8 +28,18 @@ impl<'s> ResolutionTable<'s> {
         resolver.resolve_stmts(stmts);
     }
 
-    pub fn lookup(&self, var: Spanned<Symbol<'s>>) -> Option<usize> {
-        self.references.get(&var).copied()
+    /// Look up the variable declaration referred to by a variable use.
+    ///
+    /// `var` is the spanned variable reference. If the referenced variable is
+    /// global, returns `None`. Otherwise, returns a pair of:
+    ///
+    /// - The index of the enclosing scope in which the referenced variable is declared, and;
+    /// - The spanned variable declaration.
+    pub fn lookup(&self, var: Spanned<Symbol<'s>>) -> Option<(usize, Spanned<Symbol<'s>>)> {
+        self.references
+            .get(&var)
+            .copied()
+            .map(|(i, sp)| (i, var.with_span(sp)))
     }
 }
 
@@ -75,11 +88,11 @@ impl<'s> Resolver<'s, '_> {
                 self.env.pop_scope();
             }
             Stmt::FunDecl { name, args, body } => {
-                self.env.declare(name.node);
+                self.env.declare(*name);
 
                 self.env.push_scope();
                 for arg in args {
-                    self.env.declare(arg.node);
+                    self.env.declare(*arg);
                 }
                 self.resolve_stmts(body);
                 self.env.pop_scope();
@@ -88,7 +101,7 @@ impl<'s> Resolver<'s, '_> {
                 if let Some(expr) = init.as_ref() {
                     self.resolve_expr(expr.as_ref());
                 }
-                self.env.declare(name.node);
+                self.env.declare(*name);
             }
         }
     }
@@ -132,7 +145,8 @@ impl<'s> Resolver<'s, '_> {
 
 #[derive(Default)]
 struct ResolverEnv<'s> {
-    scopes: Vec<HashSet<Symbol<'s>>>,
+    // Maps from variable names to the spans at which they were declared
+    scopes: Vec<HashMap<Symbol<'s>, Span>>,
 }
 
 impl<'s> ResolverEnv<'s> {
@@ -140,28 +154,28 @@ impl<'s> ResolverEnv<'s> {
         Self::default()
     }
 
-    fn declare(&mut self, name: Symbol<'s>) {
+    fn declare(&mut self, name: Spanned<Symbol<'s>>) {
         self.scopes
             .last_mut()
-            .map(|scope| scope.insert(name));
+            .map(|scope| scope.insert(name.node, name.span));
     }
 
     fn push_scope(&mut self) {
-        self.scopes.push(HashSet::new());
+        self.scopes.push(HashMap::new());
     }
 
     fn pop_scope(&mut self) {
-        self.scopes.pop();
+        self.scopes.pop().expect("cannot pop global scope");
     }
 
-    fn resolve(&mut self, name: Symbol<'s>) -> Option<usize> {
+    fn resolve(&mut self, name: Symbol<'s>) -> Option<(usize, Span)> {
         self.scopes
             .iter()
             .rev()
             .enumerate()
             .filter_map(|(i, scope)| {
-                if scope.contains(&name) {
-                    Some(i)
+                if let Some(span) = scope.get(&name) {
+                    Some((i, *span))
                 } else {
                     None
                 }

@@ -224,7 +224,7 @@ impl<'s> Callable<'s> for UserFun<'s> {
         let mut env = self.env.clone();
         env.push_scope();
         for (name, val) in self.args.iter().copied().zip(args.iter().cloned()) {
-            env.declare(name.node, val);
+            env.declare(name, val);
         }
 
         interpreter

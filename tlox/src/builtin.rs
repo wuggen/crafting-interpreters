@@ -6,6 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::callable::Callable;
 use crate::error::RuntimeResult;
 use crate::eval::{Env, Interpreter};
+use crate::span::{Span, Spannable};
 use crate::symbol::static_syms::SYM_CLOCK;
 use crate::symbol::Symbol;
 use crate::val::{CallableValue, Value};
@@ -24,7 +25,7 @@ impl Builtin {
 
     pub fn declare_builtins(env: &mut Env<'_>) {
         env.declare(
-            SYM_CLOCK,
+            SYM_CLOCK.spanned(Span::empty()),
             Value::Callable(CallableValue::Builtin(Builtin::Clock)),
         );
     }

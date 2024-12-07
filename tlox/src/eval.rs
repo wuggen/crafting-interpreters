@@ -12,7 +12,7 @@ use crate::error::{join_errs, CoercionCause, RuntimeError, RuntimeResult};
 use crate::output::OutputStream;
 use crate::resolve::ResolutionTable;
 use crate::session::SessionKey;
-use crate::span::{Spannable, Spanned};
+use crate::span::{Span, Spannable, Spanned};
 use crate::symbol::Symbol;
 use crate::syn::{BinopSym, BooleanBinopSym, Expr, ExprNode, Lit, Place, Program, Stmt, UnopSym};
 use crate::ty::{PrimitiveTy, Ty};
@@ -122,7 +122,7 @@ impl<'s> Interpreter<'s, '_> {
                     Value::Nil
                 };
 
-                self.env.declare(name.node, init.clone());
+                self.env.declare(*name, init.clone());
                 res = init;
             }
 
@@ -176,7 +176,7 @@ impl<'s> Interpreter<'s, '_> {
                 let fun = Value::Callable(CallableValue::User(Rc::new(UserFun::new(
                     name.node, args, body, env,
                 ))));
-                self.env.declare(name.node, fun.clone());
+                self.env.declare(*name, fun.clone());
                 res = fun;
             }
 
@@ -406,19 +406,19 @@ impl<'s> PlaceVal<'_, 's> {
 
 #[derive(Debug, Clone, Default)]
 struct EnvBindings<'s> {
-    bindings: Rc<RefCell<HashMap<Symbol<'s>, Value<'s>>>>,
+    bindings: Rc<RefCell<HashMap<Spanned<Symbol<'s>>, Value<'s>>>>,
 }
 
 impl<'s> EnvBindings<'s> {
-    fn declare(&self, name: Symbol<'s>, init: Value<'s>) {
+    fn declare(&self, name: Spanned<Symbol<'s>>, init: Value<'s>) {
         self.bindings.borrow_mut().insert(name, init);
     }
 
-    fn get(&self, name: Symbol<'s>) -> Option<Value<'s>> {
+    fn get(&self, name: Spanned<Symbol<'s>>) -> Option<Value<'s>> {
         self.bindings.borrow().get(&name).cloned()
     }
 
-    fn get_place(&self, name: Symbol<'s>) -> Option<PlaceVal<'_, 's>> {
+    fn get_place(&self, name: Spanned<Symbol<'s>>) -> Option<PlaceVal<'_, 's>> {
         let val = RefMut::filter_map(self.bindings.borrow_mut(), |bindings| {
             bindings.get_mut(&name)
         })
@@ -459,29 +459,37 @@ impl<'s> Env<'s> {
         self.local_binds.pop();
     }
 
-    pub fn declare(&self, name: Symbol<'s>, init: Value<'s>) {
-        self.local_binds
+    pub fn declare(&self, name: Spanned<Symbol<'s>>, init: Value<'s>) {
+        let (binds, name) = self
+            .local_binds
             .last()
-            .unwrap_or(&self.global_binds)
-            .declare(name, init);
+            .map(|binds| (binds, name))
+            .unwrap_or((&self.global_binds, name.with_span(Span::empty())));
+
+        binds.declare(name, init);
     }
 
     fn get(&self, var: Spanned<Symbol<'s>>) -> Option<Value<'s>> {
-        self.lookup_scope(var).get(var.node)
+        let (binds, decl) = self.lookup_scope(var);
+        binds.get(decl)
     }
 
     fn get_place(&self, var: Spanned<Symbol<'s>>) -> Option<PlaceVal<'_, 's>> {
-        self.lookup_scope(var).get_place(var.node)
+        let (binds, decl) = self.lookup_scope(var);
+        binds.get_place(decl)
     }
 
-    fn lookup_scope(&self, var: Spanned<Symbol<'s>>) -> &EnvBindings<'s> {
+    fn lookup_scope(&self, var: Spanned<Symbol<'s>>) -> (&EnvBindings<'s>, Spanned<Symbol<'s>>) {
         self.resolutions
             .lookup(var)
-            .map(|idx| {
+            .map(|(idx, span)| {
                 debug_assert!(idx < self.local_binds.len());
-                &self.local_binds[self.local_binds.len() - 1 - idx]
+                (
+                    &self.local_binds[self.local_binds.len() - 1 - idx],
+                    var.with_span(span),
+                )
             })
-            .unwrap_or(&self.global_binds)
+            .unwrap_or((&self.global_binds, var.with_span(Span::empty())))
     }
 
     fn resolve(&mut self, stmts: &[Spanned<Stmt<'s>>]) {

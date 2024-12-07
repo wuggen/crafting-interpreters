@@ -31,6 +31,13 @@ pub struct Span {
 }
 
 impl Span {
+    /// Construct an empty span.
+    /// 
+    /// This should only be used for declaring global symbols.
+    pub const fn empty() -> Self {
+        Self { byte_offset: 0, len: 0 }
+    }
+
     /// Get the starting byte offset of this span.
     ///
     /// NB: This is a _global_ offset within the source map.
