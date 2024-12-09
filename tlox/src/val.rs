@@ -222,7 +222,7 @@ impl<'s> Callable<'s> for UserFun<'s> {
         debug_assert_eq!(args.len(), self.args.len());
 
         let mut env = self.env.clone();
-        env.push_scope();
+        let _guard = env.push_scope();
         for (name, val) in self.args.iter().copied().zip(args.iter().cloned()) {
             env.declare(name, val);
         }

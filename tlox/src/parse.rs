@@ -535,13 +535,7 @@ impl<'s> Parser<'s> {
         }
         .catch_deferred(catch_deferred_parens(self, oparen.span))?;
 
-        let semi = self.advance_check("`;`", |tok| matches!(tok, Token::Semicolon))?;
-
-        let cond = if let Some(cond) = cond {
-            Some(cond.node).spanned(cond.span)
-        } else {
-            None.spanned(semi.span)
-        };
+        let _semi = self.advance_check("`;`", |tok| matches!(tok, Token::Semicolon))?;
 
         let update = match self.peek() {
             Some(tok) if matches!(tok.node, Token::CloseParen) => Ok(None),

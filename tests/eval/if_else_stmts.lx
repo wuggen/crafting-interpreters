@@ -1,9 +1,10 @@
 //CASE noscope
 var a = 4;
+var b;
 if (a < 10)
-    var b = 12;
+    b = 12;
 else
-    var b = "lol";
+    b = "lol";
 print b;
 
 //CASE scope

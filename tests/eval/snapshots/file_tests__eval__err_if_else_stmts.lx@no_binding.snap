@@ -1,6 +1,6 @@
 ---
 source: tests/eval.rs
-description: "if (false) var x = \"hey\";\nprint x; // Error unbound variable `x`\n"
+description: "if (false) var x = \"hey\";\nprint x; // Error unbound variable `x`\n\n"
 expression: combined
 ---
 :: Diagnostics ::

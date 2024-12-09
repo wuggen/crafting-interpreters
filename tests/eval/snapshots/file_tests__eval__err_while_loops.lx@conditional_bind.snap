@@ -1,15 +1,11 @@
 ---
 source: tests/eval.rs
-description: "var x = 0;\nwhile (x < 2) {\n    if (x == 0)\n        var a = \"hey\";\n    print a;\n    x = x + 1;\n}\n\n"
+description: "var x = 0;\nwhile (x < 2) {\n    if (x == 0)\n        var a = \"hey\";\n\n    print a; // Unbound variable\n    x = x + 1;\n}\n\n"
 expression: combined
 ---
-:: Output ::
-hey
-
-
 :: Diagnostics ::
 error: reference to unbound variable `a`
-  --> err_while_loops.lx@conditional_bind:5:11
+  --> err_while_loops.lx@conditional_bind:6:11
   |
-5 |     print a;
+6 |     print a; // Unbound variable
   |           ^ variable is not bound at this point

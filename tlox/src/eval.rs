@@ -127,11 +127,8 @@ impl<'s> Interpreter<'s, '_> {
             }
 
             Stmt::Block { stmts } => {
-                self.env.push_scope();
-                let inner_res = self.eval_stmts(stmts);
-                self.env.pop_scope();
-
-                res = inner_res?;
+                let _guard = self.env.push_scope();
+                res = self.eval_stmts(stmts)?;
             }
 
             Stmt::IfElse {
@@ -140,6 +137,9 @@ impl<'s> Interpreter<'s, '_> {
                 else_body,
             } => {
                 let cond = self.eval_expr(cond)?;
+
+                let _guard = self.env.push_scope();
+
                 if cond.is_truthy() {
                     res = self.eval_stmt(body.as_deref())?;
                 } else if let Some(else_body) = else_body {
@@ -150,6 +150,8 @@ impl<'s> Interpreter<'s, '_> {
             }
 
             Stmt::While { cond, body } => {
+                let _guard = self.env.push_scope();
+
                 while self.eval_expr(cond)?.is_truthy() {
                     match self.eval_stmt(body.as_deref()) {
                         Ok(val) => {
@@ -167,8 +169,44 @@ impl<'s> Interpreter<'s, '_> {
                 }
             }
 
-            Stmt::For { desugared, .. } => {
-                res = self.eval_stmt(stmt.with_node(desugared))?;
+            Stmt::For {
+                init,
+                cond,
+                update,
+                body,
+            } => {
+                let _guard = self.env.push_scope();
+
+                if let Some(init) = init {
+                    self.eval_stmt(init.as_deref())?;
+                }
+
+                loop {
+                    if let Some(cond) = cond {
+                        if !self.eval_expr(cond)?.is_truthy() {
+                            break;
+                        }
+                    }
+
+                    match self.eval_stmt(body.as_deref()) {
+                        Ok(val) => {
+                            res = val;
+                        }
+
+                        Err(errs) => {
+                            if let [RuntimeError::LoopBreak] = &errs[..] {
+                                res = Value::Nil;
+                                break;
+                            } else {
+                                return Err(errs);
+                            }
+                        }
+                    }
+
+                    if let Some(update) = update {
+                        self.eval_expr(update)?;
+                    }
+                }
             }
 
             Stmt::FunDecl { name, args, body } => {
@@ -446,17 +484,30 @@ impl Default for Env<'_> {
     }
 }
 
-impl<'s> Env<'s> {
-    pub fn push_scope(&mut self) {
-        self.local_binds.push(EnvBindings::default());
-    }
+// TODO(?): this struct is technically unsound. It's not bound to the lifetime
+// of the environment it's guarding, so it's possible to exfiltrate it from the
+// scope in which it's created.
+//
+// We _don't_ do that here, but it's possible! That may or may not be a concern.
+pub(crate) struct ScopeGuard<'s> {
+    env: *mut Env<'s>,
+}
 
-    pub fn pop_scope(&mut self) {
-        if self.local_binds.is_empty() {
-            panic!("cannot pop the global scope");
+impl Drop for ScopeGuard<'_> {
+    fn drop(&mut self) {
+        unsafe {
+            (&mut *self.env)
+                .local_binds
+                .pop()
+                .expect("cannot pop the global scope");
         }
+    }
+}
 
-        self.local_binds.pop();
+impl<'s> Env<'s> {
+    pub(crate) fn push_scope(&mut self) -> ScopeGuard<'s> {
+        self.local_binds.push(EnvBindings::default());
+        ScopeGuard { env: self }
     }
 
     pub fn declare(&self, name: Spanned<Symbol<'s>>, init: Value<'s>) {

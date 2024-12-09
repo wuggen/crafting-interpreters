@@ -1,3 +1,11 @@
 //CASE no_binding
 if (false) var x = "hey";
 print x; // Error unbound variable `x`
+
+//CASE scoped_binding
+if (false)
+    var x = "hey";
+else
+    var x = "lol";
+
+print x; // Error unbound variable `x`

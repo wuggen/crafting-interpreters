@@ -92,9 +92,10 @@ pub enum Stmt<'s> {
     /// For loops are internally desugared into while loops. This node is retained explicitly for
     /// pretty-printing purposes.
     For {
-        desugared: Box<Stmt<'s>>,
-        has_cond: bool,
-        has_updt: bool,
+        init: Option<Spanned<Box<Stmt<'s>>>>,
+        cond: Option<Spanned<Expr<'s>>>,
+        update: Option<Spanned<Expr<'s>>>,
+        body: Spanned<Box<Stmt<'s>>>,
     },
 
     /// A function declaration.
@@ -142,16 +143,18 @@ impl SynEq for Stmt<'_> {
 
             (
                 Stmt::For {
-                    desugared: d1,
-                    has_cond: hc1,
-                    has_updt: hu1,
+                    init: i1,
+                    cond: c1,
+                    update: u1,
+                    body: b1,
                 },
                 Stmt::For {
-                    desugared: d2,
-                    has_cond: hc2,
-                    has_updt: hu2,
+                    init: i2,
+                    cond: c2,
+                    update: u2,
+                    body: b2,
                 },
-            ) => hc1 == hc2 && hu1 == hu2 && d1.syn_eq(d2),
+            ) => i1.syn_eq(&i2) && c1.syn_eq(&c2) && u1.syn_eq(&u2) && b1.syn_eq(b2),
 
             (
                 Stmt::FunDecl {
@@ -176,81 +179,6 @@ impl SynEq for Stmt<'_> {
 }
 
 impl<'s> Stmt<'s> {
-    #[allow(clippy::type_complexity)]
-    fn resugar_for(
-        &self,
-        has_cond: bool,
-        has_updt: bool,
-    ) -> Option<(
-        Option<&Stmt<'s>>,
-        Option<&Expr<'s>>,
-        Option<&Expr<'s>>,
-        &Stmt<'s>,
-    )> {
-        // Desugared for loops consist of:
-        //
-        // - An outer block statement (this should be `self`) containing one or two statements.
-        // - If two statements, the first is the initializer (expr or decl stmt).
-        // - The second or only stmt is a while loop with cond (or `true` if `!has_cond`)
-        // - If `has_updt`, while loop body is a block stmt containing two stmts: the for loop body
-        //   and the update stmt
-        // - If `!has_updt`, while loop body is the for loop body
-        //
-        // If any of these conditions fails, `self` is not a desugared for loop.
-        match self {
-            Stmt::Block { stmts } => {
-                if stmts.is_empty() || stmts.len() > 2 {
-                    return None;
-                }
-
-                let init = if stmts.len() == 2 {
-                    if !matches!(&stmts[0].node, Stmt::Decl { .. } | Stmt::Expr { .. }) {
-                        return None;
-                    }
-                    Some(&stmts[0].node)
-                } else {
-                    None
-                };
-
-                match &stmts.last().unwrap().node {
-                    Stmt::While { cond, body } => {
-                        let cond = if has_cond {
-                            Some(&cond.node)
-                        } else if matches!(&*cond.node, ExprNode::Literal(Lit::Bool(true))) {
-                            None
-                        } else {
-                            return None;
-                        };
-
-                        let (update, body) = if has_updt {
-                            match &*body.node {
-                                Stmt::Block { stmts } => {
-                                    if stmts.len() != 2 {
-                                        return None;
-                                    }
-
-                                    match &stmts[1].node {
-                                        Stmt::Expr { val } => (Some(&val.node), &stmts[0].node),
-                                        _ => return None,
-                                    }
-                                }
-                                _ => return None,
-                            }
-                        } else {
-                            (None, &*body.node)
-                        };
-
-                        Some((init, cond, update, body))
-                    }
-
-                    _ => None,
-                }
-            }
-
-            _ => None,
-        }
-    }
-
     fn display_indented_level(&self, level: usize, omit_first: bool) -> impl Display + use<'_> {
         struct DisplayIndented<'s> {
             node: &'s Stmt<'s>,
@@ -314,13 +242,11 @@ impl<'s> Stmt<'s> {
                         )
                     }
                     Stmt::For {
-                        desugared,
-                        has_cond,
-                        has_updt,
+                        init,
+                        cond,
+                        update,
+                        body,
                     } => {
-                        let (init, cond, update, body) =
-                            desugared.resugar_for(*has_cond, *has_updt).unwrap();
-
                         write!(f, "{:first$}for (", "")?;
                         if let Some(init) = init {
                             write!(f, "{init}")?;
@@ -334,7 +260,11 @@ impl<'s> Stmt<'s> {
                         if let Some(update) = update {
                             write!(f, " {update}")?;
                         }
-                        write!(f, ") {}", body.display_indented_level(self.level, true))
+                        write!(
+                            f,
+                            ") {}",
+                            body.node.display_indented_level(self.level, true)
+                        )
                     }
                     Stmt::FunDecl { name, args, body } => {
                         write!(f, "{:first$}fun {}(", "", name.node)?;
@@ -430,36 +360,17 @@ pub mod stmt {
 
     pub fn for_loop<'s>(
         init: Option<Spanned<Stmt<'s>>>,
-        cond: Spanned<Option<Expr<'s>>>,
+        cond: Option<Spanned<Expr<'s>>>,
         update: Option<Spanned<Expr<'s>>>,
         body: Spanned<Stmt<'s>>,
     ) -> Stmt<'s> {
-        let has_cond = cond.node.is_some();
-        let has_updt = update.is_some();
-
-        let body = if let Some(update) = update {
-            let span = body.span;
-            stmt::block(vec![body, update.map_with_span(stmt::expr)])
-                .spanned(span)
-                .boxed()
-        } else {
-            body.boxed()
-        };
-
-        let cond = cond.map(|cond| cond.unwrap_or_else(|| expr::literal(Lit::Bool(true))));
-        let span = body.span;
-        let while_loop = stmt::while_loop(cond, body.map(|body| *body)).spanned(span);
-
-        let desugared = Box::new(if let Some(init) = init {
-            stmt::block(vec![init, while_loop])
-        } else {
-            stmt::block(vec![while_loop])
-        });
-
+        let init = init.map(|stmt| stmt.boxed());
+        let body = body.boxed();
         Stmt::For {
-            desugared,
-            has_cond,
-            has_updt,
+            init,
+            cond,
+            update,
+            body,
         }
     }
 

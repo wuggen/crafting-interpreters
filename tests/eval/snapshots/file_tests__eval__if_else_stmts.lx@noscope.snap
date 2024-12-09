@@ -1,6 +1,6 @@
 ---
 source: tests/eval.rs
-description: "var a = 4;\nif (a < 10)\n    var b = 12;\nelse\n    var b = \"lol\";\nprint b;\n\n"
+description: "var a = 4;\nvar b;\nif (a < 10)\n    b = 12;\nelse\n    b = \"lol\";\nprint b;\n\n"
 expression: combined
 ---
 :: Output ::

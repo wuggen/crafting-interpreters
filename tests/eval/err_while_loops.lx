@@ -3,7 +3,8 @@ var x = 0;
 while (x < 2) {
     if (x == 0)
         var a = "hey";
-    print a;
+
+    print a; // Unbound variable
     x = x + 1;
 }
 

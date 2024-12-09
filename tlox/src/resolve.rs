@@ -65,16 +65,38 @@ impl<'s> Resolver<'s, '_> {
                 else_body,
             } => {
                 self.resolve_expr(cond.as_ref());
+
+                let _guard = self.env.push_scope();
+
                 self.resolve_stmt(body.as_deref());
                 if let Some(stmt) = else_body.as_ref() {
                     self.resolve_stmt(stmt.as_deref());
                 }
             }
             Stmt::While { cond, body } => {
+                let _guard = self.env.push_scope();
                 self.resolve_expr(cond.as_ref());
                 self.resolve_stmt(body.as_deref());
             }
-            Stmt::For { desugared, .. } => self.resolve_stmt(stmt.with_node(desugared)),
+            Stmt::For {
+                init,
+                cond,
+                update,
+                body,
+            } => {
+                let _guard = self.env.push_scope();
+
+                if let Some(init) = init {
+                    self.resolve_stmt(init.as_deref());
+                }
+                if let Some(cond) = cond {
+                    self.resolve_expr(cond.as_ref());
+                }
+                self.resolve_stmt(body.as_deref());
+                if let Some(update) = update {
+                    self.resolve_expr(update.as_ref());
+                }
+            }
             Stmt::Return { val } => {
                 if let Some(val) = val.as_ref() {
                     self.resolve_expr(val.as_ref());
@@ -83,19 +105,17 @@ impl<'s> Resolver<'s, '_> {
             Stmt::Break => {}
 
             Stmt::Block { stmts } => {
-                self.env.push_scope();
+                let _guard = self.env.push_scope();
                 self.resolve_stmts(stmts);
-                self.env.pop_scope();
             }
             Stmt::FunDecl { name, args, body } => {
                 self.env.declare(*name);
 
-                self.env.push_scope();
+                let _guard = self.env.push_scope();
                 for arg in args {
                     self.env.declare(*arg);
                 }
                 self.resolve_stmts(body);
-                self.env.pop_scope();
             }
             Stmt::Decl { name, init } => {
                 if let Some(expr) = init.as_ref() {
@@ -149,6 +169,21 @@ struct ResolverEnv<'s> {
     scopes: Vec<HashMap<Symbol<'s>, Span>>,
 }
 
+struct ScopeGuard<'s> {
+    env: *mut ResolverEnv<'s>,
+}
+
+impl Drop for ScopeGuard<'_> {
+    fn drop(&mut self) {
+        unsafe {
+            (&mut *self.env)
+                .scopes
+                .pop()
+                .expect("cannot pop the global scope");
+        }
+    }
+}
+
 impl<'s> ResolverEnv<'s> {
     fn new() -> Self {
         Self::default()
@@ -160,12 +195,9 @@ impl<'s> ResolverEnv<'s> {
             .map(|scope| scope.insert(name.node, name.span));
     }
 
-    fn push_scope(&mut self) {
+    fn push_scope(&mut self) -> ScopeGuard<'s> {
         self.scopes.push(HashMap::new());
-    }
-
-    fn pop_scope(&mut self) {
-        self.scopes.pop().expect("cannot pop global scope");
+        ScopeGuard { env: self }
     }
 
     fn resolve(&mut self, name: Symbol<'s>) -> Option<(usize, Span)> {
