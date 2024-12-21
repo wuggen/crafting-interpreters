@@ -117,7 +117,7 @@ impl<'s> Interpreter<'s, '_> {
                 res = Value::Nil;
             }
 
-            Stmt::Decl { name, init } => {
+            Stmt::VarDecl { name, init } => {
                 let init = if let Some(expr) = init {
                     self.eval_expr(expr)?
                 } else {

@@ -81,7 +81,7 @@ pub enum Stmt<'s> {
     Print { val: Spanned<Expr<'s>> },
 
     /// A variable declaration.
-    Decl {
+    VarDecl {
         name: Spanned<Symbol<'s>>,
         init: Option<Spanned<Expr<'s>>>,
     },
@@ -135,7 +135,7 @@ impl SynEq for Stmt<'_> {
             (Stmt::Expr { val: v1 }, Stmt::Expr { val: v2 }) => v1.syn_eq(v2),
             (Stmt::Print { val: v1 }, Stmt::Print { val: v2 }) => v1.syn_eq(v2),
 
-            (Stmt::Decl { name: n1, init: i1 }, Stmt::Decl { name: n2, init: i2 }) => {
+            (Stmt::VarDecl { name: n1, init: i1 }, Stmt::VarDecl { name: n2, init: i2 }) => {
                 n1.syn_eq(n2) && i1.syn_eq(i2)
             }
 
@@ -248,7 +248,7 @@ impl Stmt<'_> {
                 match self.node {
                     Stmt::Expr { val } => write!(f, "{:first$}{};", "", val.node),
                     Stmt::Print { val } => write!(f, "{:first$}print {};", "", val.node),
-                    Stmt::Decl { name, init } => {
+                    Stmt::VarDecl { name, init } => {
                         write!(f, "{:first$}var {}", "", name.node)?;
                         if let Some(init) = init {
                             write!(f, " = {}", init.node)?;
@@ -385,7 +385,7 @@ pub mod stmt {
         name: Spanned<Symbol<'s>>,
         init: impl Into<Option<Spanned<Expr<'s>>>>,
     ) -> Stmt<'s> {
-        Stmt::Decl {
+        Stmt::VarDecl {
             name,
             init: init.into(),
         }
