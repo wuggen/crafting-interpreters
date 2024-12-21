@@ -1,0 +1,14 @@
+---
+source: tests/parse.rs
+description: "class {\n    foo(lol) {}\n}\n"
+expression: render_dcx()
+---
+error: missing name in class declaration
+  --> err_class_decls.lx@missing_class_name:1:7
+  |
+1 | class {
+  | ----- ^ expected class name here
+  | |      
+  | class declaration requires a name
+  |
+  = note: expected identifier

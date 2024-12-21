@@ -1,0 +1,12 @@
+---
+source: tests/parse.rs
+description: "class Foo {\n    () {}\n}\n"
+expression: render_dcx()
+---
+error: missing method name in definition of class `Foo`
+  --> err_class_decls.lx@missing_method_name:2:5
+  |
+2 |     () {}
+  |     ^ expected method name here
+  |
+  = note: expected identifier

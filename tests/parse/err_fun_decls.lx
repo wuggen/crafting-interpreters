@@ -1,0 +1,4 @@
+//CASE missing_fun_name
+fun (lol) {
+    return lol;
+}

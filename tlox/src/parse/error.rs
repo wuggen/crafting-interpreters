@@ -381,7 +381,7 @@ impl ParserDiag<'_> {
             ParserDiag::UnclosedPair { kind, .. } => format!("unclosed {}", kind.desc()),
             ParserDiag::UnterminatedStmt { .. } => "unterminated statement".into(),
             ParserDiag::EarlyTerminatedStmt { .. } => "statement terminated prematurely".into(),
-            ParserDiag::MissingDeclName { .. } => "missing name in variable declaration".into(),
+            ParserDiag::MissingDeclName { kind, .. } => format!("missing name in {} declaration", kind.desc()),
             ParserDiag::MissingMethodName { class, .. } => format!(
                 "missing method name in definition of class `{}`",
                 class.node

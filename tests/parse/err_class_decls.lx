@@ -1,0 +1,14 @@
+//CASE missing_method_name
+class Foo {
+    () {}
+}
+
+//CASE missing_method_cbrace
+class Foo {
+    bar() {
+}
+
+//CASE missing_class_name
+class {
+    foo(lol) {}
+}

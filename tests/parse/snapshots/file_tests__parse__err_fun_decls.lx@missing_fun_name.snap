@@ -1,0 +1,14 @@
+---
+source: tests/parse.rs
+description: "fun (lol) {\n    return lol;\n}\n"
+expression: render_dcx()
+---
+error: missing name in function declaration
+  --> err_fun_decls.lx@missing_fun_name:1:5
+  |
+1 | fun (lol) {
+  | --- ^ expected function name here
+  | |    
+  | function declaration requires a name
+  |
+  = note: expected identifier

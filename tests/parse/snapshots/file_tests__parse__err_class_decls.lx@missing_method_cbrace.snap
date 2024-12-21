@@ -1,0 +1,15 @@
+---
+source: tests/parse.rs
+description: "class Foo {\n    bar() {\n}\n\n"
+expression: render_dcx()
+---
+error: unclosed braces
+  --> err_class_decls.lx@missing_method_cbrace:4:1
+  |
+1 | class Foo {
+  |           - braces opened here
+  .
+4 | 
+  | ^ braces should have been closed here
+  |
+  = note: expected `}`
