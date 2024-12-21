@@ -1,0 +1,12 @@
+---
+source: tests/parse.rs
+description: "class Haha {\n    foo(bar) {\n        return baz;\n    }\n\n    whee(yay, wahoo) { }\n}\n"
+expression: first_parse
+---
+class Haha {
+    foo(bar) {
+        return baz;
+    }
+    whee(yay, wahoo) {
+    }
+}

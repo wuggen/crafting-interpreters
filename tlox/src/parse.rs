@@ -40,7 +40,7 @@ pub struct Parser<'s> {
 //
 // simple_stmt -> (var_decl | expr_or_print_stmt | return_stmt | 'break') ';'
 //
-// compound_stmt -> if_stmt | while_stmt | for_stmt | fun_decl | block_stmt
+// compound_stmt -> if_stmt | while_stmt | for_stmt | fun_decl | class_decl | block_stmt
 //
 // var_decl -> 'var' IDENT ('=' expr)?
 //
@@ -54,7 +54,13 @@ pub struct Parser<'s> {
 //
 // for_stmt -> 'for' '(' (decl_stmt | expr_stmt)? ';' expr? ';' expr? ')' stmt
 //
-// fun_decl -> 'fun' IDENT '(' arguments? ')' block_stmt
+// fun_decl -> 'fun' fun
+//
+// class_decl -> 'class' IDENT '{' fun* '}'
+//
+// fun -> IDENT '(' params? ')' block_stmt
+//
+// params -> IDENT (',' IDENT)*
 //
 // block_stmt -> '{' stmt* '}'
 //
@@ -328,6 +334,27 @@ impl<'s> Parser<'s> {
         Ok((open.span, contents, close.span))
     }
 
+    fn parse_braces<T>(
+        &mut self,
+        contents: impl Fn(&mut Self) -> ParserRes<'s, T>,
+    ) -> ParserRes<'s, (Span, T, Span)> {
+        let (open, contents, close) = self.parse_pair(Pair::Braces, contents)?;
+        Ok((open.span, contents, close.span))
+    }
+
+    fn parse_seq<T>(
+        &mut self,
+        check: impl Fn(&Token) -> bool,
+        item: impl Fn(&mut Self) -> ParserRes<'s, T>,
+    ) -> ParserRes<'s, Vec<T>> {
+        let mut res = Vec::new();
+        while self.check_next(&check) {
+            res.push(item(self)?);
+        }
+
+        Ok(res)
+    }
+
     fn parse_list<T>(
         &mut self,
         check: impl Fn(&Token) -> bool,
@@ -419,6 +446,7 @@ impl<'s> Parser<'s> {
             Token::While => self.while_stmt(),
             Token::For => self.for_stmt(),
             Token::Fun => self.fun_decl(),
+            Token::Class => self.class_decl(),
             tok if tok.is_stmt_start() => self.simple_stmt(),
             _ => {
                 self.push_diag(ParserDiag::unexpected_tok(self, peeked, "statement"));
@@ -597,15 +625,64 @@ impl<'s> Parser<'s> {
         let fun = self.advance().unwrap();
         debug_assert!(matches!(fun.node, Token::Fun));
 
+        let def = self
+            .parse_fun(FunKind::Fun)
+            .catch_deferred(|err| match err {
+                ParserErrorKind::MissingFunName(tok) => {
+                    self.push_diag(ParserDiag::missing_fun_name(
+                        fun.span,
+                        self.span_or_eof(&tok),
+                    ));
+                    Err(err.handled())
+                }
+                _ => Err(err.deferred()),
+            })?;
+
+        let span = fun.span.join(def.span);
+        Ok(Stmt::FunDecl { def: def.node }.spanned(span))
+    }
+
+    fn class_decl(&mut self) -> ParserRes<'s, Spanned<Stmt<'s>>> {
+        let class = self.advance().unwrap();
+        debug_assert!(matches!(class.node, Token::Class));
+
         let name = self.parse_ident().map_err(|tok| {
-            self.push_diag(ParserDiag::missing_fun_name(
-                fun.span,
+            self.push_diag(ParserDiag::missing_class_name(
+                class.span,
                 self.span_or_eof(&tok),
             ));
             ParserError::unexpected(tok).handled()
         })?;
 
-        let args = self.parse_args(name.span, FunCtx::Def, FunKind::Fun, |this| {
+        let (_obrace, methods, cbrace) = self.parse_braces(|this| {
+            this.parse_seq(
+                |tok| !matches!(tok, Token::CloseBrace),
+                |this| {
+                    this.parse_fun(FunKind::Method)
+                        .catch_deferred(|err| match err {
+                            ParserErrorKind::MissingFunName(tok) => {
+                                this.push_diag(ParserDiag::missing_method_name(
+                                    name,
+                                    this.span_or_eof(&tok),
+                                ));
+                                Err(err.handled())
+                            }
+                            _ => Err(err.deferred()),
+                        })
+                },
+            )
+        })?;
+
+        let span = class.span.join(cbrace);
+        Ok(Stmt::ClassDecl { name, methods }.spanned(span))
+    }
+
+    fn parse_fun(&mut self, kind: FunKind) -> ParserRes<'s, Spanned<Fun<'s>>> {
+        let name = self
+            .parse_ident()
+            .map_err(|tok| ParserError::missing_fun_name(tok).deferred())?;
+
+        let args = self.parse_args(name.span, FunCtx::Def, kind, |this| {
             this.parse_ident().map_err(|tok| {
                 this.push_diag(ParserDiag::unexpected(this, tok, "identifier"));
                 ParserError::unexpected(tok).handled()
@@ -626,7 +703,12 @@ impl<'s> Parser<'s> {
         self.enclosing_funs -= 1;
         self.enclosing_loops = old_loops;
 
-        Ok(stmt::fun_decl(name, args.node, body).spanned(fun.span.join(block_span)))
+        Ok(Fun {
+            name,
+            args: args.node,
+            body,
+        }
+        .spanned(name.span.join(block_span)))
     }
 
     /// Parse a variable declaration statement.

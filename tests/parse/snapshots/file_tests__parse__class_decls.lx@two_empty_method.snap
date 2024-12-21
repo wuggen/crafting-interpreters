@@ -1,0 +1,11 @@
+---
+source: tests/parse.rs
+description: "class Another {\n    foo() {}\n    bar() {}\n}\n\n"
+expression: first_parse
+---
+class Another {
+    foo() {
+    }
+    bar() {
+    }
+}

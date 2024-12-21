@@ -6,6 +6,7 @@
 use super::Parser;
 use crate::diag::{Diag, DiagKind, Diagnostic};
 use crate::span::{Span, Spanned};
+use crate::symbol::Symbol;
 use crate::tok::Token;
 
 /// Result type for parser errors.
@@ -61,6 +62,9 @@ pub enum ParserErrorKind<'s> {
     /// An unexpected token, or EOF.
     Unexpected(Option<Spanned<Token<'s>>>),
 
+    /// An unexpected token when expecting a function or method name.
+    MissingFunName(Option<Spanned<Token<'s>>>),
+
     /// A spurious statement end.
     ///
     /// This could either be caused by a semicolon where there shouldn't be one, or a missing
@@ -83,6 +87,10 @@ impl<'s> ParserError<'s> {
 
     pub const fn eof() -> ParserErrorKind<'s> {
         Self::unexpected(None)
+    }
+
+    pub const fn missing_fun_name(found: Option<Spanned<Token<'s>>>) -> ParserErrorKind<'s> {
+        ParserErrorKind::MissingFunName(found)
     }
 
     pub const fn spurious_stmt_end() -> ParserErrorKind<'s> {
@@ -174,6 +182,7 @@ impl FunKind {
 pub enum DeclKind {
     Var,
     Fun,
+    Class,
 }
 
 impl DeclKind {
@@ -181,6 +190,7 @@ impl DeclKind {
         match self {
             DeclKind::Var => "variable",
             DeclKind::Fun => "function",
+            DeclKind::Class => "class",
         }
     }
 }
@@ -217,6 +227,11 @@ pub enum ParserDiag<'s> {
     MissingDeclName {
         kind: DeclKind,
         decl: Span,
+        expected_name: Span,
+    },
+
+    MissingMethodName {
+        class: Spanned<Symbol<'s>>,
         expected_name: Span,
     },
 
@@ -320,6 +335,17 @@ impl<'s> ParserDiag<'s> {
         Self::missing_decl_name(DeclKind::Fun, decl, expected_name)
     }
 
+    pub const fn missing_class_name(decl: Span, expected_name: Span) -> Self {
+        Self::missing_decl_name(DeclKind::Class, decl, expected_name)
+    }
+
+    pub const fn missing_method_name(class: Spanned<Symbol<'s>>, expected_name: Span) -> Self {
+        Self::MissingMethodName {
+            class,
+            expected_name,
+        }
+    }
+
     pub const fn invalid_place_expr(place: Span, eq: Span) -> Self {
         Self::InvalidPlaceExpr { place, eq }
     }
@@ -356,6 +382,10 @@ impl ParserDiag<'_> {
             ParserDiag::UnterminatedStmt { .. } => "unterminated statement".into(),
             ParserDiag::EarlyTerminatedStmt { .. } => "statement terminated prematurely".into(),
             ParserDiag::MissingDeclName { .. } => "missing name in variable declaration".into(),
+            ParserDiag::MissingMethodName { class, .. } => format!(
+                "missing method name in definition of class `{}`",
+                class.node
+            ),
             ParserDiag::InvalidPlaceExpr { .. } => {
                 "invalid place expression on left side of assignment".into()
             }
@@ -383,6 +413,7 @@ impl ParserDiag<'_> {
             ParserDiag::UnterminatedStmt { .. } => Some("`;`"),
             ParserDiag::EarlyTerminatedStmt { .. } => Some("expression"),
             ParserDiag::MissingDeclName { .. } => Some("identifier"),
+            ParserDiag::MissingMethodName { .. } => Some("identifier"),
             ParserDiag::InvalidPlaceExpr { .. } => Some("identifier"),
             ParserDiag::ExcessiveArgs { .. } => None,
             ParserDiag::ReturnOutsideFun { .. } => None,
@@ -430,6 +461,10 @@ impl ParserDiag<'_> {
             } => diag
                 .with_primary(expected_name, format!("expected {} name here", kind.desc()))
                 .with_secondary(decl, format!("{} declaration requires a name", kind.desc())),
+
+            ParserDiag::MissingMethodName { expected_name, .. } => {
+                diag.with_primary(expected_name, "expected method name here")
+            }
 
             ParserDiag::InvalidPlaceExpr { place, eq } => diag
                 .with_primary(place, "invalid place expression")

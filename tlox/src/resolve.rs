@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::span::{Span, Spanned};
 use crate::symbol::Symbol;
-use crate::syn::{Expr, ExprNode, Place, Stmt};
+use crate::syn::{Expr, ExprNode, Fun, Place, Stmt};
 
 #[derive(Debug, Clone, Default)]
 pub struct ResolutionTable<'s> {
@@ -108,7 +108,9 @@ impl<'s> Resolver<'s, '_> {
                 let _guard = self.env.push_scope();
                 self.resolve_stmts(stmts);
             }
-            Stmt::FunDecl { name, args, body } => {
+            Stmt::FunDecl {
+                def: Fun { name, args, body },
+            } => {
                 self.env.declare(*name);
 
                 let _guard = self.env.push_scope();
@@ -117,6 +119,7 @@ impl<'s> Resolver<'s, '_> {
                 }
                 self.resolve_stmts(body);
             }
+            Stmt::ClassDecl { name, methods } => todo!(),
             Stmt::Decl { name, init } => {
                 if let Some(expr) = init.as_ref() {
                     self.resolve_expr(expr.as_ref());
@@ -176,7 +179,7 @@ struct ScopeGuard<'s> {
 impl Drop for ScopeGuard<'_> {
     fn drop(&mut self) {
         unsafe {
-            (&mut *self.env)
+            (*self.env)
                 .scopes
                 .pop()
                 .expect("cannot pop the global scope");
@@ -205,13 +208,7 @@ impl<'s> ResolverEnv<'s> {
             .iter()
             .rev()
             .enumerate()
-            .filter_map(|(i, scope)| {
-                if let Some(span) = scope.get(&name) {
-                    Some((i, *span))
-                } else {
-                    None
-                }
-            })
+            .filter_map(|(i, scope)| scope.get(&name).map(|span| (i, *span)))
             .next()
     }
 }

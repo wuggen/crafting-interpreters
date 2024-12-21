@@ -56,6 +56,21 @@ impl SynEq for Symbol<'_> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Fun<'s> {
+    pub name: Spanned<Symbol<'s>>,
+    pub args: Vec<Spanned<Symbol<'s>>>,
+    pub body: Vec<Spanned<Stmt<'s>>>,
+}
+
+impl SynEq for Fun<'_> {
+    fn syn_eq(&self, other: &Self) -> bool {
+        self.name.syn_eq(&other.name)
+            && self.args.syn_eq(&other.args)
+            && self.body.syn_eq(&other.body)
+    }
+}
+
 /// A Lox statement.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Stmt<'s> {
@@ -99,10 +114,12 @@ pub enum Stmt<'s> {
     },
 
     /// A function declaration.
-    FunDecl {
+    FunDecl { def: Fun<'s> },
+
+    /// A class declaration.
+    ClassDecl {
         name: Spanned<Symbol<'s>>,
-        args: Vec<Spanned<Symbol<'s>>>,
-        body: Vec<Spanned<Stmt<'s>>>,
+        methods: Vec<Spanned<Fun<'s>>>,
     },
 
     /// A return statement.
@@ -154,20 +171,20 @@ impl SynEq for Stmt<'_> {
                     update: u2,
                     body: b2,
                 },
-            ) => i1.syn_eq(&i2) && c1.syn_eq(&c2) && u1.syn_eq(&u2) && b1.syn_eq(b2),
+            ) => i1.syn_eq(i2) && c1.syn_eq(c2) && u1.syn_eq(u2) && b1.syn_eq(b2),
+
+            (Stmt::FunDecl { def: d1 }, Stmt::FunDecl { def: d2 }) => d1.syn_eq(d2),
 
             (
-                Stmt::FunDecl {
+                Stmt::ClassDecl {
                     name: n1,
-                    args: a1,
-                    body: b1,
+                    methods: m1,
                 },
-                Stmt::FunDecl {
+                Stmt::ClassDecl {
                     name: n2,
-                    args: a2,
-                    body: b2,
+                    methods: m2,
                 },
-            ) => n1.syn_eq(n2) && a1.syn_eq(a2) && b1.syn_eq(b2),
+            ) => n1.syn_eq(n2) && m1.syn_eq(m2),
 
             (Stmt::Return { val: v1 }, Stmt::Return { val: v2 }) => v1.syn_eq(v2),
 
@@ -178,7 +195,45 @@ impl SynEq for Stmt<'_> {
     }
 }
 
-impl<'s> Stmt<'s> {
+impl Fun<'_> {
+    fn display_indented_level(&self, level: usize, omit_first: bool) -> impl Display + use<'_> {
+        struct DisplayIndented<'s> {
+            node: &'s Fun<'s>,
+            level: usize,
+            omit_first: bool,
+        }
+        impl Display for DisplayIndented<'_> {
+            fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+                let indent = self.level * 4;
+                let first = if self.omit_first { 0 } else { indent };
+
+                write!(f, "{:first$}{}(", "", self.node.name.node)?;
+                for (i, arg) in self.node.args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", arg.node)?;
+                }
+                writeln!(f, ") {{")?;
+                for stmt in &self.node.body {
+                    writeln!(
+                        f,
+                        "{}",
+                        stmt.node.display_indented_level(self.level + 1, false)
+                    )?;
+                }
+                write!(f, "{:indent$}}}", "")
+            }
+        }
+        DisplayIndented {
+            node: self,
+            level,
+            omit_first,
+        }
+    }
+}
+
+impl Stmt<'_> {
     fn display_indented_level(&self, level: usize, omit_first: bool) -> impl Display + use<'_> {
         struct DisplayIndented<'s> {
             node: &'s Stmt<'s>,
@@ -266,20 +321,21 @@ impl<'s> Stmt<'s> {
                             body.node.display_indented_level(self.level, true)
                         )
                     }
-                    Stmt::FunDecl { name, args, body } => {
-                        write!(f, "{:first$}fun {}(", "", name.node)?;
-                        for (i, arg) in args.iter().enumerate() {
-                            if i > 0 {
-                                write!(f, ", ")?;
-                            }
-                            write!(f, "{}", arg.node)?;
-                        }
-                        writeln!(f, ") {{")?;
-                        for stmt in body {
+                    Stmt::FunDecl { def } => {
+                        write!(
+                            f,
+                            "{:first$}fun {}",
+                            "",
+                            def.display_indented_level(self.level, true)
+                        )
+                    }
+                    Stmt::ClassDecl { name, methods } => {
+                        writeln!(f, "{:first$}class {} {{", "", name.node)?;
+                        for method in methods {
                             writeln!(
                                 f,
                                 "{}",
-                                stmt.node.display_indented_level(self.level + 1, false)
+                                method.node.display_indented_level(self.level + 1, false)
                             )?;
                         }
                         write!(f, "{:indent$}}}", "")
@@ -379,7 +435,9 @@ pub mod stmt {
         args: Vec<Spanned<Symbol<'s>>>,
         body: Vec<Spanned<Stmt<'s>>>,
     ) -> Stmt<'s> {
-        Stmt::FunDecl { name, args, body }
+        Stmt::FunDecl {
+            def: Fun { name, args, body },
+        }
     }
 
     pub fn fun_return<'s>(val: impl Into<Option<Spanned<Expr<'s>>>>) -> Stmt<'s> {

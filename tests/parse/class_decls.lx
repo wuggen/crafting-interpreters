@@ -1,0 +1,22 @@
+//CASE empty_class
+class Foo { }
+
+//CASE one_empty_method
+class Bar {
+    foo() {}
+}
+
+//CASE two_empty_method
+class Another {
+    foo() {}
+    bar() {}
+}
+
+//CASE method_params_bodies
+class Haha {
+    foo(bar) {
+        return baz;
+    }
+
+    whee(yay, wahoo) { }
+}

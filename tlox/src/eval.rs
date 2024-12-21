@@ -14,7 +14,9 @@ use crate::resolve::ResolutionTable;
 use crate::session::SessionKey;
 use crate::span::{Span, Spannable, Spanned};
 use crate::symbol::Symbol;
-use crate::syn::{BinopSym, BooleanBinopSym, Expr, ExprNode, Lit, Place, Program, Stmt, UnopSym};
+use crate::syn::{
+    BinopSym, BooleanBinopSym, Expr, ExprNode, Fun, Lit, Place, Program, Stmt, UnopSym,
+};
 use crate::ty::{PrimitiveTy, Ty};
 use crate::val::{CallableValue, StrValue, UserFun, Value};
 
@@ -209,7 +211,9 @@ impl<'s> Interpreter<'s, '_> {
                 }
             }
 
-            Stmt::FunDecl { name, args, body } => {
+            Stmt::FunDecl {
+                def: Fun { name, args, body },
+            } => {
                 let env = self.env.clone();
                 let fun = Value::Callable(CallableValue::User(Rc::new(UserFun::new(
                     name.node, args, body, env,
@@ -217,6 +221,8 @@ impl<'s> Interpreter<'s, '_> {
                 self.env.declare(*name, fun.clone());
                 res = fun;
             }
+
+            Stmt::ClassDecl { name, methods } => todo!(),
 
             Stmt::Return { val } => {
                 let val = val
@@ -496,7 +502,7 @@ pub(crate) struct ScopeGuard<'s> {
 impl Drop for ScopeGuard<'_> {
     fn drop(&mut self) {
         unsafe {
-            (&mut *self.env)
+            (*self.env)
                 .local_binds
                 .pop()
                 .expect("cannot pop the global scope");
