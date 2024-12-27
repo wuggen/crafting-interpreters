@@ -6,7 +6,6 @@ use std::ops::{Div, Mul, Rem, Sub};
 use std::rc::Rc;
 
 use crate::builtin::Builtin;
-use crate::callable::Callable;
 use crate::diag::Diagnostic;
 use crate::error::{join_errs, CoercionCause, RuntimeError, RuntimeResult};
 use crate::output::OutputStream;
@@ -18,7 +17,7 @@ use crate::syn::{
     BinopSym, BooleanBinopSym, Expr, ExprNode, Fun, Lit, Place, Program, Stmt, UnopSym,
 };
 use crate::ty::{PrimitiveTy, Ty};
-use crate::val::{CallableValue, StrValue, UserFun, Value};
+use crate::val::{ClassValue, FunValue, StrValue, UserFun, Value};
 
 /// A tree-walking Lox interpreter.
 pub struct Interpreter<'s, 'out> {
@@ -215,14 +214,18 @@ impl<'s> Interpreter<'s, '_> {
                 def: Fun { name, args, body },
             } => {
                 let env = self.env.clone();
-                let fun = Value::Callable(CallableValue::User(Rc::new(UserFun::new(
+                let fun = Value::Fun(FunValue::User(Rc::new(UserFun::new(
                     name.node, args, body, env,
                 ))));
                 self.env.declare(*name, fun.clone());
                 res = fun;
             }
 
-            Stmt::ClassDecl { name, methods } => todo!(),
+            Stmt::ClassDecl { name, methods: _ } => {
+                let class = Value::Class(ClassValue::new(name.node));
+                self.env.declare(*name, class.clone());
+                res = class;
+            }
 
             Stmt::Return { val } => {
                 let val = val
@@ -287,7 +290,7 @@ impl<'s> Interpreter<'s, '_> {
             ExprNode::Call { callee, args } => {
                 let callee_span = callee.span;
                 let callee = self.eval_expr(callee)?;
-                if let Value::Callable(callable) = &callee {
+                if let Some(callable) = callee.callable() {
                     if callable.arity() as usize != args.node.len() {
                         return Err(vec![RuntimeError::unexpected_arg_count(
                             callable.spanned(callee_span),

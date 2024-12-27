@@ -119,7 +119,10 @@ impl<'s> Resolver<'s, '_> {
                 }
                 self.resolve_stmts(body);
             }
-            Stmt::ClassDecl { name, methods } => todo!(),
+            Stmt::ClassDecl { name, .. } => {
+                self.env.declare(*name);
+                // TODO: resolve method bodies as well
+            }
             Stmt::VarDecl { name, init } => {
                 if let Some(expr) = init.as_ref() {
                     self.resolve_expr(expr.as_ref());

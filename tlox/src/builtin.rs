@@ -9,7 +9,7 @@ use crate::eval::{Env, Interpreter};
 use crate::span::{Span, Spannable};
 use crate::symbol::static_syms::SYM_CLOCK;
 use crate::symbol::Symbol;
-use crate::val::{CallableValue, Value};
+use crate::val::{FunValue, Value};
 
 #[derive(Debug, Clone)]
 pub enum Builtin {
@@ -26,7 +26,7 @@ impl Builtin {
     pub fn declare_builtins(env: &mut Env<'_>) {
         env.declare(
             SYM_CLOCK.spanned(Span::empty()),
-            Value::Callable(CallableValue::Builtin(Builtin::Clock)),
+            Value::Fun(FunValue::Builtin(Builtin::Clock)),
         );
     }
 }

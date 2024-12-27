@@ -6,7 +6,7 @@ use crate::span::{Span, Spanned};
 use crate::symbol::Symbol;
 use crate::syn::{BinopSym, Expr, UnopSym};
 use crate::ty::{PrimitiveTy, Ty};
-use crate::val::{CallableValue, Value};
+use crate::val::{FunValue, Value};
 
 /// A Lox runtime error.
 #[derive(Debug, Clone)]
@@ -90,7 +90,7 @@ impl<'s> RuntimeError<'s> {
     }
 
     pub fn unexpected_arg_count(
-        callable: Spanned<&CallableValue<'s>>,
+        callable: Spanned<&dyn Callable<'s>>,
         args: &Spanned<Vec<Spanned<Expr<'s>>>>,
     ) -> Self {
         let expected = callable.node.arity();

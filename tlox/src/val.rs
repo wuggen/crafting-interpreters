@@ -19,10 +19,12 @@ pub enum Value<'s> {
     Bool(bool),
     Num(f64),
     Str(StrValue<'s>),
-    Callable(CallableValue<'s>),
+    Fun(FunValue<'s>),
+    Class(ClassValue<'s>),
+    Instance,
 }
 
-impl Value<'_> {
+impl<'s> Value<'s> {
     /// Get the type of this value.
     pub fn ty(&self) -> Ty {
         match self {
@@ -30,7 +32,9 @@ impl Value<'_> {
             Value::Bool(_) => Ty::Primitive(PrimitiveTy::Bool),
             Value::Num(_) => Ty::Primitive(PrimitiveTy::Num),
             Value::Str(_) => Ty::Primitive(PrimitiveTy::Str),
-            Value::Callable(_) => Ty::Primitive(PrimitiveTy::Callable),
+            Value::Fun(_) => Ty::Primitive(PrimitiveTy::Fun),
+            Value::Class(_) => Ty::Primitive(PrimitiveTy::Class),
+            Value::Instance => Ty::Primitive(PrimitiveTy::Instance),
         }
     }
 
@@ -39,6 +43,15 @@ impl Value<'_> {
     /// Nil and false are falsey; all other values are truthy.
     pub fn is_truthy(&self) -> bool {
         !matches!(self, Value::Nil | Value::Bool(false))
+    }
+
+    /// Get this value as a `Callable`, if it is callable.
+    pub fn callable(&self) -> Option<&dyn Callable<'s>> {
+        match self {
+            Value::Fun(val) => Some(val),
+            Value::Class(_val) => todo!(),
+            _ => None,
+        }
     }
 }
 
@@ -49,8 +62,10 @@ impl Display for Value<'_> {
             Value::Bool(b) => write!(f, "{b}"),
             Value::Num(n) => write!(f, "{n}"),
             Value::Str(s) => write!(f, "{s}"),
-            Value::Callable(CallableValue::Builtin(b)) => write!(f, "<builtin fun {b}"),
-            Value::Callable(CallableValue::User(fun)) => write!(f, "<fun {}>", fun.name),
+            Value::Fun(FunValue::Builtin(b)) => write!(f, "<builtin fun {b}"),
+            Value::Fun(FunValue::User(fun)) => write!(f, "<fun {}>", fun.name),
+            Value::Class(val) => write!(f, "{}", val.name),
+            Value::Instance => write!(f, "<instance>"),
         }
     }
 }
@@ -149,23 +164,23 @@ impl StrValue<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub enum CallableValue<'s> {
+pub enum FunValue<'s> {
     Builtin(Builtin),
     User(Rc<UserFun<'s>>),
 }
 
-impl<'s> Callable<'s> for CallableValue<'s> {
+impl<'s> Callable<'s> for FunValue<'s> {
     fn name(&self) -> Symbol<'s> {
         match self {
-            CallableValue::Builtin(builtin) => builtin.name(),
-            CallableValue::User(fun) => fun.name(),
+            FunValue::Builtin(builtin) => builtin.name(),
+            FunValue::User(fun) => fun.name(),
         }
     }
 
     fn arity(&self) -> u8 {
         match self {
-            CallableValue::Builtin(builtin) => builtin.arity(),
-            CallableValue::User(fun) => fun.arity(),
+            FunValue::Builtin(builtin) => builtin.arity(),
+            FunValue::User(fun) => fun.arity(),
         }
     }
 
@@ -175,8 +190,8 @@ impl<'s> Callable<'s> for CallableValue<'s> {
         args: &[Value<'s>],
     ) -> RuntimeResult<'s, Value<'s>> {
         match self {
-            CallableValue::Builtin(builtin) => builtin.call(interpreter, args),
-            CallableValue::User(fun) => fun.call(interpreter, args),
+            FunValue::Builtin(builtin) => builtin.call(interpreter, args),
+            FunValue::User(fun) => fun.call(interpreter, args),
         }
     }
 }
@@ -236,5 +251,16 @@ impl<'s> Callable<'s> for UserFun<'s> {
                     Err(errs)
                 }
             })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ClassValue<'s> {
+    name: Symbol<'s>,
+}
+
+impl<'s> ClassValue<'s> {
+    pub fn new(name: Symbol<'s>) -> Self {
+        Self { name }
     }
 }
