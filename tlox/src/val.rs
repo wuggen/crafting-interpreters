@@ -21,7 +21,7 @@ pub enum Value<'s> {
     Str(StrValue<'s>),
     Fun(FunValue<'s>),
     Class(ClassValue<'s>),
-    Instance,
+    Instance(InstanceValue<'s>),
 }
 
 impl<'s> Value<'s> {
@@ -34,7 +34,7 @@ impl<'s> Value<'s> {
             Value::Str(_) => Ty::Primitive(PrimitiveTy::Str),
             Value::Fun(_) => Ty::Primitive(PrimitiveTy::Fun),
             Value::Class(_) => Ty::Primitive(PrimitiveTy::Class),
-            Value::Instance => Ty::Primitive(PrimitiveTy::Instance),
+            Value::Instance(_) => Ty::Primitive(PrimitiveTy::Instance),
         }
     }
 
@@ -49,7 +49,7 @@ impl<'s> Value<'s> {
     pub fn callable(&self) -> Option<&dyn Callable<'s>> {
         match self {
             Value::Fun(val) => Some(val),
-            Value::Class(_val) => todo!(),
+            Value::Class(val) => Some(val),
             _ => None,
         }
     }
@@ -65,7 +65,7 @@ impl Display for Value<'_> {
             Value::Fun(FunValue::Builtin(b)) => write!(f, "<builtin fun {b}"),
             Value::Fun(FunValue::User(fun)) => write!(f, "<fun {}>", fun.name),
             Value::Class(val) => write!(f, "{}", val.name),
-            Value::Instance => write!(f, "<instance>"),
+            Value::Instance(val) => write!(f, "<{} instance>", val.class.name),
         }
     }
 }
@@ -263,4 +263,29 @@ impl<'s> ClassValue<'s> {
     pub fn new(name: Symbol<'s>) -> Self {
         Self { name }
     }
+}
+
+impl<'s> Callable<'s> for ClassValue<'s> {
+    fn name(&self) -> Symbol<'s> {
+        self.name
+    }
+
+    fn arity(&self) -> u8 {
+        0
+    }
+
+    fn call(
+        &self,
+        _interpreter: &mut Interpreter<'s, '_>,
+        _args: &[Value<'s>],
+    ) -> RuntimeResult<'s, Value<'s>> {
+        Ok(Value::Instance(InstanceValue {
+            class: self.clone(),
+        }))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct InstanceValue<'s> {
+    class: ClassValue<'s>,
 }

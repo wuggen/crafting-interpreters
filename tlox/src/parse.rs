@@ -119,7 +119,7 @@ impl<'s> Parser<'s> {
     /// Returns `None` if the parser encounters syntax errors. Any such errors will have been
     /// emitted to the global session's diagnostic context.
     pub fn parse(mut self) -> Option<Program<'s>> {
-        debug_println!("=== STARTING NEW PARSE ===");
+        debug_println!(@"=== STARTING NEW PARSE ===");
         let res = self.program();
         Session::with_current(|key| {
             if key.get().dcx.has_errors() {
@@ -266,12 +266,12 @@ impl<'s> Parser<'s> {
             self.advance_until(&until);
             self.advance();
             if self.check_next(&next) {
-                debug_println!("=> found sync point");
+                debug_println!(@"=> found sync point");
                 return;
             }
         }
 
-        debug_println!("=> reached EOF without finding sync point");
+        debug_println!(@"=> reached EOF without finding sync point");
     }
 
     /// Synchronize to a statement boundary.
@@ -279,7 +279,7 @@ impl<'s> Parser<'s> {
     /// This advances until the next occurrence of a semicolon followed by a non-operator keyword or
     /// method receiver start token.
     fn sync_to_stmt_boundary(&mut self) {
-        debug_println!("snychronizing to stmt boundary");
+        debug_println!(@"snychronizing to stmt boundary");
         self.synchronize(
             |tok| matches!(tok, Token::Semicolon | Token::CloseBrace),
             |tok| tok.is_stmt_start(),
@@ -765,7 +765,7 @@ impl<'s> Parser<'s> {
                     ParserErrorKind::Unexpected(Some(tok))
                         if matches!(tok.node, Token::CloseBrace) =>
                     {
-                        debug_println!("block_stmt: unexpected {tok:?}");
+                        debug_println!(@"block_stmt: unexpected {tok:?}");
                         self.push_diag(ParserDiag::early_close_brace(obrace.span, tok.span));
                         Err(kind.handled())
                     }
@@ -780,7 +780,7 @@ impl<'s> Parser<'s> {
                 Err(ParserErrorKind::Unexpected(Some(tok)))
                     if matches!(tok.node, Token::CloseBrace) =>
                 {
-                    debug_println!("spurious block end");
+                    debug_println!(@"spurious block end");
                     return Err(ParserError::spurious_stmt_end().handled());
                 }
 

@@ -160,10 +160,14 @@ where
                 panic_cause = Err(String::new());
             }
 
-            let new_cause = cause.downcast::<String>().unwrap();
+            let new_cause = cause.downcast::<String>().ok();
             let panic_cause = panic_cause.as_mut().unwrap_err();
 
-            writeln!(panic_cause, "  {name}: {new_cause}",).unwrap();
+            write!(panic_cause, "  {name}").unwrap();
+            if let Some(cause) = new_cause {
+                write!(panic_cause, ": {cause}").unwrap();
+            }
+            writeln!(panic_cause).unwrap();
         } else {
             println!("  > {name} ok");
         }

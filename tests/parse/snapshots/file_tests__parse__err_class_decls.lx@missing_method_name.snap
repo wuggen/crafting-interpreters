@@ -1,6 +1,6 @@
 ---
 source: tests/parse.rs
-description: "class Foo {\n    () {}\n}\n"
+description: "class Foo {\n    () {}\n}\n\n"
 expression: render_dcx()
 ---
 error: missing method name in definition of class `Foo`
