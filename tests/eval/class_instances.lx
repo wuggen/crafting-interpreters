@@ -1,3 +1,9 @@
 class Foo {}
 var foo = Foo();
 print foo; // <Foo instance>
+
+//CASE property_set
+class Foo {}
+var foo = Foo();
+foo.a = "lol";
+print foo.a; // lol

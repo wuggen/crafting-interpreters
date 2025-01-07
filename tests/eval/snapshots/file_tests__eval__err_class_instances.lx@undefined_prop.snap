@@ -1,0 +1,15 @@
+---
+source: tests/eval.rs
+description: "class Foo {}\nvar foo = Foo();\nprint foo.a;\n\n"
+expression: combined
+---
+:: Diagnostics ::
+error: undefined property `a`
+  --> err_class_instances.lx@undefined_prop:3:11
+  |
+3 | print foo.a;
+  |       --- ^ undefined property `a`
+  |       |    
+  |       access on this instance
+  |
+  = note: properties of instances must be defined before they can be accessed

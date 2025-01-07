@@ -281,11 +281,7 @@ impl<'s> Interpreter<'s, '_> {
                 }
             }
 
-            ExprNode::Assign { place, val } => {
-                let val = self.eval_expr(val)?;
-                self.eval_place(place)?.set(val.clone());
-                Ok(val)
-            }
+            ExprNode::Assign { place, val } => self.eval_assign(place, val),
 
             ExprNode::Call { callee, args } => {
                 let callee_span = callee.span;
@@ -306,6 +302,23 @@ impl<'s> Interpreter<'s, '_> {
                     callable.call(self, &args)
                 } else {
                     Err(vec![RuntimeError::not_callable(callee_span, callee.ty())])
+                }
+            }
+
+            ExprNode::Access { receiver, name } => {
+                let receiver_span = receiver.span;
+                let receiver = self.eval_expr(receiver)?;
+                if let Value::Instance(instance) = &receiver {
+                    if let Some(val) = instance.get_property(name.node) {
+                        Ok(val)
+                    } else {
+                        Err(vec![RuntimeError::undefined_property(*name, receiver_span)])
+                    }
+                } else {
+                    Err(vec![RuntimeError::not_instance(
+                        receiver_span,
+                        receiver.ty(),
+                    )])
                 }
             }
         }
@@ -393,12 +406,33 @@ impl<'s> Interpreter<'s, '_> {
     /// Evaluate a place expression.
     ///
     /// Returns a mutable reference to the value currently assigned to the evaluated place.
-    fn eval_place(&mut self, place: &Spanned<Place<'s>>) -> RuntimeResult<'s, PlaceVal<'_, 's>> {
-        match place.node {
-            Place::Var(name) => self
-                .env
-                .get_place(place.with_node(name))
-                .ok_or_else(|| vec![RuntimeError::unbound_var_assign(name.spanned(place.span))]),
+    fn eval_assign(
+        &mut self,
+        place: &Place<'s>,
+        value: &Spanned<Expr<'s>>,
+    ) -> RuntimeResult<'s, Value<'s>> {
+        if let Some(receiver) = &place.receiver {
+            let receiver_span = receiver.span;
+            let receiver = self.eval_expr(receiver)?;
+            if let Value::Instance(instance) = receiver {
+                let val = self.eval_expr(value)?;
+                instance
+                    .get_property_place(place.name.node)
+                    .set(val.clone());
+                Ok(val)
+            } else {
+                Err(vec![RuntimeError::not_instance(
+                    receiver_span,
+                    receiver.ty(),
+                )])
+            }
+        } else {
+            let val = self.eval_expr(value)?;
+            self.env
+                .get_place(place.name)
+                .ok_or_else(|| vec![RuntimeError::unbound_var_assign(place.name)])?
+                .set(val.clone());
+            Ok(val)
         }
     }
 
@@ -441,11 +475,15 @@ impl<'s> Interpreter<'s, '_> {
     }
 }
 
-struct PlaceVal<'e, 's> {
+pub struct PlaceVal<'e, 's> {
     val: RefMut<'e, Value<'s>>,
 }
 
 impl<'s> PlaceVal<'_, 's> {
+    pub fn new<'e>(val: RefMut<'e, Value<'s>>) -> PlaceVal<'e, 's> {
+        PlaceVal { val }
+    }
+
     fn set(&mut self, value: Value<'s>) {
         *self.val = value;
     }

@@ -5,3 +5,7 @@
 var a = b + c = d;
 
 (a) = 4;
+
+//CASE get_exprs
+a.b() = f;
+(a.b = c) = lol;

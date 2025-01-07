@@ -1,0 +1,24 @@
+---
+source: tests/parse.rs
+description: "a.b() = f;\n(a.b = c) = lol;\n"
+expression: render_dcx()
+---
+error: invalid place expression on left side of assignment
+  --> err_invalid_place_exprs.lx@get_exprs:1:1
+  |
+1 | a.b() = f;
+  | ^^^^^ - expected place expression due to assignment here
+  | |      
+  | invalid place expression
+  |
+  = note: expected identifier
+
+error: invalid place expression on left side of assignment
+  --> err_invalid_place_exprs.lx@get_exprs:2:1
+  |
+2 | (a.b = c) = lol;
+  | ^^^^^^^^^ - expected place expression due to assignment here
+  | |          
+  | invalid place expression
+  |
+  = note: expected identifier

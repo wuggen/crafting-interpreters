@@ -70,7 +70,7 @@ pub struct Parser<'s> {
 // assign -> place '=' assign
 //         | logic_or
 //
-// place -> IDENT
+// place -> (call '.')? IDENT
 //
 // ; Left-assoc
 // logic_or -> logic_and ('or' logic_and)*
@@ -93,11 +93,11 @@ pub struct Parser<'s> {
 // unary -> ('-' | '!') unary
 //        | call
 //
-// call -> atom ( '(' arguments? ')' )*
+// call -> atom ( '(' arguments? ')' | '.' IDENT )*
 //
 // arguments -> expr (',' expr)* ','?
 //
-// atom -> NUMBER | STRING | 'true' | 'false' | 'nil' | group
+// atom -> NUMBER | STRING | IDENT | 'true' | 'false' | 'nil' | group
 //
 // group -> '(' expr ')'
 
@@ -864,13 +864,13 @@ impl<'s> Parser<'s> {
         let maybe_place = self.logic_or()?;
 
         if let Ok(eq) = self.advance_or_peek(|tok| matches!(tok, Token::Equal)) {
-            match maybe_place.node.into_place() {
+            match Place::from_expr(maybe_place) {
                 Ok(place) => {
                     let val = self.assign()?;
-                    Ok(expr::assign(place.spanned(maybe_place.span), val))
+                    Ok(expr::assign(place, val))
                 }
-                Err(_) => {
-                    self.push_diag(ParserDiag::invalid_place_expr(maybe_place.span, eq.span));
+                Err(not_place) => {
+                    self.push_diag(ParserDiag::invalid_place_expr(not_place.span, eq.span));
                     Err(ParserError::invalid_place_expr().handled())
                 }
             }
@@ -1026,6 +1026,15 @@ impl<'s> Parser<'s> {
                 let args =
                     self.parse_args(maybe_fn.span, FunCtx::Call, FunKind::Fun, Self::expr)?;
                 maybe_fn = expr::call(maybe_fn, args);
+            } else if let Ok(_) = self.advance_or_peek(|tok| matches!(tok, Token::Dot)) {
+                let name = self.parse_ident().map_err(|tok| {
+                    self.push_diag(ParserDiag::missing_property_name(
+                        maybe_fn.span,
+                        self.span_or_eof(&tok),
+                    ));
+                    ParserError::unexpected(tok).handled()
+                })?;
+                maybe_fn = expr::get(maybe_fn, name);
             } else {
                 break Ok(maybe_fn);
             }

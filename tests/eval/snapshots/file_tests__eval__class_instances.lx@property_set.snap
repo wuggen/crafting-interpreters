@@ -1,0 +1,7 @@
+---
+source: tests/eval.rs
+description: "class Foo {}\nvar foo = Foo();\nfoo.a = \"lol\";\nprint foo.a; // lol\n"
+expression: combined
+---
+:: Output ::
+lol

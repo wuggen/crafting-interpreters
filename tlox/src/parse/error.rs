@@ -235,6 +235,11 @@ pub enum ParserDiag<'s> {
         expected_name: Span,
     },
 
+    MissingPropertyName {
+        receiver: Span,
+        expected_name: Span,
+    },
+
     InvalidPlaceExpr {
         place: Span,
         eq: Span,
@@ -346,6 +351,13 @@ impl<'s> ParserDiag<'s> {
         }
     }
 
+    pub const fn missing_property_name(receiver: Span, expected_name: Span) -> Self {
+        Self::MissingPropertyName {
+            receiver,
+            expected_name,
+        }
+    }
+
     pub const fn invalid_place_expr(place: Span, eq: Span) -> Self {
         Self::InvalidPlaceExpr { place, eq }
     }
@@ -381,11 +393,16 @@ impl ParserDiag<'_> {
             ParserDiag::UnclosedPair { kind, .. } => format!("unclosed {}", kind.desc()),
             ParserDiag::UnterminatedStmt { .. } => "unterminated statement".into(),
             ParserDiag::EarlyTerminatedStmt { .. } => "statement terminated prematurely".into(),
-            ParserDiag::MissingDeclName { kind, .. } => format!("missing name in {} declaration", kind.desc()),
+            ParserDiag::MissingDeclName { kind, .. } => {
+                format!("missing name in {} declaration", kind.desc())
+            }
             ParserDiag::MissingMethodName { class, .. } => format!(
                 "missing method name in definition of class `{}`",
                 class.node
             ),
+            ParserDiag::MissingPropertyName { .. } => {
+                "missing property name in access expression".into()
+            }
             ParserDiag::InvalidPlaceExpr { .. } => {
                 "invalid place expression on left side of assignment".into()
             }
@@ -408,13 +425,15 @@ impl ParserDiag<'_> {
         match self {
             ParserDiag::Unexpected { expected, .. } => expected.take(),
 
-            ParserDiag::EarlyClosePair { .. } => Some("expression"),
             ParserDiag::UnclosedPair { kind, .. } => Some(kind.close_tok().summary()),
             ParserDiag::UnterminatedStmt { .. } => Some("`;`"),
-            ParserDiag::EarlyTerminatedStmt { .. } => Some("expression"),
-            ParserDiag::MissingDeclName { .. } => Some("identifier"),
-            ParserDiag::MissingMethodName { .. } => Some("identifier"),
-            ParserDiag::InvalidPlaceExpr { .. } => Some("identifier"),
+            ParserDiag::EarlyClosePair { .. } | ParserDiag::EarlyTerminatedStmt { .. } => {
+                Some("expression")
+            }
+            ParserDiag::MissingDeclName { .. }
+            | ParserDiag::MissingMethodName { .. }
+            | ParserDiag::MissingPropertyName { .. }
+            | ParserDiag::InvalidPlaceExpr { .. } => Some("identifier"),
             ParserDiag::ExcessiveArgs { .. } => None,
             ParserDiag::ReturnOutsideFun { .. } => None,
             ParserDiag::BreakOutsideLoop { .. } => None,
@@ -465,6 +484,13 @@ impl ParserDiag<'_> {
             ParserDiag::MissingMethodName { expected_name, .. } => {
                 diag.with_primary(expected_name, "expected method name here")
             }
+
+            ParserDiag::MissingPropertyName {
+                receiver,
+                expected_name,
+            } => diag
+                .with_primary(expected_name, "expected property name after '.' operator")
+                .with_secondary(receiver, "property access on this receiver"),
 
             ParserDiag::InvalidPlaceExpr { place, eq } => diag
                 .with_primary(place, "invalid place expression")

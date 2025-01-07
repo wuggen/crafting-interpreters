@@ -1,0 +1,13 @@
+//CASE undefined_prop
+class Foo {}
+var foo = Foo();
+print foo.a;
+
+//CASE eval_order_not_instance
+var foo = "lol";
+foo.b = a + "lol"; // Error: foo is not an instance
+
+//CASE eval_order_value_error
+class Foo {}
+var foo = Foo();
+foo.b = a + "lol";

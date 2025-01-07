@@ -3,7 +3,7 @@
 use std::fmt::{self, Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
 
-use crate::span::{Spannable, Spanned};
+use crate::span::{HasSpan, Span, Spannable, Spanned};
 use crate::symbol::Symbol;
 
 pub trait SynEq<T: ?Sized = Self> {
@@ -660,23 +660,52 @@ impl SynEq for Lit<'_> {
 
 /// A place expression.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Place<'s> {
-    /// A variable place.
-    Var(Symbol<'s>),
+pub struct Place<'s> {
+    /// Variable or property name
+    pub name: Spanned<Symbol<'s>>,
+
+    /// Optional receiver expression
+    pub receiver: Option<Spanned<Expr<'s>>>,
+}
+
+impl HasSpan for Place<'_> {
+    fn span(&self) -> Span {
+        if let Some(receiver) = &self.receiver {
+            receiver.span.join(self.name.span)
+        } else {
+            self.name.span
+        }
+    }
 }
 
 impl SynEq for Place<'_> {
     fn syn_eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Var(a), Self::Var(b)) => a.syn_eq(b),
-        }
+        self.name.syn_eq(&other.name) && self.receiver.syn_eq(&other.receiver)
     }
 }
 
 impl Display for Place<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Place::Var(name) => write!(f, "{name}"),
+        if let Some(receiver) = &self.receiver {
+            write!(f, "{}.", receiver.node)?;
+        }
+
+        write!(f, "{}", self.name.node)
+    }
+}
+
+impl<'s> Place<'s> {
+    pub fn from_expr(expr: Spanned<Expr<'s>>) -> Result<Self, Spanned<Expr<'s>>> {
+        match *expr.node {
+            ExprNode::Var(name) => Ok(Place {
+                name: name.spanned(expr.span),
+                receiver: None,
+            }),
+            ExprNode::Access { receiver, name } => Ok(Place {
+                receiver: Some(receiver),
+                name,
+            }),
+            _ => Err(expr),
         }
     }
 }
@@ -717,7 +746,7 @@ pub enum ExprNode<'s> {
     /// A variable assignment expression.
     Assign {
         /// The place assigned to.
-        place: Spanned<Place<'s>>,
+        place: Place<'s>,
 
         /// The value assigned.
         val: Spanned<Expr<'s>>,
@@ -730,6 +759,15 @@ pub enum ExprNode<'s> {
 
         /// The arguments list.
         args: Spanned<Vec<Spanned<Expr<'s>>>>,
+    },
+
+    /// A property access ("get") expression
+    Access {
+        /// The receiving object
+        receiver: Spanned<Expr<'s>>,
+
+        /// The property name
+        name: Spanned<Symbol<'s>>,
     },
 }
 
@@ -752,6 +790,9 @@ impl Debug for ExprNode<'_> {
             }
             ExprNode::Call { callee, args } => {
                 f.debug_tuple("Call").field(&callee).field(&args).finish()
+            }
+            ExprNode::Access { receiver, name } => {
+                f.debug_tuple("Access").field(&receiver).field(&name).finish()
             }
         }
     }
@@ -798,6 +839,16 @@ impl SynEq for ExprNode<'_> {
                     args: a2,
                 },
             ) => c1.syn_eq(c2) && a1.syn_eq(a2),
+            (
+                Self::Access {
+                    receiver: r1,
+                    name: n1,
+                },
+                Self::Access {
+                    receiver: r2,
+                    name: n2,
+                },
+            ) => r1.syn_eq(r2) && n1.syn_eq(n2),
             _ => false,
         }
     }
@@ -840,8 +891,8 @@ pub mod expr {
     }
 
     /// Create a variable assignment expression.
-    pub fn assign<'s>(place: Spanned<Place<'s>>, val: Spanned<Expr<'s>>) -> Spanned<Expr<'s>> {
-        let span = place.span.join(val.span);
+    pub fn assign<'s>(place: Place<'s>, val: Spanned<Expr<'s>>) -> Spanned<Expr<'s>> {
+        let span = place.span().join(val.span);
         Box::new(ExprNode::Assign { place, val }).spanned(span)
     }
 
@@ -853,20 +904,17 @@ pub mod expr {
         let span = callee.span.join(args.span);
         Box::new(ExprNode::Call { callee, args }).spanned(span)
     }
+
+    pub fn get<'s>(receiver: Spanned<Expr<'s>>, name: Spanned<Symbol<'s>>) -> Spanned<Expr<'s>> {
+        let span = receiver.span.join(name.span);
+        Box::new(ExprNode::Access { receiver, name }).spanned(span)
+    }
 }
 
 impl<'s> ExprNode<'s> {
     /// Is this expression a place expression?
     pub fn is_place(&self) -> bool {
         matches!(self, ExprNode::Var(_))
-    }
-
-    /// Convert `self` into a place expression, if possible.
-    pub fn into_place(self) -> Result<Place<'s>, Self> {
-        match self {
-            ExprNode::Var(name) => Ok(Place::Var(name)),
-            _ => Err(self),
-        }
     }
 }
 
@@ -911,10 +959,10 @@ impl Display for ExprNode<'_> {
                 if rhs.node.rhs_needs_group(level) {
                     write!(f, "({})", rhs.node)
                 } else {
-                    write!(f, "{}", rhs.node)
+                    write!(f, "{}", rhs)
                 }
             }
-            ExprNode::Assign { place, val } => write!(f, "{} = {}", place.node, val.node),
+            ExprNode::Assign { place, val } => write!(f, "{} = {}", place, val.node),
             ExprNode::Call { callee, args } => {
                 write!(f, "{}(", callee.node)?;
                 let mut tail = false;
@@ -928,6 +976,7 @@ impl Display for ExprNode<'_> {
                 }
                 write!(f, ")")
             }
+            ExprNode::Access { receiver, name } => write!(f, "{}.{}", receiver.node, name.node),
         }
     }
 }

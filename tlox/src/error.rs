@@ -6,7 +6,7 @@ use crate::span::{Span, Spanned};
 use crate::symbol::Symbol;
 use crate::syn::{BinopSym, Expr, UnopSym};
 use crate::ty::{PrimitiveTy, Ty};
-use crate::val::{FunValue, Value};
+use crate::val::Value;
 
 /// A Lox runtime error.
 #[derive(Debug, Clone)]
@@ -53,6 +53,24 @@ pub enum RuntimeError<'s> {
         ty: Ty,
     },
 
+    /// Attempted to access a property of a non-instance.
+    NotInstance {
+        /// Span of the property access expression.
+        site: Span,
+
+        /// Type of the receiver value.
+        ty: Ty,
+    },
+
+    /// Attempted to access an undefined property on an instance.
+    UndefinedProperty {
+        /// The property name and access location.
+        property: Spanned<Symbol<'s>>,
+
+        /// The receiving instance expression.
+        receiver: Span,
+    },
+
     /// Called a function with the incorrect number of arguments.
     UnexpectedArgCount {
         callable: Spanned<Symbol<'s>>,
@@ -87,6 +105,14 @@ impl<'s> RuntimeError<'s> {
 
     pub fn not_callable(site: Span, ty: Ty) -> Self {
         Self::NotCallable { site, ty }
+    }
+
+    pub fn not_instance(site: Span, ty: Ty) -> Self {
+        Self::NotInstance { site, ty }
+    }
+
+    pub fn undefined_property(property: Spanned<Symbol<'s>>, receiver: Span) -> Self {
+        Self::UndefinedProperty { property, receiver }
     }
 
     pub fn unexpected_arg_count(
@@ -209,6 +235,23 @@ impl Diagnostic for RuntimeError<'_> {
                 Diag::new(DiagKind::Error, message.clone())
                     .with_primary(site, message)
                     .with_note("only functions and class methods can be called")
+            }
+
+            RuntimeError::NotInstance { site, ty } => {
+                let message = format!("cannot access properties on value of type {ty}");
+                Diag::new(DiagKind::Error, message.clone())
+                    .with_primary(site, message)
+                    .with_note("only class instances have properties")
+            }
+
+            RuntimeError::UndefinedProperty { property, receiver } => {
+                let message = format!("undefined property `{}`", property.node);
+                Diag::new(DiagKind::Error, message.clone())
+                    .with_primary(property.span, message)
+                    .with_secondary(receiver, "access on this instance")
+                    .with_note(
+                        "properties of instances must be defined before they can be accessed",
+                    )
             }
 
             RuntimeError::UnexpectedArgCount {

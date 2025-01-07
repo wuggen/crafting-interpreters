@@ -1,0 +1,11 @@
+---
+source: tests/eval.rs
+description: "class Foo {}\nvar foo = Foo();\nfoo.b = a + \"lol\";\n"
+expression: combined
+---
+:: Diagnostics ::
+error: reference to unbound variable `a`
+  --> err_class_instances.lx@eval_order_value_error:3:9
+  |
+3 | foo.b = a + "lol";
+  |         ^ variable is not bound at this point

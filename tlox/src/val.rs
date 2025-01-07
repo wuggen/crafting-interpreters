@@ -1,12 +1,14 @@
 //! Runtime Lox values.
 
+use std::cell::{RefCell, RefMut};
+use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 use std::rc::Rc;
 
 use crate::builtin::Builtin;
 use crate::callable::Callable;
 use crate::error::{RuntimeError, RuntimeResult};
-use crate::eval::{Env, Interpreter};
+use crate::eval::{Env, Interpreter, PlaceVal};
 use crate::span::Spanned;
 use crate::symbol::Symbol;
 use crate::syn::Stmt;
@@ -281,6 +283,7 @@ impl<'s> Callable<'s> for ClassValue<'s> {
     ) -> RuntimeResult<'s, Value<'s>> {
         Ok(Value::Instance(InstanceValue {
             class: self.clone(),
+            properties: Rc::new(RefCell::new(HashMap::new())),
         }))
     }
 }
@@ -288,4 +291,17 @@ impl<'s> Callable<'s> for ClassValue<'s> {
 #[derive(Debug, Clone)]
 pub struct InstanceValue<'s> {
     class: ClassValue<'s>,
+    properties: Rc<RefCell<HashMap<Symbol<'s>, Value<'s>>>>,
+}
+
+impl<'s> InstanceValue<'s> {
+    pub fn get_property(&self, name: Symbol<'s>) -> Option<Value<'s>> {
+        self.properties.borrow().get(&name).cloned()
+    }
+
+    pub fn get_property_place(&self, name: Symbol<'s>) -> PlaceVal<'_, 's> {
+        let properties = self.properties.borrow_mut();
+        let val = RefMut::map(properties, |props| props.entry(name).or_insert(Value::Nil));
+        PlaceVal::new(val)
+    }
 }

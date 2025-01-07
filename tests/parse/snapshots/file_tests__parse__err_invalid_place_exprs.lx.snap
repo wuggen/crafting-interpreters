@@ -1,6 +1,6 @@
 ---
 source: tests/parse.rs
-description: "(a = b) = c;\n\n7 + 8 = 15;\n\nvar a = b + c = d;\n\n(a) = 4;\n"
+description: "(a = b) = c;\n\n7 + 8 = 15;\n\nvar a = b + c = d;\n\n(a) = 4;\n\n"
 expression: render_dcx()
 ---
 error: invalid place expression on left side of assignment

@@ -142,7 +142,7 @@ impl<'s> Resolver<'s, '_> {
                 self.resolve_expr(rhs.as_ref());
             }
             ExprNode::Assign { place, val } => {
-                self.resolve_place(place.as_ref());
+                self.resolve_place(place);
                 self.resolve_expr(val.as_ref());
             }
             ExprNode::Call { callee, args } => {
@@ -151,14 +151,17 @@ impl<'s> Resolver<'s, '_> {
                     self.resolve_expr(expr.as_ref());
                 }
             }
+            ExprNode::Access { receiver, .. } => {
+                self.resolve_expr(receiver.as_ref());
+            }
 
             ExprNode::Var(name) => self.resolve_name(expr.with_node(*name)),
         }
     }
 
-    fn resolve_place(&mut self, place: Spanned<&Place<'s>>) {
-        match place.node {
-            Place::Var(name) => self.resolve_name(place.with_node(*name)),
+    fn resolve_place(&mut self, place: &Place<'s>) {
+        if place.receiver.is_none() {
+            self.resolve_name(place.name);
         }
     }
 

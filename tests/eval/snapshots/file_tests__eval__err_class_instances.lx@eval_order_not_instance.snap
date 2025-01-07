@@ -1,0 +1,13 @@
+---
+source: tests/eval.rs
+description: "var foo = \"lol\";\nfoo.b = a + \"lol\"; // Error: foo is not an instance\n\n"
+expression: combined
+---
+:: Diagnostics ::
+error: cannot access properties on value of type Str
+  --> err_class_instances.lx@eval_order_not_instance:2:1
+  |
+2 | foo.b = a + "lol"; // Error: foo is not an instance
+  | ^^^ cannot access properties on value of type Str
+  |
+  = note: only class instances have properties
