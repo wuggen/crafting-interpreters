@@ -119,8 +119,16 @@ impl<'s> Resolver<'s, '_> {
                 }
                 self.resolve_stmts(body);
             }
-            Stmt::ClassDecl { name, .. } => {
+            Stmt::ClassDecl { name, methods } => {
                 self.env.declare(*name);
+
+                for method in methods {
+                    let _guard = self.env.push_scope();
+                    for arg in &method.node.args {
+                        self.env.declare(*arg);
+                    }
+                    self.resolve_stmts(&method.node.body);
+                }
                 // TODO: resolve method bodies as well
             }
             Stmt::VarDecl { name, init } => {

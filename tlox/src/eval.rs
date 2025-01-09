@@ -221,8 +221,18 @@ impl<'s> Interpreter<'s, '_> {
                 res = fun;
             }
 
-            Stmt::ClassDecl { name, methods: _ } => {
-                let class = Value::Class(ClassValue::new(name.node));
+            Stmt::ClassDecl { name, methods } => {
+                let methods = methods
+                    .iter()
+                    .map(|fun| {
+                        let name = fun.node.name.node;
+                        let env = self.env.clone();
+                        let def = Rc::new(UserFun::new(name, &fun.node.args, &fun.node.body, env));
+                        (name, def)
+                    })
+                    .collect();
+
+                let class = Value::Class(ClassValue::new(name.node, methods));
                 self.env.declare(*name, class.clone());
                 res = class;
             }

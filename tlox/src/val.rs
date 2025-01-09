@@ -259,11 +259,13 @@ impl<'s> Callable<'s> for UserFun<'s> {
 #[derive(Debug, Clone)]
 pub struct ClassValue<'s> {
     name: Symbol<'s>,
+    methods: Rc<HashMap<Symbol<'s>, Rc<UserFun<'s>>>>,
 }
 
 impl<'s> ClassValue<'s> {
-    pub fn new(name: Symbol<'s>) -> Self {
-        Self { name }
+    pub fn new(name: Symbol<'s>, methods: HashMap<Symbol<'s>, Rc<UserFun<'s>>>) -> Self {
+        let methods = Rc::new(methods);
+        Self { name, methods }
     }
 }
 
@@ -296,7 +298,12 @@ pub struct InstanceValue<'s> {
 
 impl<'s> InstanceValue<'s> {
     pub fn get_property(&self, name: Symbol<'s>) -> Option<Value<'s>> {
-        self.properties.borrow().get(&name).cloned()
+        self.properties.borrow().get(&name).cloned().or_else(|| {
+            self.class
+                .methods
+                .get(&name)
+                .map(|method| Value::Fun(FunValue::User(method.clone())))
+        })
     }
 
     pub fn get_property_place(&self, name: Symbol<'s>) -> PlaceVal<'_, 's> {
