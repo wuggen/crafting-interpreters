@@ -97,7 +97,7 @@ pub struct Parser<'s> {
 //
 // arguments -> expr (',' expr)* ','?
 //
-// atom -> NUMBER | STRING | IDENT | 'true' | 'false' | 'nil' | group
+// atom -> NUMBER | STRING | IDENT | 'this' | 'true' | 'false' | 'nil' | group
 //
 // group -> '(' expr ')'
 
@@ -1052,6 +1052,7 @@ impl<'s> Parser<'s> {
                 Token::Boolean(b) => Ok(tok.with_node(expr::literal(Lit::Bool(b)))),
                 Token::Nil => Ok(tok.with_node(expr::literal(Lit::Nil))),
                 Token::Ident(name) => Ok(tok.with_node(expr::var(name))),
+                Token::This => Ok(tok.with_node(expr::this())),
                 Token::OpenParen => self.group(tok.span),
 
                 // Error productions

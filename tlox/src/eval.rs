@@ -1,6 +1,7 @@
 //! Evaluation of Lox syntax trees.
 use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
+use std::fmt::{self, Display, Formatter};
 use std::io::Write;
 use std::ops::{Div, Mul, Rem, Sub};
 use std::rc::Rc;
@@ -12,6 +13,7 @@ use crate::output::OutputStream;
 use crate::resolve::ResolutionTable;
 use crate::session::SessionKey;
 use crate::span::{Span, Spannable, Spanned};
+use crate::symbol::static_syms::SYM_THIS;
 use crate::symbol::Symbol;
 use crate::syn::{
     BinopSym, BooleanBinopSym, Expr, ExprNode, Fun, Lit, Place, Program, Stmt, UnopSym,
@@ -227,7 +229,7 @@ impl<'s> Interpreter<'s, '_> {
                     .map(|fun| {
                         let name = fun.node.name.node;
                         let env = self.env.clone();
-                        let def = Rc::new(UserFun::new(name, &fun.node.args, &fun.node.body, env));
+                        let def = UserFun::new(name, &fun.node.args, &fun.node.body, env);
                         (name, def)
                     })
                     .collect();
@@ -262,6 +264,11 @@ impl<'s> Interpreter<'s, '_> {
                 .env
                 .get(expr.with_node(*name))
                 .ok_or_else(|| vec![RuntimeError::unbound_var_ref(expr.with_node(*name))]),
+
+            ExprNode::This => self
+                .env
+                .get(expr.with_node(SYM_THIS))
+                .ok_or_else(|| vec![RuntimeError::unbound_var_ref(expr.with_node(SYM_THIS))]),
 
             ExprNode::Group(expr) => self.eval_expr(expr),
 
@@ -543,7 +550,7 @@ impl Default for Env<'_> {
 
 // TODO(?): this struct is technically unsound. It's not bound to the lifetime
 // of the environment it's guarding, so it's possible to exfiltrate it from the
-// scope in which it's created.
+// scope in which it's created, and drop it after the Env it's borrowing.
 //
 // We _don't_ do that here, but it's possible! That may or may not be a concern.
 pub(crate) struct ScopeGuard<'s> {
@@ -562,9 +569,39 @@ impl Drop for ScopeGuard<'_> {
 }
 
 impl<'s> Env<'s> {
+    pub fn fmt_bindings(&self) -> impl Display + use<'s, '_> {
+        struct EnvDisplay<'s, 'e> {
+            env: &'e Env<'s>,
+        }
+
+        impl Display for EnvDisplay<'_, '_> {
+            fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+                for (i, scope) in self.env.local_binds.iter().rev().enumerate() {
+                    writeln!(f, "{i}:")?;
+                    for (sym, val) in scope.bindings.borrow().iter() {
+                        writeln!(f, "\t{sym}{:?}: {val}", sym.span)?;
+                    }
+                }
+
+                writeln!(f, "global:")?;
+                for (sym, val) in self.env.global_binds.bindings.borrow().iter() {
+                    writeln!(f, "\t{sym}{:?}: {val}", sym.span)?;
+                }
+
+                Ok(())
+            }
+        }
+
+        EnvDisplay { env: self }
+    }
+
     pub(crate) fn push_scope(&mut self) -> ScopeGuard<'s> {
-        self.local_binds.push(EnvBindings::default());
+        self.push_scope_guardless();
         ScopeGuard { env: self }
+    }
+
+    pub(crate) fn push_scope_guardless(&mut self) {
+        self.local_binds.push(EnvBindings::default());
     }
 
     pub fn declare(&self, name: Spanned<Symbol<'s>>, init: Value<'s>) {
@@ -578,6 +615,13 @@ impl<'s> Env<'s> {
     }
 
     fn get(&self, var: Spanned<Symbol<'s>>) -> Option<Value<'s>> {
+        if var.node.as_str() == "this" {
+            debug_println!(@
+                "reference to `this` at {:?}, current env:\n{}",
+                var.span,
+                self.fmt_bindings(),
+            );
+        }
         let (binds, decl) = self.lookup_scope(var);
         binds.get(decl)
     }
@@ -591,6 +635,11 @@ impl<'s> Env<'s> {
         self.resolutions
             .lookup(var)
             .map(|(idx, span)| {
+                debug_println!(@
+                    "reference to {var} at {:?} resolved to {:?}",
+                    var.span,
+                    (idx, span)
+                );
                 debug_assert!(idx < self.local_binds.len());
                 (
                     &self.local_binds[self.local_binds.len() - 1 - idx],

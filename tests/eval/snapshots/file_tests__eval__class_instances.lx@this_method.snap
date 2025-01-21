@@ -1,0 +1,7 @@
+---
+source: tests/eval.rs
+description: "class Foo {\n    set_lol(val) {\n        this.lol = val;\n    }\n\n    get_lol() {\n        return this.lol;\n    }\n}\n\nvar foo = Foo();\nfoo.set_lol(\"lol\");\nprint foo.get_lol(); // > lol\n"
+expression: combined
+---
+:: Output ::
+lol

@@ -719,6 +719,9 @@ pub enum ExprNode<'s> {
     /// A variable reference.
     Var(Symbol<'s>),
 
+    /// A reference to the bound instance in a method.
+    This,
+
     /// A parenthesized expression.
     Group(Spanned<Expr<'s>>),
 
@@ -776,6 +779,7 @@ impl Debug for ExprNode<'_> {
         match self {
             ExprNode::Literal(lit) => Debug::fmt(lit, f),
             ExprNode::Var(symbol) => f.debug_tuple("Var").field(&symbol).finish(),
+            ExprNode::This => write!(f, "This"),
             ExprNode::Group(expr) => f.debug_tuple("Group").field(&expr).finish(),
             ExprNode::Unop { sym, operand } => {
                 f.debug_tuple(&format!("{sym:?}")).field(&operand).finish()
@@ -791,9 +795,11 @@ impl Debug for ExprNode<'_> {
             ExprNode::Call { callee, args } => {
                 f.debug_tuple("Call").field(&callee).field(&args).finish()
             }
-            ExprNode::Access { receiver, name } => {
-                f.debug_tuple("Access").field(&receiver).field(&name).finish()
-            }
+            ExprNode::Access { receiver, name } => f
+                .debug_tuple("Access")
+                .field(&receiver)
+                .field(&name)
+                .finish(),
         }
     }
 }
@@ -803,6 +809,7 @@ impl SynEq for ExprNode<'_> {
         match (self, other) {
             (Self::Literal(a), Self::Literal(b)) => a.syn_eq(b),
             (Self::Var(a), Self::Var(b)) => a.syn_eq(b),
+            (Self::This, Self::This) => true,
             (Self::Group(a), Self::Group(b)) => a.syn_eq(b),
             (
                 Self::Unop {
@@ -867,6 +874,11 @@ pub mod expr {
     /// Create a variable reference expression.
     pub fn var(name: Symbol) -> Expr {
         Box::new(ExprNode::Var(name))
+    }
+
+    /// Create a `this` expression.
+    pub fn this() -> Expr<'static> {
+        Box::new(ExprNode::This)
     }
 
     /// Create a grouped expression.
@@ -937,6 +949,7 @@ impl Display for ExprNode<'_> {
         match self {
             ExprNode::Literal(lit) => write!(f, "{lit}"),
             ExprNode::Var(name) => write!(f, "{name}"),
+            ExprNode::This => write!(f, "this"),
             ExprNode::Group(expr) => write!(f, "({})", expr.node),
             ExprNode::Unop { sym, operand } => {
                 write!(f, "{}", sym.node)?;

@@ -2,14 +2,15 @@
 
 use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 use std::rc::Rc;
 
 use crate::builtin::Builtin;
 use crate::callable::Callable;
 use crate::error::{RuntimeError, RuntimeResult};
 use crate::eval::{Env, Interpreter, PlaceVal};
-use crate::span::Spanned;
+use crate::span::{Span, Spannable, Spanned};
+use crate::symbol::static_syms::SYM_THIS;
 use crate::symbol::Symbol;
 use crate::syn::Stmt;
 use crate::ty::{PrimitiveTy, Ty};
@@ -64,9 +65,9 @@ impl Display for Value<'_> {
             Value::Bool(b) => write!(f, "{b}"),
             Value::Num(n) => write!(f, "{n}"),
             Value::Str(s) => write!(f, "{s}"),
-            Value::Fun(FunValue::Builtin(b)) => write!(f, "<builtin fun {b}"),
+            Value::Fun(FunValue::Builtin(b)) => write!(f, "<builtin fun {b}>"),
             Value::Fun(FunValue::User(fun)) => write!(f, "<fun {}>", fun.name),
-            Value::Class(val) => write!(f, "{}", val.name),
+            Value::Class(val) => write!(f, "<class {}>", val.name),
             Value::Instance(val) => write!(f, "<{} instance>", val.class.name),
         }
     }
@@ -198,25 +199,48 @@ impl<'s> Callable<'s> for FunValue<'s> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct UserFun<'s> {
     name: Symbol<'s>,
-    args: Vec<Spanned<Symbol<'s>>>,
-    code: Vec<Spanned<Stmt<'s>>>,
+    code: Rc<FunCode<'s>>,
     env: Env<'s>,
+}
+
+impl Debug for UserFun<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("UserFun")
+            .field("name", &self.name)
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FunCode<'s> {
+    args: Vec<Spanned<Symbol<'s>>>,
+    body: Vec<Spanned<Stmt<'s>>>,
 }
 
 impl<'s> UserFun<'s> {
     pub fn new(
         name: Symbol<'s>,
         args: &[Spanned<Symbol<'s>>],
-        code: &[Spanned<Stmt<'s>>],
+        body: &[Spanned<Stmt<'s>>],
         env: Env<'s>,
     ) -> Self {
-        Self {
-            name,
+        let code = Rc::new(FunCode {
             args: Vec::from(args),
-            code: Vec::from(code),
+            body: Vec::from(body),
+        });
+        Self { name, code, env }
+    }
+
+    pub fn bind(&self, instance: InstanceValue<'s>) -> UserFun<'s> {
+        let mut env = self.env.clone();
+        env.push_scope_guardless();
+        env.declare(SYM_THIS.spanned(Span::empty()), Value::Instance(instance));
+        UserFun {
+            name: self.name,
+            code: self.code.clone(),
             env,
         }
     }
@@ -228,7 +252,7 @@ impl<'s> Callable<'s> for UserFun<'s> {
     }
 
     fn arity(&self) -> u8 {
-        self.args.len() as u8
+        self.code.args.len() as u8
     }
 
     fn call(
@@ -236,16 +260,16 @@ impl<'s> Callable<'s> for UserFun<'s> {
         interpreter: &mut Interpreter<'s, '_>,
         args: &[Value<'s>],
     ) -> RuntimeResult<'s, Value<'s>> {
-        debug_assert_eq!(args.len(), self.args.len());
+        debug_assert_eq!(args.len(), self.code.args.len());
 
         let mut env = self.env.clone();
         let _guard = env.push_scope();
-        for (name, val) in self.args.iter().copied().zip(args.iter().cloned()) {
+        for (name, val) in self.code.args.iter().copied().zip(args.iter().cloned()) {
             env.declare(name, val);
         }
 
         interpreter
-            .eval_with_env(&mut env, &self.code)
+            .eval_with_env(&mut env, &self.code.body)
             .or_else(|errs| {
                 if let [RuntimeError::FunReturn { val }] = &errs[..] {
                     Ok(val.clone())
@@ -259,11 +283,11 @@ impl<'s> Callable<'s> for UserFun<'s> {
 #[derive(Debug, Clone)]
 pub struct ClassValue<'s> {
     name: Symbol<'s>,
-    methods: Rc<HashMap<Symbol<'s>, Rc<UserFun<'s>>>>,
+    methods: Rc<HashMap<Symbol<'s>, UserFun<'s>>>,
 }
 
 impl<'s> ClassValue<'s> {
-    pub fn new(name: Symbol<'s>, methods: HashMap<Symbol<'s>, Rc<UserFun<'s>>>) -> Self {
+    pub fn new(name: Symbol<'s>, methods: HashMap<Symbol<'s>, UserFun<'s>>) -> Self {
         let methods = Rc::new(methods);
         Self { name, methods }
     }
@@ -302,7 +326,7 @@ impl<'s> InstanceValue<'s> {
             self.class
                 .methods
                 .get(&name)
-                .map(|method| Value::Fun(FunValue::User(method.clone())))
+                .map(|method| Value::Fun(FunValue::User(Rc::new(method.bind(self.clone())))))
         })
     }
 

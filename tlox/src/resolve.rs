@@ -2,7 +2,8 @@
 
 use std::collections::HashMap;
 
-use crate::span::{Span, Spanned};
+use crate::span::{Span, Spannable, Spanned};
+use crate::symbol::static_syms::SYM_THIS;
 use crate::symbol::Symbol;
 use crate::syn::{Expr, ExprNode, Fun, Place, Stmt};
 
@@ -121,6 +122,8 @@ impl<'s> Resolver<'s, '_> {
             }
             Stmt::ClassDecl { name, methods } => {
                 self.env.declare(*name);
+                let _guard = self.env.push_scope();
+                self.env.declare(SYM_THIS.spanned(Span::empty()));
 
                 for method in methods {
                     let _guard = self.env.push_scope();
@@ -129,7 +132,6 @@ impl<'s> Resolver<'s, '_> {
                     }
                     self.resolve_stmts(&method.node.body);
                 }
-                // TODO: resolve method bodies as well
             }
             Stmt::VarDecl { name, init } => {
                 if let Some(expr) = init.as_ref() {
@@ -164,17 +166,23 @@ impl<'s> Resolver<'s, '_> {
             }
 
             ExprNode::Var(name) => self.resolve_name(expr.with_node(*name)),
+            ExprNode::This => self.resolve_name(expr.with_node(SYM_THIS)),
         }
     }
 
     fn resolve_place(&mut self, place: &Place<'s>) {
-        if place.receiver.is_none() {
+        if let Some(receiver) = &place.receiver {
+            self.resolve_expr(receiver.as_ref());
+        } else {
             self.resolve_name(place.name);
         }
     }
 
     fn resolve_name(&mut self, name: Spanned<Symbol<'s>>) {
         if let Some(res) = self.env.resolve(name.node) {
+            if name.node == SYM_THIS {
+                debug_println!(@"resolved `this` at {:?} to {res:?}", name.span);
+            }
             self.table.references.insert(name, res);
         }
     }

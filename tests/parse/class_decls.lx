@@ -18,5 +18,8 @@ class Haha {
         return baz;
     }
 
-    whee(yay, wahoo) { }
+    whee(yay, wahoo) {
+        this.wahoo = wahoo;
+        return yay + wahoo;
+    }
 }

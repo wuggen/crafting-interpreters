@@ -129,7 +129,9 @@ impl Debug for Span {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         if Session::has_current() {
             Session::with_current(|key| {
-                if let Some((start, end)) = key.get().sm.span_extents(*self) {
+                if *self == Span::empty() {
+                    write!(f, "{{DummySpan}}")
+                } else if let Some((start, end)) = key.get().sm.span_extents(*self) {
                     write!(
                         f,
                         "{{{}:{}..{}:{}}}",

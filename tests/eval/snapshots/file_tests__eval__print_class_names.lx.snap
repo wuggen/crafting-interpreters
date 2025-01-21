@@ -4,4 +4,4 @@ description: "class Foo {\n    bar() {\n        return \"lol\";\n    }\n}\n\npri
 expression: combined
 ---
 :: Output ::
-Foo
+<class Foo>

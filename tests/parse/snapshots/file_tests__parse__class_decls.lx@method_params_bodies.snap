@@ -1,6 +1,6 @@
 ---
 source: tests/parse.rs
-description: "class Haha {\n    foo(bar) {\n        return baz;\n    }\n\n    whee(yay, wahoo) { }\n}\n"
+description: "class Haha {\n    foo(bar) {\n        return baz;\n    }\n\n    whee(yay, wahoo) {\n        this.wahoo = wahoo;\n        return yay + wahoo;\n    }\n}\n"
 expression: first_parse
 ---
 class Haha {
@@ -8,5 +8,7 @@ class Haha {
         return baz;
     }
     whee(yay, wahoo) {
+        this.wahoo = wahoo;
+        return yay + wahoo;
     }
 }
