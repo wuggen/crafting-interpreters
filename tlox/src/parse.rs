@@ -1026,7 +1026,10 @@ impl<'s> Parser<'s> {
                 let args =
                     self.parse_args(maybe_fn.span, FunCtx::Call, FunKind::Fun, Self::expr)?;
                 maybe_fn = expr::call(maybe_fn, args);
-            } else if let Ok(_) = self.advance_or_peek(|tok| matches!(tok, Token::Dot)) {
+            } else if self
+                .advance_or_peek(|tok| matches!(tok, Token::Dot))
+                .is_ok()
+            {
                 let name = self.parse_ident().map_err(|tok| {
                     self.push_diag(ParserDiag::missing_property_name(
                         maybe_fn.span,

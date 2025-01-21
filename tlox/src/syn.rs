@@ -923,7 +923,7 @@ pub mod expr {
     }
 }
 
-impl<'s> ExprNode<'s> {
+impl ExprNode<'_> {
     /// Is this expression a place expression?
     pub fn is_place(&self) -> bool {
         matches!(self, ExprNode::Var(_))
