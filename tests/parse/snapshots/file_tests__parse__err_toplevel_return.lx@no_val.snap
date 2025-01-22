@@ -3,8 +3,8 @@ source: tests/parse.rs
 description: "return;\n\n"
 expression: render_dcx()
 ---
-error: return statement found outside of an enclosing function definition
+error: `return` statement found outside of an enclosing function definition
   --> err_toplevel_return.lx@no_val:1:1
   |
 1 | return;
-  | ^^^^^^ return statement found outside of an enclosing function definition
+  | ^^^^^^ `return` statement found outside of an enclosing function definition

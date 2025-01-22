@@ -30,6 +30,7 @@ pub struct Parser<'s> {
     diags: Vec<ParserDiag<'s>>,
     enclosing_funs: usize,
     enclosing_loops: usize,
+    enclosing_classes: usize,
 }
 
 // Grammar:
@@ -111,6 +112,7 @@ impl<'s> Parser<'s> {
             diags: Vec::new(),
             enclosing_funs: 0,
             enclosing_loops: 0,
+            enclosing_classes: 0,
         }
     }
 
@@ -654,6 +656,8 @@ impl<'s> Parser<'s> {
             ParserError::unexpected(tok).handled()
         })?;
 
+        self.enclosing_classes += 1;
+
         let (_obrace, methods, cbrace) = self.parse_braces(|this| {
             this.parse_seq(
                 |tok| !matches!(tok, Token::CloseBrace),
@@ -672,6 +676,8 @@ impl<'s> Parser<'s> {
                 },
             )
         })?;
+
+        self.enclosing_classes -= 1;
 
         let span = class.span.join(cbrace);
         Ok(Stmt::ClassDecl { name, methods }.spanned(span))
@@ -1055,7 +1061,13 @@ impl<'s> Parser<'s> {
                 Token::Boolean(b) => Ok(tok.with_node(expr::literal(Lit::Bool(b)))),
                 Token::Nil => Ok(tok.with_node(expr::literal(Lit::Nil))),
                 Token::Ident(name) => Ok(tok.with_node(expr::var(name))),
-                Token::This => Ok(tok.with_node(expr::this())),
+                Token::This => {
+                    if self.enclosing_classes == 0 {
+                        self.push_diag(ParserDiag::this_outside_method(tok.span));
+                    }
+
+                    Ok(tok.with_node(expr::this()))
+                }
                 Token::OpenParen => self.group(tok.span),
 
                 // Error productions

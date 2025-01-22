@@ -3,11 +3,11 @@ source: tests/parse.rs
 description: "fun foo(a, b) {\n    return a + b;\n}\n\nfun bar(a, b) {\n    fun baz(c) {\n        return a + b + c;\n    }\n    return baz;\n}\n\nreturn foo(1, 2) + bar(1, 2)(3);\n\nvar; // should sync!\n"
 expression: render_dcx()
 ---
-error: return statement found outside of an enclosing function definition
+error: `return` statement found outside of an enclosing function definition
    --> err_toplevel_return.lx@with_valid_returns:12:1
    |
 12 | return foo(1, 2) + bar(1, 2)(3);
-   | ^^^^^^ return statement found outside of an enclosing function definition
+   | ^^^^^^ `return` statement found outside of an enclosing function definition
 
 error: missing name in variable declaration
    --> err_toplevel_return.lx@with_valid_returns:14:4

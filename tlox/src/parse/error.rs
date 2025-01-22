@@ -259,6 +259,10 @@ pub enum ParserDiag<'s> {
     BreakOutsideLoop {
         site: Span,
     },
+
+    ThisOutsideMethod {
+        site: Span,
+    },
 }
 
 impl<'s> ParserDiag<'s> {
@@ -378,6 +382,10 @@ impl<'s> ParserDiag<'s> {
     pub const fn break_outside_loop(site: Span) -> Self {
         Self::BreakOutsideLoop { site }
     }
+
+    pub const fn this_outside_method(site: Span) -> Self {
+        Self::ThisOutsideMethod { site }
+    }
 }
 
 impl ParserDiag<'_> {
@@ -413,10 +421,13 @@ impl ParserDiag<'_> {
                 ctx.desc(),
             ),
             ParserDiag::ReturnOutsideFun { .. } => {
-                "return statement found outside of an enclosing function definition".into()
+                "`return` statement found outside of an enclosing function definition".into()
             }
             ParserDiag::BreakOutsideLoop { .. } => {
-                "break statement outside of an enclosing loop".into()
+                "`break` statement found outside of an enclosing loop".into()
+            }
+            ParserDiag::ThisOutsideMethod { .. } => {
+                "`this` expression found outside of an enclosing class method".into()
             }
         }
     }
@@ -434,9 +445,10 @@ impl ParserDiag<'_> {
             | ParserDiag::MissingMethodName { .. }
             | ParserDiag::MissingPropertyName { .. }
             | ParserDiag::InvalidPlaceExpr { .. } => Some("identifier"),
-            ParserDiag::ExcessiveArgs { .. } => None,
-            ParserDiag::ReturnOutsideFun { .. } => None,
-            ParserDiag::BreakOutsideLoop { .. } => None,
+            ParserDiag::ExcessiveArgs { .. }
+            | ParserDiag::ReturnOutsideFun { .. }
+            | ParserDiag::BreakOutsideLoop { .. }
+            | ParserDiag::ThisOutsideMethod { .. } => None,
         }
     }
 
@@ -510,9 +522,9 @@ impl ParserDiag<'_> {
                     kind.arg_num()
                 )),
 
-            ParserDiag::ReturnOutsideFun { site } => diag.with_primary(site, self.message()),
-
-            ParserDiag::BreakOutsideLoop { site } => diag.with_primary(site, self.message()),
+            ParserDiag::ReturnOutsideFun { site }
+            | ParserDiag::BreakOutsideLoop { site }
+            | ParserDiag::ThisOutsideMethod { site } => diag.with_primary(site, self.message()),
         }
     }
 }

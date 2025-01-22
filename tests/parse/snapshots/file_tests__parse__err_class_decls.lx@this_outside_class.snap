@@ -1,0 +1,16 @@
+---
+source: tests/parse.rs
+description: "print this;\n\nfun foo() {\n    print this;\n}\n"
+expression: render_dcx()
+---
+error: `this` expression found outside of an enclosing class method
+  --> err_class_decls.lx@this_outside_class:1:7
+  |
+1 | print this;
+  |       ^^^^ `this` expression found outside of an enclosing class method
+
+error: `this` expression found outside of an enclosing class method
+  --> err_class_decls.lx@this_outside_class:4:11
+  |
+4 |     print this;
+  |           ^^^^ `this` expression found outside of an enclosing class method

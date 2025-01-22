@@ -23,6 +23,7 @@ impl<'s> ResolutionTable<'s> {
     pub fn resolve(&mut self, stmts: &[Spanned<Stmt<'s>>]) {
         let mut resolver = Resolver {
             table: self,
+            enclosing_classes: 0,
             env: ResolverEnv::new(),
         };
 
@@ -46,6 +47,7 @@ impl<'s> ResolutionTable<'s> {
 
 struct Resolver<'s, 'i> {
     table: &'i mut ResolutionTable<'s>,
+    enclosing_classes: u32,
     env: ResolverEnv<'s>,
 }
 
@@ -121,6 +123,8 @@ impl<'s> Resolver<'s, '_> {
                 self.resolve_stmts(body);
             }
             Stmt::ClassDecl { name, methods } => {
+                self.enclosing_classes += 1;
+
                 self.env.declare(*name);
                 let _guard = self.env.push_scope();
                 self.env.declare(SYM_THIS.spanned(Span::empty()));
@@ -132,6 +136,8 @@ impl<'s> Resolver<'s, '_> {
                     }
                     self.resolve_stmts(&method.node.body);
                 }
+
+                self.enclosing_classes -= 1;
             }
             Stmt::VarDecl { name, init } => {
                 if let Some(expr) = init.as_ref() {

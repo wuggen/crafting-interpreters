@@ -12,3 +12,10 @@ class Foo {
 class {
     foo(lol) {}
 }
+
+//CASE this_outside_class
+print this;
+
+fun foo() {
+    print this;
+}
