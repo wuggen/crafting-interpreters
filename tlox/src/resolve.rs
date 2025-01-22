@@ -106,7 +106,6 @@ impl<'s> Resolver<'s, '_> {
                 }
             }
             Stmt::Break => {}
-
             Stmt::Block { stmts } => {
                 let _guard = self.env.push_scope();
                 self.resolve_stmts(stmts);

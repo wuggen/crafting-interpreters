@@ -1,0 +1,7 @@
+---
+source: tests/eval.rs
+description: "class Foo {\n    init() {\n        this.val = 0;\n        return;\n    }\n}\n\nvar foo = Foo();\nprint foo.val; // > 0\n"
+expression: combined
+---
+:: Output ::
+0

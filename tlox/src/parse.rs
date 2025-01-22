@@ -6,6 +6,7 @@ use crate::diag::Diagnostic;
 use crate::session::{Session, SessionKey};
 use crate::span::{HasSpan, Source, Span, Spannable, Spanned};
 use crate::symbol::Symbol;
+use crate::symbol::static_syms::SYM_INIT;
 use crate::syn::*;
 use crate::tok::{Lexer, Token};
 
@@ -31,6 +32,7 @@ pub struct Parser<'s> {
     enclosing_funs: usize,
     enclosing_loops: usize,
     enclosing_classes: usize,
+    in_init: bool,
 }
 
 // Grammar:
@@ -113,6 +115,7 @@ impl<'s> Parser<'s> {
             enclosing_funs: 0,
             enclosing_loops: 0,
             enclosing_classes: 0,
+            in_init: false,
         }
     }
 
@@ -695,6 +698,11 @@ impl<'s> Parser<'s> {
             })
         })?;
 
+        let old_init = self.in_init;
+        if matches!(kind, FunKind::Method) && name.node == SYM_INIT {
+            self.in_init = true;
+        }
+
         self.enclosing_funs += 1;
         let old_loops = self.enclosing_loops;
         self.enclosing_loops = 0;
@@ -708,6 +716,7 @@ impl<'s> Parser<'s> {
 
         self.enclosing_funs -= 1;
         self.enclosing_loops = old_loops;
+        self.in_init = old_init;
 
         Ok(Fun {
             name,
@@ -817,6 +826,11 @@ impl<'s> Parser<'s> {
         let (val, span) = if self.check_next(|tok| !matches!(tok, Token::Semicolon)) {
             let val = self.expr()?;
             let span = kw_return.span.join(val.span);
+
+            if self.in_init {
+                self.push_diag(ParserDiag::return_val_from_init(val.span));
+            }
+
             (Some(val), span)
         } else {
             (None, kw_return.span)

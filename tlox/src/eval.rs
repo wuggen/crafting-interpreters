@@ -14,7 +14,7 @@ use crate::resolve::ResolutionTable;
 use crate::session::SessionKey;
 use crate::span::{Span, Spannable, Spanned};
 use crate::symbol::Symbol;
-use crate::symbol::static_syms::SYM_THIS;
+use crate::symbol::static_syms::{SYM_INIT, SYM_THIS};
 use crate::syn::{
     BinopSym, BooleanBinopSym, Expr, ExprNode, Fun, Lit, Place, Program, Stmt, UnopSym,
 };
@@ -217,7 +217,7 @@ impl<'s> Interpreter<'s, '_> {
             } => {
                 let env = self.env.clone();
                 let fun = Value::Fun(FunValue::User(Rc::new(UserFun::new(
-                    name.node, args, body, env,
+                    name.node, args, body, env, false,
                 ))));
                 self.env.declare(*name, fun.clone());
                 res = fun;
@@ -229,7 +229,8 @@ impl<'s> Interpreter<'s, '_> {
                     .map(|fun| {
                         let name = fun.node.name.node;
                         let env = self.env.clone();
-                        let def = UserFun::new(name, &fun.node.args, &fun.node.body, env);
+                        let init = name == SYM_INIT;
+                        let def = UserFun::new(name, &fun.node.args, &fun.node.body, env, init);
                         (name, def)
                     })
                     .collect();
@@ -624,6 +625,13 @@ impl<'s> Env<'s> {
         }
         let (binds, decl) = self.lookup_scope(var);
         binds.get(decl)
+    }
+
+    pub(crate) fn get_this(&self) -> Option<Value<'s>> {
+        self.local_binds
+            .last()
+            .unwrap()
+            .get(SYM_THIS.spanned(Span::empty()))
     }
 
     fn get_place(&self, var: Spanned<Symbol<'s>>) -> Option<PlaceVal<'_, 's>> {

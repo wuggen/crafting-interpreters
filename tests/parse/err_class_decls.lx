@@ -19,3 +19,14 @@ print this;
 fun foo() {
     print this;
 }
+
+//CASE return_val_from_init
+fun init() {
+    return false; // no error
+}
+
+class Foo {
+    init() {
+        return false; // error
+    }
+}

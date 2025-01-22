@@ -263,6 +263,10 @@ pub enum ParserDiag<'s> {
     ThisOutsideMethod {
         site: Span,
     },
+
+    ReturnValFromInit {
+        val: Span,
+    },
 }
 
 impl<'s> ParserDiag<'s> {
@@ -386,6 +390,10 @@ impl<'s> ParserDiag<'s> {
     pub const fn this_outside_method(site: Span) -> Self {
         Self::ThisOutsideMethod { site }
     }
+
+    pub const fn return_val_from_init(val: Span) -> Self {
+        Self::ReturnValFromInit { val }
+    }
 }
 
 impl ParserDiag<'_> {
@@ -429,6 +437,9 @@ impl ParserDiag<'_> {
             ParserDiag::ThisOutsideMethod { .. } => {
                 "`this` expression found outside of an enclosing class method".into()
             }
+            ParserDiag::ReturnValFromInit { .. } => {
+                "returned a value from a class initializer".into()
+            }
         }
     }
 
@@ -448,7 +459,8 @@ impl ParserDiag<'_> {
             ParserDiag::ExcessiveArgs { .. }
             | ParserDiag::ReturnOutsideFun { .. }
             | ParserDiag::BreakOutsideLoop { .. }
-            | ParserDiag::ThisOutsideMethod { .. } => None,
+            | ParserDiag::ThisOutsideMethod { .. }
+            | ParserDiag::ReturnValFromInit { .. } => None,
         }
     }
 
@@ -525,6 +537,10 @@ impl ParserDiag<'_> {
             ParserDiag::ReturnOutsideFun { site }
             | ParserDiag::BreakOutsideLoop { site }
             | ParserDiag::ThisOutsideMethod { site } => diag.with_primary(site, self.message()),
+
+            ParserDiag::ReturnValFromInit { val } => diag
+                .with_primary(val, "cannot return a value from a class initializer")
+                .with_note("class initializers always implicitly return `this`"),
         }
     }
 }

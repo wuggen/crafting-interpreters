@@ -204,6 +204,7 @@ pub struct UserFun<'s> {
     name: Symbol<'s>,
     code: Rc<FunCode<'s>>,
     env: Env<'s>,
+    init: bool,
 }
 
 impl Debug for UserFun<'_> {
@@ -226,12 +227,18 @@ impl<'s> UserFun<'s> {
         args: &[Spanned<Symbol<'s>>],
         body: &[Spanned<Stmt<'s>>],
         env: Env<'s>,
+        init: bool,
     ) -> Self {
         let code = Rc::new(FunCode {
             args: Vec::from(args),
             body: Vec::from(body),
         });
-        Self { name, code, env }
+        Self {
+            name,
+            code,
+            env,
+            init,
+        }
     }
 
     pub fn bind(&self, instance: InstanceValue<'s>) -> UserFun<'s> {
@@ -241,6 +248,7 @@ impl<'s> UserFun<'s> {
         UserFun {
             name: self.name,
             code: self.code.clone(),
+            init: self.init,
             env,
         }
     }
@@ -268,7 +276,7 @@ impl<'s> Callable<'s> for UserFun<'s> {
             env.declare(name, val);
         }
 
-        interpreter
+        let val = interpreter
             .eval_with_env(&mut env, &self.code.body)
             .or_else(|errs| {
                 if let [RuntimeError::FunReturn { val }] = &errs[..] {
@@ -276,7 +284,13 @@ impl<'s> Callable<'s> for UserFun<'s> {
                 } else {
                     Err(errs)
                 }
-            })
+            })?;
+
+        if self.init {
+            Ok(self.env.get_this().unwrap())
+        } else {
+            Ok(val)
+        }
     }
 }
 
@@ -317,10 +331,11 @@ impl<'s> Callable<'s> for ClassValue<'s> {
         };
 
         if let Some(init) = self.methods.get(&SYM_INIT) {
-            init.bind(instance.clone()).call(interpreter, args)?;
+            debug_assert!(init.init);
+            init.bind(instance).call(interpreter, args)
+        } else {
+            Ok(Value::Instance(instance))
         }
-
-        Ok(Value::Instance(instance))
     }
 }
 

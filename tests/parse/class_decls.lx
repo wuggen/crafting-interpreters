@@ -23,3 +23,10 @@ class Haha {
         return yay + wahoo;
     }
 }
+
+//CASE empty_return_in_init
+class Foo {
+    init() {
+        return;
+    }
+}

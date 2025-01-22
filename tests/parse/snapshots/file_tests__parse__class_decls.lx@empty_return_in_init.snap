@@ -1,0 +1,10 @@
+---
+source: tests/parse.rs
+description: "class Foo {\n    init() {\n        return;\n    }\n}\n"
+expression: first_parse
+---
+class Foo {
+    init() {
+        return;
+    }
+}

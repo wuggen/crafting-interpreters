@@ -1,0 +1,12 @@
+---
+source: tests/parse.rs
+description: "fun init() {\n    return false; // no error\n}\n\nclass Foo {\n    init() {\n        return false; // error\n    }\n}\n"
+expression: render_dcx()
+---
+error: returned a value from a class initializer
+  --> err_class_decls.lx@return_val_from_init:7:16
+  |
+7 |         return false; // error
+  |                ^^^^^ cannot return a value from a class initializer
+  |
+  = note: class initializers always implicitly return `this`
