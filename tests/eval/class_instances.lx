@@ -32,3 +32,13 @@ class Foo {
 var foo = Foo();
 foo.set_lol("lol");
 print foo.get_lol(); // > lol
+
+//CASE initializer
+class Foo {
+    init(val) {
+        this.val = val;
+    }
+}
+
+var foo = Foo("lol");
+print foo.val; // > lol

@@ -1,0 +1,13 @@
+---
+source: tests/eval.rs
+description: "class Foo {\n    init() {\n        this.val = \"heya\";\n    }\n}\n\nvar foo = Foo(\"lmao\"); // > error, expects zero arguments\n"
+expression: combined
+---
+:: Diagnostics ::
+error: callee `Foo` expects 0 arguments, found 1
+  --> err_class_instances.lx@initializer_wrong_arity:7:14
+  |
+7 | var foo = Foo("lmao"); // > error, expects zero arguments
+  |           ---^^^^^^^^ found 1 arguments
+  |           |   
+  |           callee `Foo` expects 0 arguments

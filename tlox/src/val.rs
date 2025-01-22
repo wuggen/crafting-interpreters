@@ -11,7 +11,7 @@ use crate::error::{RuntimeError, RuntimeResult};
 use crate::eval::{Env, Interpreter, PlaceVal};
 use crate::span::{Span, Spannable, Spanned};
 use crate::symbol::Symbol;
-use crate::symbol::static_syms::SYM_THIS;
+use crate::symbol::static_syms::{SYM_INIT, SYM_THIS};
 use crate::syn::Stmt;
 use crate::ty::{PrimitiveTy, Ty};
 
@@ -299,18 +299,28 @@ impl<'s> Callable<'s> for ClassValue<'s> {
     }
 
     fn arity(&self) -> u8 {
-        0
+        if let Some(init) = self.methods.get(&SYM_INIT) {
+            init.arity()
+        } else {
+            0
+        }
     }
 
     fn call(
         &self,
-        _interpreter: &mut Interpreter<'s, '_>,
-        _args: &[Value<'s>],
+        interpreter: &mut Interpreter<'s, '_>,
+        args: &[Value<'s>],
     ) -> RuntimeResult<'s, Value<'s>> {
-        Ok(Value::Instance(InstanceValue {
+        let instance = InstanceValue {
             class: self.clone(),
             properties: Rc::new(RefCell::new(HashMap::new())),
-        }))
+        };
+
+        if let Some(init) = self.methods.get(&SYM_INIT) {
+            init.bind(instance.clone()).call(interpreter, args)?;
+        }
+
+        Ok(Value::Instance(instance))
     }
 }
 

@@ -50,4 +50,5 @@ macro_rules! static_syms {
 static_syms! {
     SYM_CLOCK => "clock",
     SYM_THIS => "this",
+    SYM_INIT => "init",
 }

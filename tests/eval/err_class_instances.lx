@@ -11,3 +11,12 @@ foo.b = a + "lol"; // Error: foo is not an instance
 class Foo {}
 var foo = Foo();
 foo.b = a + "lol";
+
+//CASE initializer_wrong_arity
+class Foo {
+    init() {
+        this.val = "heya";
+    }
+}
+
+var foo = Foo("lmao"); // > error, expects zero arguments
