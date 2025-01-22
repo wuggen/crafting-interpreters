@@ -55,7 +55,7 @@ impl SessionKey<'_> {
     /// [`SessionKey::new`]; see that function's documentation for details.
     #[inline(always)]
     pub unsafe fn with_lifetime<T>(_: &T) -> SessionKey {
-        Self::new()
+        unsafe { Self::new() }
     }
 }
 

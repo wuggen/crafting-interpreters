@@ -44,7 +44,7 @@ pub fn oxford_and<D>(list: &[D]) -> Oxford<D> {
 /// The value must not be accessed outside of the `'a` lifetime.
 #[inline(always)]
 pub unsafe fn with_lifetime<'a, T: ?Sized>(val: &T) -> &'a T {
-    std::mem::transmute(val)
+    unsafe { std::mem::transmute(val) }
 }
 
 #[cfg(test)]

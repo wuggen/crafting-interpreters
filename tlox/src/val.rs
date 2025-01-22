@@ -10,8 +10,8 @@ use crate::callable::Callable;
 use crate::error::{RuntimeError, RuntimeResult};
 use crate::eval::{Env, Interpreter, PlaceVal};
 use crate::span::{Span, Spannable, Spanned};
-use crate::symbol::static_syms::SYM_THIS;
 use crate::symbol::Symbol;
+use crate::symbol::static_syms::SYM_THIS;
 use crate::syn::Stmt;
 use crate::ty::{PrimitiveTy, Ty};
 

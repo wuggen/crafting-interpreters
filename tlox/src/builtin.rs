@@ -7,8 +7,8 @@ use crate::callable::Callable;
 use crate::error::RuntimeResult;
 use crate::eval::{Env, Interpreter};
 use crate::span::{Span, Spannable};
-use crate::symbol::static_syms::SYM_CLOCK;
 use crate::symbol::Symbol;
+use crate::symbol::static_syms::SYM_CLOCK;
 use crate::val::{FunValue, Value};
 
 #[derive(Debug, Clone)]

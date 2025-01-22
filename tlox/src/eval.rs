@@ -8,13 +8,13 @@ use std::rc::Rc;
 
 use crate::builtin::Builtin;
 use crate::diag::Diagnostic;
-use crate::error::{join_errs, CoercionCause, RuntimeError, RuntimeResult};
+use crate::error::{CoercionCause, RuntimeError, RuntimeResult, join_errs};
 use crate::output::OutputStream;
 use crate::resolve::ResolutionTable;
 use crate::session::SessionKey;
 use crate::span::{Span, Spannable, Spanned};
-use crate::symbol::static_syms::SYM_THIS;
 use crate::symbol::Symbol;
+use crate::symbol::static_syms::SYM_THIS;
 use crate::syn::{
     BinopSym, BooleanBinopSym, Expr, ExprNode, Fun, Lit, Place, Program, Stmt, UnopSym,
 };
@@ -278,10 +278,10 @@ impl<'s> Interpreter<'s, '_> {
                     UnopSym::Not => Ok(Value::Bool(!operand_val.is_truthy())),
 
                     UnopSym::Neg => {
-                        let operand_val = self.coerce_to_num(
-                            operand.with_node(operand_val),
-                            CoercionCause::Unop { sym: *sym },
-                        )?;
+                        let operand_val = self
+                            .coerce_to_num(operand.with_node(operand_val), CoercionCause::Unop {
+                                sym: *sym,
+                            })?;
                         Ok(Value::Num(-operand_val))
                     }
                 }
@@ -569,7 +569,7 @@ impl Drop for ScopeGuard<'_> {
 }
 
 impl<'s> Env<'s> {
-    pub fn fmt_bindings(&self) -> impl Display + use<'s, '_> {
+    pub fn fmt_bindings(&self) -> impl Display {
         struct EnvDisplay<'s, 'e> {
             env: &'e Env<'s>,
         }

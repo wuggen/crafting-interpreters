@@ -52,7 +52,7 @@ where
     }
 }
 
-pub fn collect_files(base_path: &Path) -> impl Iterator<Item = PathBuf> {
+pub fn collect_files(base_path: &Path) -> impl Iterator<Item = PathBuf> + use<> {
     let filter_fn = move |entry: DirEntry| {
         if !entry.file_type().unwrap().is_file() {
             return None;
@@ -76,7 +76,7 @@ pub fn collect_cases_from_file<'a>(
     base_name: &'a str,
     file_content: &'a str,
     filter: &'a str,
-) -> impl Iterator<Item = TestCase> + use<'a> {
+) -> impl Iterator<Item = TestCase> {
     let mut name = String::from(base_name);
     let mut content = String::new();
     let mut lines = file_content.lines();

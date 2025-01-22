@@ -66,28 +66,24 @@ fn source_indices_and_contents() {
         ],
     );
 
-    assert_eq!(
-        map.sources().map(|s| s.index()).collect::<Vec<_>>(),
-        &[0, 1, 2],
-    );
+    assert_eq!(map.sources().map(|s| s.index()).collect::<Vec<_>>(), &[
+        0, 1, 2
+    ],);
 
-    assert_eq!(
-        map.sources().map(|s| s.span()).collect::<Vec<_>>(),
-        &[
-            Span {
-                byte_offset: 0,
-                len: 4
-            },
-            Span {
-                byte_offset: 4,
-                len: 5
-            },
-            Span {
-                byte_offset: 9,
-                len: 4
-            },
-        ],
-    );
+    assert_eq!(map.sources().map(|s| s.span()).collect::<Vec<_>>(), &[
+        Span {
+            byte_offset: 0,
+            len: 4
+        },
+        Span {
+            byte_offset: 4,
+            len: 5
+        },
+        Span {
+            byte_offset: 9,
+            len: 4
+        },
+    ],);
 
     assert_eq!(&*map.source(0).line(0).content(), "hey\n");
     assert!(map.source(0).line_checked(1).is_none());
@@ -237,27 +233,21 @@ fn source_cursors() {
     assert_eq!(&*cursor.remaining(), "line 1\n");
     assert_eq!(cursor.line().global_index(), 1);
     assert_eq!(cursor.source().index(), 0);
-    assert_eq!(
-        cursor.location(),
-        Location {
-            source: 0,
-            line: 1,
-            column: 0,
-        },
-    );
+    assert_eq!(cursor.location(), Location {
+        source: 0,
+        line: 1,
+        column: 0,
+    },);
 
     let mut cursor = map.source(1).cursor();
     assert_eq!(&*cursor.remaining(), "line 2\nline 3\n");
     assert_eq!(cursor.line().global_index(), 2);
     assert_eq!(cursor.source().index(), 1);
-    assert_eq!(
-        cursor.location(),
-        Location {
-            source: 1,
-            line: 0,
-            column: 0,
-        },
-    );
+    assert_eq!(cursor.location(), Location {
+        source: 1,
+        line: 0,
+        column: 0,
+    },);
     for _ in 0..7 {
         cursor.advance();
     }

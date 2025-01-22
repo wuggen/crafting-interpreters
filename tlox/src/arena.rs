@@ -7,8 +7,8 @@ use std::marker::PhantomData;
 use std::mem::{self, MaybeUninit};
 use std::ops::Mul;
 use std::ptr::{self, NonNull};
-use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 use std::sync::RwLock;
+use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
 #[cfg(test)]
 mod test;
@@ -72,15 +72,15 @@ trait PtrAddCap<T> {
 
 impl<T> PtrAddCap<T> for *mut T {
     unsafe fn add_capacity(self, capacity: Capacity<T>) -> Self {
-        self.add(capacity.0)
+        unsafe { self.add(capacity.0) }
     }
 
     unsafe fn add_bytes(self, bytes: ByteSize) -> Self {
-        self.byte_add(bytes.0)
+        unsafe { self.byte_add(bytes.0) }
     }
 
     unsafe fn sub_ptr_capacity(self, other: Self) -> Capacity<T> {
-        Capacity::new(self.sub_ptr(other))
+        unsafe { Capacity::new(self.sub_ptr(other)) }
     }
 }
 
@@ -145,7 +145,10 @@ unsafe fn dealloc_chunk<T>(storage: NonNull<[MaybeUninit<T>]>) {
     let capacity = Capacity::<T>::new(ptr::metadata(storage_ptr));
     debug_println!(@"=> found to be {capacity:?}");
     let layout = capacity.layout_for();
-    alloc::dealloc(storage_ptr as *mut u8, layout);
+
+    unsafe {
+        alloc::dealloc(storage_ptr as *mut u8, layout);
+    }
 }
 
 impl<T> ArenaChunk<T> {
@@ -169,8 +172,10 @@ impl<T> ArenaChunk<T> {
     }
 
     unsafe fn drop_occupied(&mut self) {
-        for item in &mut (*self.storage.as_ptr())[..self.occupied] {
-            item.assume_init_drop();
+        unsafe {
+            for item in &mut (*self.storage.as_ptr())[..self.occupied] {
+                item.assume_init_drop();
+            }
         }
     }
 }
