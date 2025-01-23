@@ -45,6 +45,14 @@ pub enum RuntimeError<'s> {
         usage: VarUsage,
     },
 
+    /// The superclass of a class declaration does not evaluate to a class value.
+    SuperclassNotClass {
+        /// Span of the superclass name.
+        site: Spanned<Symbol<'s>>,
+        /// Type of the variable bound to that name.
+        ty: Ty,
+    },
+
     /// Attempted to call a non-Callable value.
     NotCallable {
         /// Span of the expression that was called.
@@ -101,6 +109,10 @@ impl<'s> RuntimeError<'s> {
             site,
             usage: VarUsage::Assign,
         }
+    }
+
+    pub fn superclass_not_class(site: Spanned<Symbol<'s>>, ty: Ty) -> Self {
+        Self::SuperclassNotClass { site, ty }
     }
 
     pub fn not_callable(site: Span, ty: Ty) -> Self {
@@ -228,6 +240,16 @@ impl Diagnostic for RuntimeError<'_> {
 
                 Diag::new(DiagKind::Error, message)
                     .with_primary(site.span, "variable is not bound at this point")
+            }
+
+            RuntimeError::SuperclassNotClass { site, ty } => {
+                let message = format!("superclass must be a class (found {ty})");
+                Diag::new(DiagKind::Error, message).with_primary(
+                    site.span,
+                    format!(
+                        "variable name `{site}` is bound to a value of type {ty} at this point"
+                    ),
+                )
             }
 
             RuntimeError::NotCallable { site, ty } => {

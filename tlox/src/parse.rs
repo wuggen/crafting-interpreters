@@ -59,7 +59,7 @@ pub struct Parser<'s> {
 //
 // fun_decl -> 'fun' fun
 //
-// class_decl -> 'class' IDENT '{' fun* '}'
+// class_decl -> 'class' IDENT ('<' IDENT)? '{' fun* '}'
 //
 // fun -> IDENT '(' params? ')' block_stmt
 //
@@ -659,6 +659,19 @@ impl<'s> Parser<'s> {
             ParserError::unexpected(tok).handled()
         })?;
 
+        let superclass = if let Ok(extends) = self.advance_or_peek(|tok| matches!(tok, Token::Less))
+        {
+            Some(self.parse_ident().map_err(|tok| {
+                self.push_diag(ParserDiag::missing_superclass_name(
+                    extends.span,
+                    self.span_or_eof(&tok),
+                ));
+                ParserError::unexpected(tok).handled()
+            })?)
+        } else {
+            None
+        };
+
         self.enclosing_classes += 1;
 
         let (_obrace, methods, cbrace) = self.parse_braces(|this| {
@@ -683,7 +696,12 @@ impl<'s> Parser<'s> {
         self.enclosing_classes -= 1;
 
         let span = class.span.join(cbrace);
-        Ok(Stmt::ClassDecl { name, methods }.spanned(span))
+        Ok(Stmt::ClassDecl {
+            name,
+            superclass,
+            methods,
+        }
+        .spanned(span))
     }
 
     fn parse_fun(&mut self, kind: FunKind) -> ParserRes<'s, Spanned<Fun<'s>>> {

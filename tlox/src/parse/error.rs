@@ -230,6 +230,11 @@ pub enum ParserDiag<'s> {
         expected_name: Span,
     },
 
+    MissingSuperclassName {
+        extends: Span,
+        expected: Span,
+    },
+
     MissingMethodName {
         class: Spanned<Symbol<'s>>,
         expected_name: Span,
@@ -352,6 +357,10 @@ impl<'s> ParserDiag<'s> {
         Self::missing_decl_name(DeclKind::Class, decl, expected_name)
     }
 
+    pub const fn missing_superclass_name(extends: Span, expected: Span) -> Self {
+        Self::MissingSuperclassName { extends, expected }
+    }
+
     pub const fn missing_method_name(class: Spanned<Symbol<'s>>, expected_name: Span) -> Self {
         Self::MissingMethodName {
             class,
@@ -412,6 +421,7 @@ impl ParserDiag<'_> {
             ParserDiag::MissingDeclName { kind, .. } => {
                 format!("missing name in {} declaration", kind.desc())
             }
+            ParserDiag::MissingSuperclassName { .. } => "missing superclass name after `<`".into(),
             ParserDiag::MissingMethodName { class, .. } => format!(
                 "missing method name in definition of class `{}`",
                 class.node
@@ -453,6 +463,7 @@ impl ParserDiag<'_> {
                 Some("expression")
             }
             ParserDiag::MissingDeclName { .. }
+            | ParserDiag::MissingSuperclassName { .. }
             | ParserDiag::MissingMethodName { .. }
             | ParserDiag::MissingPropertyName { .. }
             | ParserDiag::InvalidPlaceExpr { .. } => Some("identifier"),
@@ -504,6 +515,10 @@ impl ParserDiag<'_> {
             } => diag
                 .with_primary(expected_name, format!("expected {} name here", kind.desc()))
                 .with_secondary(decl, format!("{} declaration requires a name", kind.desc())),
+
+            ParserDiag::MissingSuperclassName { extends, expected } => diag
+                .with_primary(expected, "expected superclass name here")
+                .with_secondary(extends, "expected due to `<` here"),
 
             ParserDiag::MissingMethodName { expected_name, .. } => {
                 diag.with_primary(expected_name, "expected method name here")

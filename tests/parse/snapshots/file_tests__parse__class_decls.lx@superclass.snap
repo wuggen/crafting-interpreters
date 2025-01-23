@@ -1,0 +1,7 @@
+---
+source: tests/parse.rs
+description: "class Foo < Bar {}\n"
+expression: first_parse
+---
+class Foo < Bar {
+}

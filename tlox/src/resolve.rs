@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use crate::diag::{Diag, Diagnostic};
 use crate::span::{Span, Spannable, Spanned};
 use crate::symbol::Symbol;
 use crate::symbol::static_syms::SYM_THIS;
@@ -121,7 +122,24 @@ impl<'s> Resolver<'s, '_> {
                 }
                 self.resolve_stmts(body);
             }
-            Stmt::ClassDecl { name, methods } => {
+            Stmt::ClassDecl {
+                name,
+                superclass,
+                methods,
+            } => {
+                if let Some(superclass) = superclass {
+                    if superclass.node == name.node {
+                        Diag::new(
+                            crate::diag::DiagKind::Error,
+                            format!("class `{name}` cannot inherit from itself"),
+                        )
+                        .with_primary(superclass.span, "attempt to derive a class from itself")
+                        .emit();
+                    }
+
+                    self.resolve_name(*superclass);
+                }
+
                 self.enclosing_classes += 1;
 
                 self.env.declare(*name);

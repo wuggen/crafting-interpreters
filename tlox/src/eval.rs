@@ -223,7 +223,29 @@ impl<'s> Interpreter<'s, '_> {
                 res = fun;
             }
 
-            Stmt::ClassDecl { name, methods } => {
+            Stmt::ClassDecl {
+                name,
+                superclass,
+                methods,
+            } => {
+                let superclass = if let Some(superclass) = superclass {
+                    let val = self
+                        .env
+                        .get(*superclass)
+                        .ok_or_else(|| vec![RuntimeError::unbound_var_ref(*superclass)])?;
+
+                    if let Value::Class(superclass) = val {
+                        Some(superclass)
+                    } else {
+                        return Err(vec![RuntimeError::superclass_not_class(
+                            *superclass,
+                            val.ty(),
+                        )]);
+                    }
+                } else {
+                    None
+                };
+
                 let methods = methods
                     .iter()
                     .map(|fun| {
@@ -235,7 +257,7 @@ impl<'s> Interpreter<'s, '_> {
                     })
                     .collect();
 
-                let class = Value::Class(ClassValue::new(name.node, methods));
+                let class = Value::Class(ClassValue::new(name.node, superclass, methods));
                 self.env.declare(*name, class.clone());
                 res = class;
             }

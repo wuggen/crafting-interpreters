@@ -1,0 +1,10 @@
+//CASE no_super
+class Foo {
+    method() {
+        print "foo";
+    }
+}
+
+class Bar < Foo {}
+
+Bar().method(); // > foo

@@ -30,3 +30,6 @@ class Foo {
         return;
     }
 }
+
+//CASE superclass
+class Foo < Bar {}

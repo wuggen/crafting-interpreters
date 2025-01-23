@@ -119,6 +119,7 @@ pub enum Stmt<'s> {
     /// A class declaration.
     ClassDecl {
         name: Spanned<Symbol<'s>>,
+        superclass: Option<Spanned<Symbol<'s>>>,
         methods: Vec<Spanned<Fun<'s>>>,
     },
 
@@ -178,13 +179,15 @@ impl SynEq for Stmt<'_> {
             (
                 Stmt::ClassDecl {
                     name: n1,
+                    superclass: s1,
                     methods: m1,
                 },
                 Stmt::ClassDecl {
                     name: n2,
+                    superclass: s2,
                     methods: m2,
                 },
-            ) => n1.syn_eq(n2) && m1.syn_eq(m2),
+            ) => n1.syn_eq(n2) && s1.syn_eq(s2) && m1.syn_eq(m2),
 
             (Stmt::Return { val: v1 }, Stmt::Return { val: v2 }) => v1.syn_eq(v2),
 
@@ -329,8 +332,18 @@ impl Stmt<'_> {
                             def.display_indented_level(self.level, true)
                         )
                     }
-                    Stmt::ClassDecl { name, methods } => {
-                        writeln!(f, "{:first$}class {} {{", "", name.node)?;
+                    Stmt::ClassDecl {
+                        name,
+                        superclass,
+                        methods,
+                    } => {
+                        // writeln!(f, "{:first$}class {} {{", "", name.node)?;
+                        write!(f, "{:first$}class {}", "", name.node)?;
+                        if let Some(superclass) = superclass {
+                            write!(f, " < {}", superclass.node)?;
+                        }
+                        writeln!(f, " {{")?;
+
                         for method in methods {
                             writeln!(
                                 f,

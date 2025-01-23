@@ -297,13 +297,34 @@ impl<'s> Callable<'s> for UserFun<'s> {
 #[derive(Debug, Clone)]
 pub struct ClassValue<'s> {
     name: Symbol<'s>,
+    superclass: Option<Box<ClassValue<'s>>>,
     methods: Rc<HashMap<Symbol<'s>, UserFun<'s>>>,
 }
 
 impl<'s> ClassValue<'s> {
-    pub fn new(name: Symbol<'s>, methods: HashMap<Symbol<'s>, UserFun<'s>>) -> Self {
+    pub fn new(
+        name: Symbol<'s>,
+        superclass: Option<ClassValue<'s>>,
+        methods: HashMap<Symbol<'s>, UserFun<'s>>,
+    ) -> Self {
+        let superclass = superclass.map(Box::new);
         let methods = Rc::new(methods);
-        Self { name, methods }
+        Self {
+            name,
+            superclass,
+            methods,
+        }
+    }
+
+    fn find_method(&self, name: Symbol<'s>, instance: &InstanceValue<'s>) -> Option<Value<'s>> {
+        self.methods
+            .get(&name)
+            .map(|method| Value::Fun(FunValue::User(Rc::new(method.bind(instance.clone())))))
+            .or_else(|| {
+                self.superclass
+                    .as_ref()
+                    .and_then(|superclass| superclass.find_method(name, instance))
+            })
     }
 }
 
@@ -347,12 +368,11 @@ pub struct InstanceValue<'s> {
 
 impl<'s> InstanceValue<'s> {
     pub fn get_property(&self, name: Symbol<'s>) -> Option<Value<'s>> {
-        self.properties.borrow().get(&name).cloned().or_else(|| {
-            self.class
-                .methods
-                .get(&name)
-                .map(|method| Value::Fun(FunValue::User(Rc::new(method.bind(self.clone())))))
-        })
+        self.properties
+            .borrow()
+            .get(&name)
+            .cloned()
+            .or_else(|| self.class.find_method(name, self))
     }
 
     pub fn get_property_place(&self, name: Symbol<'s>) -> PlaceVal<'_, 's> {
