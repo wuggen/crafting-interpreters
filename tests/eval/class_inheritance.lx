@@ -8,3 +8,37 @@ class Foo {
 class Bar < Foo {}
 
 Bar().method(); // > foo
+
+//CASE simple_super
+class Foo {
+    method() {
+        print "Foo method";
+    }
+}
+
+class Bar < Foo {
+    method() {
+        super.method();
+        print "Bar method";
+    }
+}
+
+Bar().method(); //> Foo method\nBar method
+
+//CASE inheritance_chain
+class Foo {
+    method() {
+        print "Foo method";
+    }
+}
+
+class Bar < Foo {
+    method() {
+        super.method();
+        print "Bar method";
+    }
+}
+
+class Baz < Bar {}
+
+Baz().method(); //> Foo method\nBar method

@@ -1,0 +1,10 @@
+---
+source: tests/parse.rs
+description: "class Foo {\n    method() {\n        super.method(); // error: no superclass\n    }\n}\n"
+expression: render_dcx()
+---
+error: `super` expression found outside of a class with no superclass
+  --> err_class_decls.lx@super_without_superclass:3:9
+  |
+3 |         super.method(); // error: no superclass
+  |         ^^^^^ `super` expression found outside of a class with no superclass

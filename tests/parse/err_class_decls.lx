@@ -30,3 +30,25 @@ class Foo {
         return false; // error
     }
 }
+
+//CASE super_outside_class
+print super.method;
+
+fun foo() {
+    super.foo();
+}
+
+//CASE super_without_access
+class Foo < Bar {
+    method() {
+        print super;
+        print super.;
+    }
+}
+
+//CASE super_without_superclass
+class Foo {
+    method() {
+        super.method(); // error: no superclass
+    }
+}

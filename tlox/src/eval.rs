@@ -14,7 +14,7 @@ use crate::resolve::ResolutionTable;
 use crate::session::SessionKey;
 use crate::span::{Span, Spannable, Spanned};
 use crate::symbol::Symbol;
-use crate::symbol::static_syms::{SYM_INIT, SYM_THIS};
+use crate::symbol::static_syms::{SYM_INIT, SYM_SUPER, SYM_THIS};
 use crate::syn::{
     BinopSym, BooleanBinopSym, Expr, ExprNode, Fun, Lit, Place, Program, Stmt, UnopSym,
 };
@@ -228,14 +228,19 @@ impl<'s> Interpreter<'s, '_> {
                 superclass,
                 methods,
             } => {
-                let superclass = if let Some(superclass) = superclass {
+                let (superclass, super_guard) = if let Some(superclass) = superclass {
                     let val = self
                         .env
                         .get(*superclass)
                         .ok_or_else(|| vec![RuntimeError::unbound_var_ref(*superclass)])?;
 
                     if let Value::Class(superclass) = val {
-                        Some(superclass)
+                        let guard = self.env.push_scope();
+                        self.env.declare(
+                            SYM_SUPER.spanned(Span::empty()),
+                            Value::Class(superclass.clone()),
+                        );
+                        (Some(superclass), Some(guard))
                     } else {
                         return Err(vec![RuntimeError::superclass_not_class(
                             *superclass,
@@ -243,7 +248,7 @@ impl<'s> Interpreter<'s, '_> {
                         )]);
                     }
                 } else {
-                    None
+                    (None, None)
                 };
 
                 let methods = methods
@@ -258,6 +263,9 @@ impl<'s> Interpreter<'s, '_> {
                     .collect();
 
                 let class = Value::Class(ClassValue::new(name.node, superclass, methods));
+
+                drop(super_guard);
+
                 self.env.declare(*name, class.clone());
                 res = class;
             }
@@ -360,6 +368,29 @@ impl<'s> Interpreter<'s, '_> {
                         receiver.ty(),
                     )])
                 }
+            }
+
+            ExprNode::Super { name, kw } => {
+                let superclass = match self
+                    .env
+                    .get(SYM_SUPER.spanned(*kw))
+                    .expect("evaluated unbound `super`")
+                {
+                    Value::Class(class) => class,
+                    _ => panic!("`super` not bound to class"),
+                };
+                let instance = match self
+                    .env
+                    .get(SYM_THIS.spanned(*kw))
+                    .expect("evaluated `super` with unbound `this`")
+                {
+                    Value::Instance(instance) => instance,
+                    _ => panic!("evaluated `super` with `this` not bound to an instance"),
+                };
+
+                superclass
+                    .find_method(name.node, &instance)
+                    .ok_or_else(|| vec![RuntimeError::undefined_property(*name, *kw)])
             }
         }
     }

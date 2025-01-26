@@ -1,6 +1,6 @@
 ---
 source: tests/eval.rs
-description: "class Foo {\n    init() {\n        print this;\n    }\n}\n\n// Should print three times\nvar foo = Foo();\nprint foo.init();\n"
+description: "class Foo {\n    init() {\n        print this;\n    }\n}\n\n// Should print three times\nvar foo = Foo();\nprint foo.init();\n\n"
 expression: combined
 ---
 :: Output ::

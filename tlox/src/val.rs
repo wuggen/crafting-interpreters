@@ -316,7 +316,7 @@ impl<'s> ClassValue<'s> {
         }
     }
 
-    fn find_method(&self, name: Symbol<'s>, instance: &InstanceValue<'s>) -> Option<Value<'s>> {
+    pub fn find_method(&self, name: Symbol<'s>, instance: &InstanceValue<'s>) -> Option<Value<'s>> {
         self.methods
             .get(&name)
             .map(|method| Value::Fun(FunValue::User(Rc::new(method.bind(instance.clone())))))

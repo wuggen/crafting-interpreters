@@ -32,4 +32,8 @@ class Foo {
 }
 
 //CASE superclass
-class Foo < Bar {}
+class Foo < Bar {
+    method() {
+        super.method();
+    }
+}

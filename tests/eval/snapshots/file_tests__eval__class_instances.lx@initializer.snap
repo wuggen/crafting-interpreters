@@ -1,6 +1,6 @@
 ---
 source: tests/eval.rs
-description: "class Foo {\n    init(val) {\n        this.val = val;\n    }\n}\n\nvar foo = Foo(\"lol\");\nprint foo.val; // > lol\n"
+description: "class Foo {\n    init(val) {\n        this.val = val;\n    }\n}\n\nvar foo = Foo(\"lol\");\nprint foo.val; // > lol\n\n"
 expression: combined
 ---
 :: Output ::

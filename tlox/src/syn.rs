@@ -785,6 +785,15 @@ pub enum ExprNode<'s> {
         /// The property name
         name: Spanned<Symbol<'s>>,
     },
+
+    /// A superclass method access
+    Super {
+        /// The span of the `super` keyword
+        kw: Span,
+
+        /// The accessed method
+        name: Spanned<Symbol<'s>>,
+    },
 }
 
 impl Debug for ExprNode<'_> {
@@ -813,6 +822,7 @@ impl Debug for ExprNode<'_> {
                 .field(&receiver)
                 .field(&name)
                 .finish(),
+            ExprNode::Super { name, .. } => f.debug_tuple("Super").field(&name).finish(),
         }
     }
 }
@@ -869,6 +879,7 @@ impl SynEq for ExprNode<'_> {
                     name: n2,
                 },
             ) => r1.syn_eq(r2) && n1.syn_eq(n2),
+            (Self::Super { name: n1, .. }, Self::Super { name: n2, .. }) => n1.syn_eq(n2),
             _ => false,
         }
     }
@@ -930,9 +941,14 @@ pub mod expr {
         Box::new(ExprNode::Call { callee, args }).spanned(span)
     }
 
-    pub fn get<'s>(receiver: Spanned<Expr<'s>>, name: Spanned<Symbol<'s>>) -> Spanned<Expr<'s>> {
+    pub fn access<'s>(receiver: Spanned<Expr<'s>>, name: Spanned<Symbol<'s>>) -> Spanned<Expr<'s>> {
         let span = receiver.span.join(name.span);
         Box::new(ExprNode::Access { receiver, name }).spanned(span)
+    }
+
+    pub fn super_access(kw: Span, name: Spanned<Symbol<'_>>) -> Spanned<Expr<'_>> {
+        let span = kw.join(name.span);
+        Box::new(ExprNode::Super { kw, name }).spanned(span)
     }
 }
 
@@ -1003,6 +1019,7 @@ impl Display for ExprNode<'_> {
                 write!(f, ")")
             }
             ExprNode::Access { receiver, name } => write!(f, "{}.{}", receiver.node, name.node),
+            ExprNode::Super { name, .. } => write!(f, "super.{}", name.node),
         }
     }
 }

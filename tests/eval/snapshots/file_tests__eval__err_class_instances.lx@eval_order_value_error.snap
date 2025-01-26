@@ -1,6 +1,6 @@
 ---
 source: tests/eval.rs
-description: "class Foo {}\nvar foo = Foo();\nfoo.b = a + \"lol\";\n"
+description: "class Foo {}\nvar foo = Foo();\nfoo.b = a + \"lol\";\n\n"
 expression: combined
 ---
 :: Diagnostics ::

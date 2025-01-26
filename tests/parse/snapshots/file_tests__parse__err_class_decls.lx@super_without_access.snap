@@ -1,0 +1,37 @@
+---
+source: tests/parse.rs
+description: "class Foo < Bar {\n    method() {\n        print super;\n        print super.;\n    }\n}\n\n"
+expression: render_dcx()
+---
+error: unclosed braces
+  --> err_class_decls.lx@super_without_access:7:1
+  |
+2 |     method() {
+  |              - braces opened here
+  .
+7 | 
+  | ^ braces should have been closed here
+  |
+  = note: expected `}`
+
+error: missing property name in access expression
+  --> err_class_decls.lx@super_without_access:4:21
+  |
+4 |         print super.;
+  |               ----- ^ expected property name after '.' operator
+  |               |      
+  |               property access on this receiver
+  |
+  = note: expected identifier
+  = note: `super` must be followed by a method access
+
+error: missing property name in access expression
+  --> err_class_decls.lx@super_without_access:3:20
+  |
+3 |         print super;
+  |               -----^ expected property name after '.' operator
+  |               |     
+  |               property access on this receiver
+  |
+  = note: expected identifier
+  = note: `super` must be followed by a method access

@@ -1,0 +1,8 @@
+---
+source: tests/eval.rs
+description: "class Foo {\n    method() {\n        print \"Foo method\";\n    }\n}\n\nclass Bar < Foo {\n    method() {\n        super.method();\n        print \"Bar method\";\n    }\n}\n\nclass Baz < Bar {}\n\nBaz().method(); //> Foo method\\nBar method\n"
+expression: combined
+---
+:: Output ::
+Foo method
+Bar method

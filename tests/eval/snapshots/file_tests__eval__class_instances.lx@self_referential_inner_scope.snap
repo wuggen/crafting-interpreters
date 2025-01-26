@@ -1,0 +1,7 @@
+---
+source: tests/eval.rs
+description: "{\n    class Foo {\n        another() {\n            return Foo();\n        }\n    }\n\n    print Foo().another(); //> <Foo instance>\n}\n"
+expression: combined
+---
+:: Output ::
+<Foo instance>

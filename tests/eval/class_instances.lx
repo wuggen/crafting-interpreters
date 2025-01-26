@@ -64,3 +64,23 @@ class Foo {
 
 var foo = Foo();
 print foo.val; // > 0
+
+//CASE self_referential
+class Foo {
+    another() {
+        return Foo();
+    }
+}
+
+print Foo().another(); // > <Foo instance>
+
+//CASE self_referential_inner_scope
+{
+    class Foo {
+        another() {
+            return Foo();
+        }
+    }
+
+    print Foo().another(); //> <Foo instance>
+}

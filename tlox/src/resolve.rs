@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use crate::diag::{Diag, Diagnostic};
 use crate::span::{Span, Spannable, Spanned};
 use crate::symbol::Symbol;
-use crate::symbol::static_syms::SYM_THIS;
+use crate::symbol::static_syms::{SYM_SUPER, SYM_THIS};
 use crate::syn::{Expr, ExprNode, Fun, Place, Stmt};
 
 #[derive(Debug, Clone, Default)]
@@ -143,6 +143,13 @@ impl<'s> Resolver<'s, '_> {
                 self.enclosing_classes += 1;
 
                 self.env.declare(*name);
+
+                let _super_guard = superclass.as_ref().map(|_| {
+                    let guard = self.env.push_scope();
+                    self.env.declare(SYM_SUPER.spanned(Span::empty()));
+                    guard
+                });
+
                 let _guard = self.env.push_scope();
                 self.env.declare(SYM_THIS.spanned(Span::empty()));
 
@@ -190,6 +197,10 @@ impl<'s> Resolver<'s, '_> {
 
             ExprNode::Var(name) => self.resolve_name(expr.with_node(*name)),
             ExprNode::This => self.resolve_name(expr.with_node(SYM_THIS)),
+            ExprNode::Super { kw, .. } => {
+                self.resolve_name(SYM_SUPER.spanned(*kw));
+                self.resolve_name(SYM_THIS.spanned(*kw));
+            }
         }
     }
 

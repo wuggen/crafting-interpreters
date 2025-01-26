@@ -1,6 +1,6 @@
 ---
 source: tests/parse.rs
-description: "print this;\n\nfun foo() {\n    print this;\n}\n"
+description: "print this;\n\nfun foo() {\n    print this;\n}\n\n"
 expression: render_dcx()
 ---
 error: `this` expression found outside of an enclosing class method

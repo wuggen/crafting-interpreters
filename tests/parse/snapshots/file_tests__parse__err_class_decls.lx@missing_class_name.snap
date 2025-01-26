@@ -1,6 +1,6 @@
 ---
 source: tests/parse.rs
-description: "class {\n    foo(lol) {}\n}\n"
+description: "class {\n    foo(lol) {}\n}\n\n"
 expression: render_dcx()
 ---
 error: missing name in class declaration

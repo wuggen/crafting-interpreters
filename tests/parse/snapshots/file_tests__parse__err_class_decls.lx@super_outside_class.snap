@@ -1,0 +1,16 @@
+---
+source: tests/parse.rs
+description: "print super.method;\n\nfun foo() {\n    super.foo();\n}\n\n"
+expression: render_dcx()
+---
+error: `super` expression found outside of an enclosing class method
+  --> err_class_decls.lx@super_outside_class:1:7
+  |
+1 | print super.method;
+  |       ^^^^^ `super` expression found outside of an enclosing class method
+
+error: `super` expression found outside of an enclosing class method
+  --> err_class_decls.lx@super_outside_class:4:5
+  |
+4 |     super.foo();
+  |     ^^^^^ `super` expression found outside of an enclosing class method

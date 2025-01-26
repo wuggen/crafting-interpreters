@@ -1,6 +1,6 @@
 ---
 source: tests/eval.rs
-description: "class Foo {\n    method() {\n        print \"foo\";\n    }\n}\n\nclass Bar < Foo {}\n\nBar().method(); // > foo\n"
+description: "class Foo {\n    method() {\n        print \"foo\";\n    }\n}\n\nclass Bar < Foo {}\n\nBar().method(); // > foo\n\n"
 expression: combined
 ---
 :: Output ::

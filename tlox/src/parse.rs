@@ -33,6 +33,7 @@ pub struct Parser<'s> {
     enclosing_loops: usize,
     enclosing_classes: usize,
     in_init: bool,
+    has_superclass: bool,
 }
 
 // Grammar:
@@ -101,6 +102,7 @@ pub struct Parser<'s> {
 // arguments -> expr (',' expr)* ','?
 //
 // atom -> NUMBER | STRING | IDENT | 'this' | 'true' | 'false' | 'nil' | group
+//       | 'super' '.' IDENT
 //
 // group -> '(' expr ')'
 
@@ -116,6 +118,7 @@ impl<'s> Parser<'s> {
             enclosing_loops: 0,
             enclosing_classes: 0,
             in_init: false,
+            has_superclass: false,
         }
     }
 
@@ -673,6 +676,8 @@ impl<'s> Parser<'s> {
         };
 
         self.enclosing_classes += 1;
+        let old_has_super = self.has_superclass;
+        self.has_superclass = superclass.is_some();
 
         let (_obrace, methods, cbrace) = self.parse_braces(|this| {
             this.parse_seq(
@@ -693,6 +698,7 @@ impl<'s> Parser<'s> {
             )
         })?;
 
+        self.has_superclass = old_has_super;
         self.enclosing_classes -= 1;
 
         let span = class.span.join(cbrace);
@@ -1072,10 +1078,11 @@ impl<'s> Parser<'s> {
                     self.push_diag(ParserDiag::missing_property_name(
                         maybe_fn.span,
                         self.span_or_eof(&tok),
+                        false,
                     ));
                     ParserError::unexpected(tok).handled()
                 })?;
-                maybe_fn = expr::get(maybe_fn, name);
+                maybe_fn = expr::access(maybe_fn, name);
             } else {
                 break Ok(maybe_fn);
             }
@@ -1093,6 +1100,35 @@ impl<'s> Parser<'s> {
                 Token::Boolean(b) => Ok(tok.with_node(expr::literal(Lit::Bool(b)))),
                 Token::Nil => Ok(tok.with_node(expr::literal(Lit::Nil))),
                 Token::Ident(name) => Ok(tok.with_node(expr::var(name))),
+                Token::Super => {
+                    if self.enclosing_classes == 0 {
+                        self.push_diag(ParserDiag::super_outside_method(tok.span));
+                    } else if !self.has_superclass {
+                        self.push_diag(ParserDiag::super_with_no_superclass(tok.span));
+                    }
+
+                    let _dot = self
+                        .advance_or_peek(|tok| matches!(tok, Token::Dot))
+                        .map_err(|next| {
+                            self.push_diag(ParserDiag::missing_property_name(
+                                tok.span,
+                                self.span_or_eof(&next),
+                                true,
+                            ));
+                            ParserError::unexpected(next).handled()
+                        })?;
+
+                    let name = self.parse_ident().map_err(|next| {
+                        self.push_diag(ParserDiag::missing_property_name(
+                            tok.span,
+                            self.span_or_eof(&next),
+                            true,
+                        ));
+                        ParserError::unexpected(next).handled()
+                    })?;
+
+                    Ok(expr::super_access(tok.span, name))
+                }
                 Token::This => {
                     if self.enclosing_classes == 0 {
                         self.push_diag(ParserDiag::this_outside_method(tok.span));

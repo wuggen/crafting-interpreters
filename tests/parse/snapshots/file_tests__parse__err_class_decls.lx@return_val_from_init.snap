@@ -1,6 +1,6 @@
 ---
 source: tests/parse.rs
-description: "fun init() {\n    return false; // no error\n}\n\nclass Foo {\n    init() {\n        return false; // error\n    }\n}\n"
+description: "fun init() {\n    return false; // no error\n}\n\nclass Foo {\n    init() {\n        return false; // error\n    }\n}\n\n"
 expression: render_dcx()
 ---
 error: returned a value from a class initializer

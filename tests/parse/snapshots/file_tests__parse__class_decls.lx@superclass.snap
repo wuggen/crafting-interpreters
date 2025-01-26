@@ -1,7 +1,10 @@
 ---
 source: tests/parse.rs
-description: "class Foo < Bar {}\n"
+description: "class Foo < Bar {\n    method() {\n        super.method();\n    }\n}\n"
 expression: first_parse
 ---
 class Foo < Bar {
+    method() {
+        super.method();
+    }
 }

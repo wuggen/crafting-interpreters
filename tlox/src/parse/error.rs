@@ -195,6 +195,35 @@ impl DeclKind {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum InvalidKw {
+    ReturnFun,
+    BreakLoop,
+    ThisClass,
+    SuperClass,
+    SuperNoSuperclass,
+}
+
+impl InvalidKw {
+    fn desc(&self) -> &'static str {
+        match self {
+            InvalidKw::ReturnFun => "`return` statement",
+            InvalidKw::BreakLoop => "`break` statement",
+            InvalidKw::ThisClass => "`this` expression",
+            InvalidKw::SuperClass | InvalidKw::SuperNoSuperclass => "`super` expression",
+        }
+    }
+
+    fn context(&self) -> &'static str {
+        match self {
+            InvalidKw::ReturnFun => "an enclosing function definition",
+            InvalidKw::BreakLoop => "an enclosing loop",
+            InvalidKw::ThisClass | InvalidKw::SuperClass => "an enclosing class method",
+            InvalidKw::SuperNoSuperclass => "a class with no superclass",
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum ParserDiag<'s> {
     Unexpected {
@@ -243,6 +272,7 @@ pub enum ParserDiag<'s> {
     MissingPropertyName {
         receiver: Span,
         expected_name: Span,
+        super_access: bool,
     },
 
     InvalidPlaceExpr {
@@ -257,16 +287,9 @@ pub enum ParserDiag<'s> {
         arg: Span,
     },
 
-    ReturnOutsideFun {
+    InvalidKw {
         site: Span,
-    },
-
-    BreakOutsideLoop {
-        site: Span,
-    },
-
-    ThisOutsideMethod {
-        site: Span,
+        kw: InvalidKw,
     },
 
     ReturnValFromInit {
@@ -368,10 +391,15 @@ impl<'s> ParserDiag<'s> {
         }
     }
 
-    pub const fn missing_property_name(receiver: Span, expected_name: Span) -> Self {
+    pub const fn missing_property_name(
+        receiver: Span,
+        expected_name: Span,
+        super_access: bool,
+    ) -> Self {
         Self::MissingPropertyName {
             receiver,
             expected_name,
+            super_access,
         }
     }
 
@@ -388,16 +416,28 @@ impl<'s> ParserDiag<'s> {
         }
     }
 
+    pub const fn invalid_kw(kw: InvalidKw, site: Span) -> Self {
+        Self::InvalidKw { site, kw }
+    }
+
     pub const fn return_outside_fun(site: Span) -> Self {
-        Self::ReturnOutsideFun { site }
+        Self::invalid_kw(InvalidKw::ReturnFun, site)
     }
 
     pub const fn break_outside_loop(site: Span) -> Self {
-        Self::BreakOutsideLoop { site }
+        Self::invalid_kw(InvalidKw::BreakLoop, site)
     }
 
     pub const fn this_outside_method(site: Span) -> Self {
-        Self::ThisOutsideMethod { site }
+        Self::invalid_kw(InvalidKw::ThisClass, site)
+    }
+
+    pub const fn super_outside_method(site: Span) -> Self {
+        Self::invalid_kw(InvalidKw::SuperClass, site)
+    }
+
+    pub const fn super_with_no_superclass(site: Span) -> Self {
+        Self::invalid_kw(InvalidKw::SuperNoSuperclass, site)
     }
 
     pub const fn return_val_from_init(val: Span) -> Self {
@@ -438,14 +478,8 @@ impl ParserDiag<'_> {
                 kind.desc(),
                 ctx.desc(),
             ),
-            ParserDiag::ReturnOutsideFun { .. } => {
-                "`return` statement found outside of an enclosing function definition".into()
-            }
-            ParserDiag::BreakOutsideLoop { .. } => {
-                "`break` statement found outside of an enclosing loop".into()
-            }
-            ParserDiag::ThisOutsideMethod { .. } => {
-                "`this` expression found outside of an enclosing class method".into()
+            ParserDiag::InvalidKw { kw, .. } => {
+                format!("{} found outside of {}", kw.desc(), kw.context())
             }
             ParserDiag::ReturnValFromInit { .. } => {
                 "returned a value from a class initializer".into()
@@ -468,9 +502,7 @@ impl ParserDiag<'_> {
             | ParserDiag::MissingPropertyName { .. }
             | ParserDiag::InvalidPlaceExpr { .. } => Some("identifier"),
             ParserDiag::ExcessiveArgs { .. }
-            | ParserDiag::ReturnOutsideFun { .. }
-            | ParserDiag::BreakOutsideLoop { .. }
-            | ParserDiag::ThisOutsideMethod { .. }
+            | ParserDiag::InvalidKw { .. }
             | ParserDiag::ReturnValFromInit { .. } => None,
         }
     }
@@ -527,9 +559,17 @@ impl ParserDiag<'_> {
             ParserDiag::MissingPropertyName {
                 receiver,
                 expected_name,
-            } => diag
-                .with_primary(expected_name, "expected property name after '.' operator")
-                .with_secondary(receiver, "property access on this receiver"),
+                super_access,
+            } => {
+                let diag = diag
+                    .with_primary(expected_name, "expected property name after '.' operator")
+                    .with_secondary(receiver, "property access on this receiver");
+                if super_access {
+                    diag.with_note("`super` must be followed by a method access")
+                } else {
+                    diag
+                }
+            }
 
             ParserDiag::InvalidPlaceExpr { place, eq } => diag
                 .with_primary(place, "invalid place expression")
@@ -549,9 +589,7 @@ impl ParserDiag<'_> {
                     kind.arg_num()
                 )),
 
-            ParserDiag::ReturnOutsideFun { site }
-            | ParserDiag::BreakOutsideLoop { site }
-            | ParserDiag::ThisOutsideMethod { site } => diag.with_primary(site, self.message()),
+            ParserDiag::InvalidKw { site, .. } => diag.with_primary(site, self.message()),
 
             ParserDiag::ReturnValFromInit { val } => diag
                 .with_primary(val, "cannot return a value from a class initializer")
