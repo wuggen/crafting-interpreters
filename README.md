@@ -1,23 +1,22 @@
 Following along (loosely) with [_Crafting Interpreters_][CI] in Rust.
 
-Going a lot harder on several bits of the design than the book does. In
-particular, aiming for much more robust source code representations and error
-handling/reporting.
+The tree-walking interpreter lives in `tlox`, and tests for it are in
+`tests/tlox`. It's a little bit of an overengineered, spaghettified mess, and is
+even outperformed by `jlox`. It was a good exercise, but I'll be starting from a
+clean slate for the bytecode interpreter.
 
-I'm currently in part 1 of the book. The tree-walking interpreter will live
-in [`tlox`](./tlox). When I get to part two (the bytecode interpreter),
-many components of that crate (e.g. source maps, error handling, lexical and
-syntactic structures) will be separated out into other crates to be shared
-between the two implementations.
+The bytecode interpreter will live in `rlox`.
 
-# Digressions from the Lox language as specified in the book
+# Digressions from standard Lox
 
 I have committed the cardinal sin of diverging from the language spec. In my
-defense, no one will ever use this interpreter.
+defense, no one will ever use these interpreters.
 
-## Use of shadowed variables in initializers
+## In `tlox`
 
-The book's Lox allows this:
+### Use of shadowed variables in initializers
+
+Standard Lox allows this:
 
 ```
 var a = 4;
@@ -36,8 +35,8 @@ but disallows this:
 This is displeasing to me for two reasons:
 
 - It's an arbitrary inconsistency between the treatment of global vs. local
-  variables. Code in the global scope is special-cased in several cases,
-  to facilitate use of the language in an interactive prompt, but minimizing
+  variables. Code in the global scope is special-cased in several cases, to
+  facilitate use of the language in an interactive prompt, but minimizing
   these discrepancies seems desirable, and this discrepancy in particular seems
   especially arbitrary.
 - Forbidding references within variable initializers to variables of the
@@ -50,17 +49,18 @@ This is displeasing to me for two reasons:
 Granted, in a dynamically typed language, variable shadowing is of marginal
 use and is _mostly_ equivalent to reassigning a variable (though lexical
 scoping rules do make shadowing useful in certain circumstances even in this
-setting). The no-shadowed-variables-in-initializers rule would also mirror the
-way _function_ declarations operate (the function is declared and exists to be
+setting). The no-shadowed-variables-in-initializers rule would also mirror
+the way _function_ declarations operate (the function is declared and can be
 referenced recursively within the body of the function), but I think there is
 a difference in kind here that justifies the discrepancy; variable initializers
 are evaluated _immediately and eagerly,_ while function bodies are evaluated
 _lazily when called,_ which makes recursive functions both sensical and useful,
-while recursive variables are nonsensical, and the syntax that would produce
-one is more usefully construed to do something else so long as a natural
-"something else" exists.
+while recursive variables are nonsensical, and the syntax that would produce one
+is more usefully construed to do something else so long as a natural "something
+else" exists.
 
-So, this version of Lox allows the use of same-name variables in initializers,
-in all cases, including in local scopes.
+So, for `tlox`, I opted to allow the use of same-name variables in initializers,
+in all cases, including in local scopes. In `rlox`, I will instead hold my nose
+and adhere to the spec.
 
 [CI]: https://craftinginterpreters.com/
