@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dev-dependencies]
-tlox = { path = "../tlox" }
+tlox = { path = "../../tlox" }
 insta = "=1.40.0"
 
 [[test]]
