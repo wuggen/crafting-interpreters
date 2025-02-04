@@ -23,6 +23,8 @@ impl Chunk {
     /// Append an instruction to this chunk.
     pub fn write_instr(&mut self, instr: Instr, span: Location) {
         self.code.push(instr.op() as u8);
+
+        #[allow(clippy::single_match)] // This match will expand quickly lol
         match instr {
             Instr::Const(idx) => self.code.push(idx),
             _ => {}
@@ -30,14 +32,10 @@ impl Chunk {
 
         let len = instr.encoded_len();
 
-        if self.spans.is_empty() {
+        if self.spans.is_empty() || span != self.spans.last().unwrap().0 {
             self.spans.push((span, len));
         } else {
-            if span == self.spans.last().unwrap().0 {
-                self.spans.last_mut().unwrap().1 += len;
-            } else {
-                self.spans.push((span, len));
-            }
+            self.spans.last_mut().unwrap().1 += len;
         }
     }
 
@@ -61,14 +59,16 @@ impl Chunk {
 
         while !code.is_empty() {
             write!(stream, "{offset:04x} ")?;
-            let span = self.span_at_offset(offset).expect("span not found for offset");
+            let span = self
+                .span_at_offset(offset)
+                .expect("span not found for offset");
             if Some(span) == prev_span {
                 write!(stream, "         | ")?;
             } else {
                 write!(stream, "{span:>8} | ")?;
             }
             prev_span = Some(span);
-            
+
             let instr = unsafe { Instr::decode(&mut code) };
 
             if let Some(instr) = instr {

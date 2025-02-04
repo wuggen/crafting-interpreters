@@ -81,7 +81,7 @@ impl Op {
     #[inline]
     pub const fn from_byte(byte: u8) -> Option<Self> {
         if byte >= FIRST as u8 && byte <= LAST as u8 {
-            Some(unsafe { std::mem::transmute(byte) })
+            Some(unsafe { std::mem::transmute::<u8, Op>(byte) })
         } else {
             None
         }
