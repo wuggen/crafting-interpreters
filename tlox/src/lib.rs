@@ -4,7 +4,6 @@
 #![feature(hash_raw_entry)]
 #![feature(mapped_lock_guards)]
 #![feature(ptr_metadata)]
-#![feature(ptr_sub_ptr)]
 #![feature(round_char_boundary)]
 #![feature(strict_provenance_atomic_ptr)]
 

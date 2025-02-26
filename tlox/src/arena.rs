@@ -80,7 +80,7 @@ impl<T> PtrAddCap<T> for *mut T {
     }
 
     unsafe fn sub_ptr_capacity(self, other: Self) -> Capacity<T> {
-        unsafe { Capacity::new(self.sub_ptr(other)) }
+        unsafe { Capacity::new(self.offset_from_unsigned(other)) }
     }
 }
 
@@ -210,7 +210,7 @@ impl<T> RangePointers<T> {
         );
         self.start
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |start| unsafe {
-                if self.end.sub_ptr(start) < min_cap.0 {
+                if self.end.offset_from_unsigned(start) < min_cap.0 {
                     debug_println!(@"=> insufficient capacity");
                     None
                 } else {
@@ -322,7 +322,7 @@ impl<T> ArenaCore<T> {
             if mem::needs_drop::<T>() {
                 if let Some(last) = chunks.last_mut() {
                     let storage_start = last.get_storage_ptr();
-                    last.occupied = prev_start.sub_ptr(storage_start);
+                    last.occupied = prev_start.offset_from_unsigned(storage_start);
                     debug_println!(@
                         "=> prev chunk ({:p}) {} occupied",
                         last.get_storage_ptr(),
