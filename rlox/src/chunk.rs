@@ -58,30 +58,20 @@ impl Chunk {
         let mut prev_span = None;
 
         while !code.is_empty() {
-            write!(stream, "{offset:04x} ")?;
             let span = self
                 .span_at_offset(offset)
                 .expect("span not found for offset");
-            if Some(span) == prev_span {
-                write!(stream, "         | ")?;
+
+            let given_span = if Some(span) == prev_span {
+                None
             } else {
-                write!(stream, "{span:>8} | ")?;
-            }
+                Some(span)
+            };
             prev_span = Some(span);
 
             let instr = unsafe { Instr::decode(&mut code) };
-
             if let Some(instr) = instr {
-                match instr {
-                    Instr::Return => writeln!(stream, "{}", instr.op().mnemonic())?,
-                    Instr::Const(idx) => writeln!(
-                        stream,
-                        "{:16} {idx:02x} ({idx:3}) => {:?}",
-                        instr.op().mnemonic(),
-                        self.constants[idx as usize]
-                    )?,
-                }
-
+                instr.disassemble(self, offset, given_span, &mut stream)?;
                 offset += instr.encoded_len();
             } else {
                 writeln!(stream, "Unknown opcode {:02x}", self.code[offset])?;
@@ -91,10 +81,37 @@ impl Chunk {
 
         Ok(())
     }
-}
 
-impl Chunk {
-    fn span_at_offset(&self, offset: usize) -> Option<Location> {
+    /// Get the bytecode of this chunk.
+    pub fn code(&self) -> &[u8] {
+        &self.code
+    }
+
+    /// Get the constant pool of this chunk.
+    pub fn constants(&self) -> &[Value] {
+        &self.constants
+    }
+
+    /// Get the byte offset of a pointer into this chunk's code.
+    ///
+    /// If the given pointer is outside of this chunk's allocation, returns `None`.
+    pub fn offset_of_ptr(&self, ptr: *const u8) -> Option<usize> {
+        let code_ptr = self.code.as_ptr();
+        let diff = ptr as isize - code_ptr as isize;
+        if diff < 0 || diff > self.code.len() as isize {
+            None
+        } else {
+            Some(diff as usize)
+        }
+    }
+
+    pub fn code_from_ptr(&self, ptr: *const u8) -> Option<&[u8]> {
+        let offset = self.offset_of_ptr(ptr)?;
+        Some(&self.code[offset..])
+    }
+
+    /// Get the source code span corresponding to the given byte offset in this chunk's code.
+    pub fn span_at_offset(&self, offset: usize) -> Option<Location> {
         self.spans
             .iter()
             .scan(
@@ -110,5 +127,12 @@ impl Chunk {
                 },
             )
             .last()
+    }
+
+    #[inline]
+    pub unsafe fn constant_unchecked(&self, idx: u8) -> Value {
+        unsafe {
+            *self.constants.get_unchecked(idx as usize)
+        }
     }
 }

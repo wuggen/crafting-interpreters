@@ -1,5 +1,9 @@
 //! Lox bytecode instructions and encoding.
 
+use std::io;
+
+use crate::chunk::Chunk;
+
 macro_rules! first {
     (($($tt:tt)*) $(, ($($_rest:tt)*))*) => {
         $($tt)*
@@ -16,7 +20,33 @@ macro_rules! last {
     };
 }
 
-macro_rules! define_intrs {
+macro_rules! read_byte {
+    ($ip:expr) => {
+        unsafe {
+            let b = *$ip;
+            $ip = ($ip).add(1);
+            b
+        }
+    };
+}
+
+macro_rules! init_opds {
+    ($ip:expr, $name:ident $(( $($field:ident : $fieldty:ty),* ))?) => {
+        {
+            init_opds!(@ $ip => $( $($field),* )?);
+            Some(Instr::$name $( ($($field),*) )?)
+        }
+    };
+
+    (@ $ip:expr => $field:ident $(, $($rest:tt)*)?) => {
+        let $field = read_byte!($ip);
+        init_opds!(@ $ip => $($($rest)*)?);
+    };
+
+    (@ $ip:expr => ) => {};
+}
+
+macro_rules! define_instrs {
     ($($const:ident $name:ident $(( $($field:ident : $fieldty:ty),* ))? => $mnem:expr),* $(,)?) => {
         /// A Lox instruction opcode.
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -59,13 +89,88 @@ macro_rules! define_intrs {
                     ),*
                 }
             }
+
+            /// Decode an instruction from an IP pointer.
+            ///
+            /// This function decodes an instruction pointed to by the given IP, and simultaneously shifts
+            /// the IP forward by the length of the decoded instruction.
+            ///
+            /// Returns `None` if the first byte pointed to by the IP is not a valid opcode. In this case,
+            /// the IP will still be shifted forwards one byte.
+            ///
+            /// # Safety
+            ///
+            /// The IP should point into a valid byte slice. The portion of the slice pointed to should
+            /// contain at least one opcode and any operands to that opcode.
+            #[inline(always)]
+            pub unsafe fn decode_ptr(ip: &mut *const u8) -> Option<Self> {
+                match Op::from_byte(read_byte!(*ip))? {
+                    $(
+                        Op::$name => init_opds!(*ip, $name $(( $($field: $fieldty),* ))?),
+                    )*
+                }
+            }
+
+            pub fn disassemble<W: ::std::io::Write>(
+                &self,
+                chunk: &$crate::chunk::Chunk,
+                offset: usize,
+                span: ::std::option::Option<$crate::span::Location>,
+                mut stream: W,
+            ) -> ::std::io::Result<()> {
+                write!(stream, "{offset:04x} ")?;
+                if let Some(span) = span {
+                    write!(stream, "{span:>8} | ")?;
+                } else {
+                    write!(stream, "         | ")?;
+                }
+
+                #[allow(unused_variables)]
+                match self {
+                    $(
+                        Instr::$name $(( $($field),* ))? => {
+                            write!(stream, "{:16} ", self.op().mnemonic())?;
+                            $({
+                                $(
+                                    let $field: ();
+                                )*
+                                self::disasm_helper(self, chunk, offset, &mut stream)?;
+                            })?
+                            writeln!(stream)
+                        }
+                    )*
+                }
+            }
         }
     };
 }
 
-define_intrs! {
-    OP_RETURN Return => "return",
+fn disasm_helper<W: io::Write>(
+    instr: &Instr,
+    chunk: &Chunk,
+    _offset: usize,
+    mut stream: W,
+) -> io::Result<()> {
+    match instr {
+        &Instr::Const(idx) => {
+            write!(
+                stream,
+                "{idx:02x} ({idx:3}) => {:?}",
+                chunk.constants()[idx as usize],
+            )
+        }
+        _ => Ok(()),
+    }
+}
+
+define_instrs! {
+    OP_RET Ret => "ret",
     OP_CONST Const(idx: u8) => "const",
+    OP_NEG Neg => "neg",
+    OP_ADD Add => "add",
+    OP_SUB Sub => "sub",
+    OP_MUL Mul => "mul",
+    OP_DIV Div => "div",
 }
 
 impl Op {
@@ -115,19 +220,12 @@ impl Instr {
     pub unsafe fn decode(code: &mut &[u8]) -> Option<Self> {
         debug_assert!(!code.is_empty());
 
-        let get = |idx: usize| unsafe { *code.get_unchecked(idx) };
-
-        let (res, shift) = match get(0) {
-            OP_RETURN => (Some(Instr::Return), 1),
-            OP_CONST => {
-                debug_assert!(code.len() >= 2);
-                (Some(Instr::Const(get(1))), 2)
-            }
-            _ => (None, 1),
-        };
-
-        let (_, tail) = unsafe { code.split_at_unchecked(shift) };
-        *code = tail;
-        res
+        let mut ip = code.as_ptr();
+        unsafe {
+            let instr = Self::decode_ptr(&mut ip);
+            let diff = ip.offset_from_unsigned(code.as_ptr());
+            *code = code.split_at_unchecked(diff).1;
+            instr
+        }
     }
 }
